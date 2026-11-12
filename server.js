@@ -2950,9 +2950,96 @@ function isScoreBetter(rankingId, newScore, newData, oldScore, oldData) {
 // `opts.a` : l'heure où le score est ARRIVÉ, quand on l'écrit plus tard (une
 // partie de Swapou classée à la fin d'un rejeu qui a tardé) — le tournoi la
 // juge à cette heure-là.
+/*
+ * LES PARTIES À CHEVAL SUR MINUIT.
+ *
+ * Le Challenge se remet à zéro à minuit (Paris), et plusieurs jeux changent
+ * alors de carte : Mini-Wave, MotionBall, le circuit de Burning Kiwi… Une
+ * partie commencée à 23 h 50 et finie à 0 h 05 était inscrite au tableau du
+ * jour NEUF — avec le score fait sur la carte de la veille, et en prenant une
+ * partie du quota du lendemain. Règle du parc (novembre 2026) : une partie
+ * commencée avant minuit ne compte pas au Challenge du jour suivant. Kaluga et
+ * Frutisnake font exception (pas de carte du jour : on le tolère) ; Grapiz et
+ * Frutibandas ont leur propre règle (la série s'arrête à minuit).
+ *
+ * Le serveur doit donc savoir QUAND la partie a commencé :
+ *   · il le sait de lui-même quand la partie s'ouvre chez lui — la réservation
+ *     de Burning Kiwi et de Swapou (/do/fdclaim), la graine d'une partie
+ *     vérifiée (Swapou, Mini-Fever) : noterDebutPartie ;
+ *   · sinon le jeu le dit avec son score : `jour` (le jour de la carte que le
+ *     serveur lui avait donnée — Mini-Wave) ou `age` (les millisecondes
+ *     écoulées depuis le début — MotionBall).
+ * Un jeu qui ne dit rien est classé comme avant. Rien ici n'ouvre de porte :
+ * mentir sur le début ne rend que ce qu'on avait déjà.
+ *
+ * Garde-fou : passé trois heures du matin, plus aucune partie « de la veille »
+ * n'est plausible — un début resté en mémoire (partie abandonnée) n'écarte
+ * alors plus rien.
+ */
+const JEUX_TOLERES_A_MINUIT = new Set(['kaluga', 'snake3', 'grapiz', 'bandas']);
+const A_CHEVAL_FENETRE_MS = Number(process.env.A_CHEVAL_FENETRE_MS) || 3 * 3600 * 1000;   // (l'essai l'élargit)
+const debutsDePartie = new Map();          // "pseudo::jeu" → { t, refusLe }
+function jeuDeClassement(jeu) {
+  const j = String(jeu || '').toLowerCase();
+  return j === 'swapou' ? 'swapou2' : j;
+}
+function noterDebutPartie(username, jeu, quand) {
+  if (!username || !jeu) return;
+  debutsDePartie.set(`${username}::${jeuDeClassement(jeu)}`, { t: Number(quand) || Date.now(), refusLe: 0 });
+  if (debutsDePartie.size > 5000) {
+    const limite = Date.now() - 24 * 3600 * 1000;
+    for (const [k, v] of debutsDePartie) if (v.t < limite) debutsDePartie.delete(k);
+  }
+}
+// Le début que le jeu annonce avec son score (`jour` ou `age`).
+function noterDebutAnnonce(username, jeu, params) {
+  if (!params) return;
+  const jour = String(params.jour || '');
+  if (/^\d{4}-\d{2}-\d{2}$/.test(jour)) {
+    // Une carte d'un autre jour que celui du serveur : la partie est d'hier.
+    noterDebutPartie(username, jeu, jour === parisDayKey() ? Date.now() : minuitParisMs() - 1);
+    return;
+  }
+  const age = Number(params.age);
+  if (Number.isFinite(age) && age >= 0 && age < 24 * 3600 * 1000) noterDebutPartie(username, jeu, Date.now() - age);
+}
+// L'instant du dernier minuit de Paris.
+function minuitParisMs(maintenant = Date.now()) {
+  const f = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Paris', hour12: false,
+    hour: '2-digit', minute: '2-digit', second: '2-digit' }).formatToParts(new Date(maintenant));
+  const v = (t) => Number((f.find((x) => x.type === t) || {}).value) || 0;
+  return maintenant - (((v('hour') % 24) * 60 + v('minute')) * 60 + v('second')) * 1000 - (maintenant % 1000);
+}
+function partieACheval(username, jeu, maintenant = Date.now()) {
+  const j = jeuDeClassement(jeu);
+  if (!username || !j || JEUX_TOLERES_A_MINUIT.has(j)) return false;
+  const cle = `${username}::${j}`;
+  const d = debutsDePartie.get(cle);
+  if (!d) return false;
+  const minuit = minuitParisMs(maintenant);
+  if (d.t >= minuit) return false;
+  // Trop tard dans la nuit, ou un refus déjà rendu pour cette partie il y a
+  // plus de dix secondes (ses deux classements s'écrivent d'un même geste) :
+  // ce début-là est périmé.
+  if (maintenant - minuit > A_CHEVAL_FENETRE_MS || (d.refusLe && maintenant - d.refusLe > 10000)) {
+    debutsDePartie.delete(cle);
+    return false;
+  }
+  if (!d.refusLe) d.refusLe = maintenant;
+  return true;
+}
+
 function persistScore(username, rankingId, score, data, opts) {
   if (!username || !rankingId || !RANKINGS[rankingId]) {
     return { updated: false, newScore: score, oldScore: 0, oldPos: 0, newPos: 0 };
+  }
+  // Une partie commencée avant minuit ne s'inscrit pas au Challenge du jour neuf.
+  if (isDailyResetRanking(rankingId) && partieACheval(username, RANKINGS[rankingId].game)) {
+    console.log(`[CHALLENGE] ${username} ${rankingId} ${score} : partie commencée avant minuit — pas classée au jour neuf`);
+    const prev = scoresData.users[username] && scoresData.users[username][rankingId];
+    const pos = computePosition(rankingId, username);
+    return { updated: false, newScore: (prev && Number(prev.score)) || 0, oldScore: (prev && Number(prev.score)) || 0,
+      oldPos: pos, newPos: pos, horsJour: true };
   }
   // Un joueur exclu des classements (onglet Alertes) : la partie compte, pas le score.
   if (joueurExcluDesClassements(username)) return scoreExclu(username, rankingId, score);
@@ -4910,6 +4997,9 @@ function fdApplyToSave(sid, username, rankingId, extraRankingId, routed, partie)
   // Jeux non limités OU rationnés au démarrage du match (grapiz/bandas) : le
   // save ne gate rien (le portillon est ailleurs). Cf. FD_PREMATCH_GAMES.
   if (!fdGameIsLimited(game) || FD_PREMATCH_GAMES.has(game)) return { direct: true, mirror: true, blocked: false };
+  // Partie commencée avant minuit : rien n'est pris au quota du jour neuf, et
+  // c'est persistScore qui écarte ses classements du jour (cf. partieACheval).
+  if (partieACheval(username, game)) return { direct: true, mirror: true, blocked: false, horsJour: true };
   // ── BKiwi : L'ENREGISTREMENT N'EST JAMAIS BLOQUÉ ─────────────────────────────
   // Le quota de Burning Kiwi est appliqué AVANT la course, par /do/fdclaim : quand
   // il n'y a plus de FD, le claim refuse et le jeu revient au menu — le joueur ne
@@ -5342,6 +5432,18 @@ async function rollDailyChallengeIfNeeded() {
   await performChallengeRoll(today);
 }
 
+// Grapiz et Frutibandas : la série de victoires est le score du Challenge du
+// jour. Elle prend fin à minuit (elle est déjà inscrite au tableau archivé) et
+// repart de 0 — cf. remettreSeriesAZero dans les deux net.js.
+function remettreSeriesMultiAZero() {
+  for (const u of Object.keys(users)) {
+    if (users[u].grapizStreak) users[u].grapizStreak = 0;
+    if (users[u].bandasStreak) users[u].bandasStreak = 0;
+  }
+  try { grapizNet.remettreSeriesAZero(); } catch (e) { /* pas encore démarré */ }
+  try { bandasNet.remettreSeriesAZero(); } catch (e) { /* pas encore démarré */ }
+}
+
 async function performChallengeRoll(today) {
   const archiveDay = challengeMedalsData.lastRollDay || yesterdayParisDayKey();
   console.log(`[CHALLENGE] Rolling cycle: archiveDay=${archiveDay} newDay=${today}`);
@@ -5403,6 +5505,7 @@ async function performChallengeRoll(today) {
   }
 
   resetChallengeScoresInMemory();
+  remettreSeriesMultiAZero();
 
   // New day → new challenge map for MotionBall 2.
   try {
@@ -10105,6 +10208,7 @@ app.post('/api/swapou/partie', (req, res) => {
     const id = crypto.randomBytes(12).toString('hex');
     const graine = crypto.randomBytes(4).readUInt32LE(0);
     swapouPartiesDonnees.set(id, { username, graine, at: t, essai });
+    if (!essai) noterDebutPartie(username, 'swapou2', t);
     if (swapouPartiesDonnees.size > 20000) {
       // Les plus anciennes d'abord (l'ordre d'insertion d'une Map).
       for (const k of swapouPartiesDonnees.keys()) {
@@ -10922,6 +11026,8 @@ async function handleSaveScore(req, res) {
   if (!rankingId) {
     return res.status(400).json({ ok: false, error: 'unknown_game', game: gameName });
   }
+  // Le début de la partie, quand le jeu le dit (cf. « les parties à cheval »).
+  noterDebutAnnonce(username, (RANKINGS[rankingId] && RANKINGS[rankingId].game) || gameName, params);
   // Le contrôle commun des portes génériques (controlePorteGenerique) : les
   // classements réservés aux parties vérifiées (l'Arbre creux, Mini-Fever),
   // ceux que seul le serveur arbitre (séries de Grapiz et de Frutibandas,
@@ -11063,6 +11169,8 @@ async function handleSaveScore(req, res) {
     newPos: result.newPos,
     rankingId,
     fdBlocked, // true si le score challenge n'a pas été classé faute de FD
+    // true : partie commencée avant minuit, pas classée au Challenge du jour neuf
+    horsJour: !!(result.horsJour || (extraResult && extraResult.horsJour)) || undefined,
   });
 }
 app.post('/api/saveScore', handleSaveScore);
@@ -17771,6 +17879,7 @@ app.post('/api/minifever/partie', (req, res) => {
   if (!info || !info.nom) return res.json({ ok: false, error: 'palier' });
   if (!antitricheDebit(username)) return res.json({ ok: false, error: 'rate_limited' });
   const p = AT.creerJeton({ jeu: 'minifever', username, mode: palier });
+  noterDebutPartie(username, 'minifever');
   AT.ouvrirBattements(p.id, username, 'minifever', p.t);
   if (process.env.DATABASE_URL) {
     db.creerPartieVerifiee({ id: p.id, jeu: 'minifever', username, graine: p.graine, mode: palier, jour: parisDayKey() })
@@ -25780,6 +25889,7 @@ app.post('/do/fdclaim', async (req, res) => {
   if (!username) return res.send('ok=0&err=auth');
   const user = users[username];
   const game = String(params.game || '').toLowerCase();
+  noterDebutPartie(username, game);          // la partie s'ouvre ici (cf. partieACheval)
   if (!fdGameIsLimited(game)) return res.send('ok=1&fd=free');
   // BKiwi v2 : le SWF patché envoie mode = vs.gameMode (inc/gameData.as —
   // ARCADE=1 est le bouton « Challenge » du menu ; DUEL=2, TIMETRIAL=3, etc.).

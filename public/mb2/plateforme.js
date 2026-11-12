@@ -161,6 +161,7 @@ class Client {
 
   startGame() {
     this.gameRunning = true;
+    this.debutPartie = Date.now();      // cf. saveScore : l'âge de la partie
     this.error = false;
     this.onStartGame('');
   }
@@ -201,6 +202,9 @@ class Client {
     };
     if (!this.sid) { Promise.resolve().then(() => finir(null)); return; }
     const p = new URLSearchParams({ sid: this.sid, game: 'mb2', m: '1', score: String(Math.max(0, Math.floor(score))), data: data === undefined ? '' : String(data) });
+    // Depuis combien de temps la partie dure : commencée avant minuit sur la
+    // carte de la veille, elle ne s'inscrit pas au Challenge du jour neuf.
+    if (this.debutPartie) p.set('age', String(Date.now() - this.debutPartie));
     fetch('/api/saveScore?' + p.toString())
       .then((r) => r.json().catch(() => null).then((j) => (j && typeof j === 'object' ? j : { ok: r.ok, error: 'reseau' })))
       .catch(() => ({ ok: false, error: 'reseau' }))

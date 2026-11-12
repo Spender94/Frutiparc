@@ -506,7 +506,7 @@ class Plateforme {
    * @param {number} score
    * @param {number} niveau  le niveau ATTEINT (1 à NIVEAUX_PAR_JOUR)
    */
-  envoyerScore(score, niveau) {
+  envoyerScore(score, niveau, jour) {
     const defi = (typeof module !== 'undefined' && module.exports)
       ? require('./challenge.js')
       : (typeof window !== 'undefined' ? window.MiniwaveChallenge : null);
@@ -517,6 +517,9 @@ class Plateforme {
     const p = new URLSearchParams({
       sid: this.sid, game: 'miniwave', m: '0', score: String(n), data: String(lvl),
     });
+    // Le jour de la map jouée : une partie finie après minuit sur la map de
+    // la veille ne s'inscrit pas au Challenge du jour neuf (le serveur tranche).
+    if (jour) p.set('jour', String(jour));
     return fetch('/api/saveScore?' + p.toString())
       .then((r) => r.json())
       .catch(() => ({ ok: false }));

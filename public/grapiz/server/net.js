@@ -486,6 +486,25 @@
     }
     // perdant humain NON classé (0 disque vs bot) → rien (pas de disque à perdre).
   };
+  /*
+   * MINUIT : LES SÉRIES S'ARRÊTENT. Le classement du Challenge est celui de
+   * la journée : la série en cours a déjà été inscrite, victoire après
+   * victoire, au tableau du jour qui s'achève. Sans cette remise à zéro, elle
+   * continuait le lendemain — une victoire à minuit cinq inscrivait d'un coup
+   * la série de la veille au tableau du jour neuf. Chacun repart de 0 (les
+   * adversaires déjà battus comptent de nouveau) ; les bots gardent leur
+   * série « vitrine », qui n'est classée nulle part.
+   */
+  GrapizNet.prototype.remettreSeriesAZero = function () {
+    var n = 0;
+    for (var u in this.streaks) {
+      if (this.bots[u]) continue;
+      if (this.streaks[u] > 0) n++;
+      this.streaks[u] = 0;
+    }
+    for (var b in this._beaten) if (!this.bots[b]) delete this._beaten[b];
+    return n;
+  };
   GrapizNet.prototype._fireStreak = function (user, streak, series) {
     if (this.bots[user]) return;   // les bots ne sont pas persistés/classés
     if (this.onStreak) { try { this.onStreak(user, streak, { series: series }); } catch (e) {} }

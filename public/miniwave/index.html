@@ -542,7 +542,7 @@
         // de un — comme la ligne de score juste au-dessus). L'arcade, connue
         // par cœur, ne classe pas.
         if (l.mode === 'challenge') {
-          plateforme.envoyerScore(info.score, (Number(info.level) || 0) + 1);
+          plateforme.envoyerScore(info.score, (Number(info.level) || 0) + 1, l.jour);
         }
         // La fiche part au serveur : les éliminations s'ajoutent à celles des
         // parties précédentes, les records montent, les crédits s'accumulent.
