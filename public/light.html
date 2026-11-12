@@ -6619,7 +6619,7 @@
      le portage à côté des deux autres (section Championnat, cf. LEGACY_RANKINGS
      dans server.js) : il prend leur panthéon, pas la médaille des jeux. */
   function puceDeClassement(g) {
-    return (g && (g.id === '_xp' || g.id === '_rate' || g.id === 'kikooz'))
+    return (g && (g.id === '_xp' || g.id === '_rate' || g.id === 'kikooz' || g.id === '_medailles'))
       ? '/fb/score_pantheon.png' : '/fb/score_medaille.png';
   }
 
@@ -6880,6 +6880,7 @@
   function titreColonneScore(g) {
     if (g.id === '_xp') return "Expérience";
     if (g.id === '_rate') return "Consécration";
+    if (g.id === '_medailles') return "Médailles";
     if (g.lowerIsBetter) return "Temps";
     return "Score";
   }

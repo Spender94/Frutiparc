@@ -5070,6 +5070,24 @@ async function statsCommunaute(jourDebut, jourFenetre) {
  * pseudos (minuscules) à écarter partout. Chaque liste est déjà triée ; le
  * serveur met les pseudos à leur casse d'affichage.
  */
+/*
+ * LES MÉDAILLÉS D'UN MOIS : le compte des médailles du Challenge gagnées sur
+ * les journées du mois `mois` (« AAAA-MM », jour de Paris — awarded_day est la
+ * journée JOUÉE, pas celle de la remise). Rangés comme un tableau olympique :
+ * l'or d'abord, puis l'argent, puis le bronze.
+ */
+async function medaillesDuMois(mois) {
+  const r = await pool.query(
+    `SELECT lower(username) AS u,
+            COUNT(*) FILTER (WHERE medal = 'or')::int AS ors,
+            COUNT(*) FILTER (WHERE medal = 'argent')::int AS argents,
+            COUNT(*) FILTER (WHERE medal = 'bronze')::int AS bronzes
+       FROM challenge_medals WHERE awarded_day LIKE $1
+      GROUP BY 1 ORDER BY ors DESC, argents DESC, bronzes DESC, u`,
+    [String(mois) + '-%']);
+  return r.rows;
+}
+
 async function palmares(depuis, jourDebut, pnj) {
   const d = depuis || null;
   const P = [d, pnj];
@@ -6514,7 +6532,7 @@ module.exports = {
   partieJoueurNoter,
   partieRecordNoter,
   partiesDuJour,
-  palmares,
+  medaillesDuMois, palmares,
   nomsAffiches,
   forumDernierMessageDe,
   forumIncrementViews,

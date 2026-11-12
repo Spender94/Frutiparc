@@ -31752,8 +31752,41 @@ app.get('/api/light/challenge', async (req, res) => {
     games.push(permanent('_rate', 'Class. consécration', 'consecration', cons));
   } catch (e) { console.error('[LIGHT] consecration ranking error:', e.message); }
 
+  // LES MÉDAILLÉS DU MOIS : qui a ramassé le plus de médailles du Challenge
+  // depuis le 1er (tableau olympique : l'or, puis l'argent, puis le bronze).
+  // Le mois repart de zéro chaque 1er ; le titre porte son nom.
+  try {
+    const m = await medaillesDuMoisCourant();
+    if (m) games.push(permanent('_medailles', 'Médaillés ' + m.titre, 'medailles', m.liste));
+  } catch (e) { console.error('[LIGHT] medailles du mois error:', e.message); }
+
   res.json({ day: jour, today: aujourdhui, yesterday, past: passe, games });
 });
+
+// Le tableau des médaillés du mois en cours (gardé cinq minutes : il ne bouge
+// qu'à minuit, à la remise des médailles). null sans base.
+const MOIS_MEDAILLES = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre',
+  'octobre', 'novembre', 'décembre'];
+let medaillesMoisCache = null;               // { mois, at, liste }
+async function medaillesDuMoisCourant() {
+  if (!process.env.DATABASE_URL) return null;
+  const mois = parisDayKey().slice(0, 7);
+  if (!medaillesMoisCache || medaillesMoisCache.mois !== mois || Date.now() - medaillesMoisCache.at > 5 * 60 * 1000) {
+    const lignes = await db.medaillesDuMois(mois);
+    medaillesMoisCache = {
+      mois, at: Date.now(),
+      liste: lignes.filter((r) => users[r.u] && !joueurExcluDesClassements(r.u)).map((r) => ({
+        u: r.u,
+        s: r.ors * 1000000 + r.argents * 1000 + r.bronzes,
+        ors: r.ors, argents: r.argents, bronzes: r.bronzes,
+        label: `🥇 ${r.ors}  🥈 ${r.argents}  🥉 ${r.bronzes}`,
+      })),
+    };
+  }
+  const n = Number(mois.slice(5, 7)) - 1;
+  const nom = MOIS_MEDAILLES[n] || '';
+  return { mois, titre: (/^[aeiouyéèê]/.test(nom) ? 'd’' : 'de ') + nom, liste: medaillesMoisCache.liste };
+}
 
 // ─────────────────────────────────────────────
 // Messagerie interne du mobile (/light)
