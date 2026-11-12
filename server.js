@@ -5615,6 +5615,63 @@ function getFrutizJob(username, user) {
   return 'Frutiz';
 }
 
+// LES ICÔNES DE JEU DANS LE FRUTIJOB. Un joueur peut cumuler les titres :
+// « Maître ÈS [snake] [kaluga] 2026 ». Rien ne change en base — c'est le même
+// texte —, mais les codes entre crochets deviennent :
+//   · sur le light, l'icône du jeu (le voyant « en partie », /fb/voyant_*.png),
+//     via `jobMorceaux` dans /api/light/profile ;
+//   · sur le bureau (le SWF d'origine, qu'on ne retouche pas), le nom du jeu :
+//     « Maître ÈS Frutisnake, Kaluga 2026 » (codes voisins → virgules).
+// Un code inconnu reste tel quel : une faute de frappe se voit. La casse du
+// code ne compte pas. L'admin rappelle la liste (/api/frutijob/jeux).
+// test/frutijobIcones.test.js.
+const FRUTIJOB_JEUX = {
+  snake: { voyant: 'snake3', nom: 'Frutisnake' },
+  kaluga: { voyant: 'kaluga', nom: 'Kaluga' },
+  swapou: { voyant: 'swapou', nom: 'Swapou' },
+  kiwi: { voyant: 'bkiwi', nom: 'Burning Kiwi' },
+  motionball: { voyant: 'mb2', nom: 'MotionBall 2' },
+  bandas: { voyant: 'bandas', nom: 'Frutibandas' },
+  grapiz: { voyant: 'grapiz', nom: 'Grapiz' },
+  miniwave: { voyant: 'miniwave', nom: 'Mini-Wave' },
+  minipixiz: { voyant: 'minipixiz', nom: 'Minipixiz' },
+  minifever: { voyant: 'minifever', nom: 'Mini-Fever' },
+  jamajama: { voyant: 'jamajama', nom: 'JamaJama' },
+};
+// Le titre en morceaux : { texte } et { jeu, nom }. null s'il n'a aucun code
+// connu — le texte suffit alors.
+function frutijobMorceaux(job) {
+  const s = String(job || '');
+  const morceaux = [];
+  let reste = 0, jeux = 0;
+  const ajouterTexte = (t) => {
+    if (!t) return;
+    const der = morceaux[morceaux.length - 1];
+    if (der && der.texte !== undefined) der.texte += t; else morceaux.push({ texte: t });
+  };
+  for (const m of s.matchAll(/\[([a-z0-9]+)\]/gi)) {
+    const j = FRUTIJOB_JEUX[m[1].toLowerCase()];
+    ajouterTexte(s.slice(reste, m.index));
+    if (j) { morceaux.push({ jeu: j.voyant, nom: j.nom }); jeux++; } else ajouterTexte(m[0]);
+    reste = m.index + m[0].length;
+  }
+  ajouterTexte(s.slice(reste));
+  return jeux ? morceaux : null;
+}
+// La version texte, pour le bureau : deux jeux que seuls des espaces séparent
+// sont joints par une virgule.
+function frutijobEnTexte(job) {
+  const morceaux = frutijobMorceaux(job);
+  if (!morceaux) return String(job || '');
+  let out = '';
+  morceaux.forEach((m, i) => {
+    if (m.jeu) { out += (i > 0 && morceaux[i - 1].jeu ? ', ' : '') + m.nom; return; }
+    const entreDeuxJeux = i > 0 && morceaux[i - 1].jeu && morceaux[i + 1] && morceaux[i + 1].jeu;
+    out += (entreDeuxJeux && !m.texte.trim()) ? ', ' : m.texte;
+  });
+  return out;
+}
+
 // Format a date for the "bd" / "ft" XML attributes: YYYY-MM-DD.HH:MM:SS
 // Native Frutiparc format uses a DOT between date and time (FEDate.newFromString
 // reads positions 0-9 for date and 11+ for time, ignoring the separator at pos 10).
@@ -31947,6 +32004,11 @@ app.get('/api/light/kikooz', (req, res) => {
 // que partout : getLevelForXp), son solde de kikooz et son total de trophées
 // (médailles du Challenge cumulées sur tous les jours archivés). Une seule
 // requête alimente l'encart « niveau / classement » du launcher.
+// Les codes de jeu du frutijob, pour le pense-bête de l'admin.
+app.get('/api/frutijob/jeux', (req, res) => {
+  res.json({ ok: true, jeux: Object.entries(FRUTIJOB_JEUX).map(([code, j]) => ({ code, nom: j.nom, voyant: j.voyant })) });
+});
+
 app.get('/api/light/profile', async (req, res) => {
   const username = resolveUsernameFromSid(req.query.sid || '');
   if (!username) return res.status(401).json({ error: 'auth' });
@@ -32825,7 +32887,9 @@ app.get('/api/light/fiche', async (req, res) => {
     basic: { niveau: getLevelForXp(ud.xp || 0), xp: ud.xp || 0, age,
       ville: ud.city || '', sexe: ud.gender || 'M' },
     frutiz: {
-      job: getFrutizJob(u, ud),
+      // Le texte (codes de jeu traduits), et les morceaux pour les icônes.
+      job: frutijobEnTexte(getFrutizJob(u, ud)),
+      jobMorceaux: frutijobMorceaux(getFrutizJob(u, ud)),
       signe: signe(ud.frutiSign),
       ascendant: signe(ud.frutiSignB),
       consecration: cons.overall || 0,
@@ -40257,7 +40321,7 @@ case 'trace': {
       if (!ud) ud = {};
       const consUserA = computeConsecration(u);
       sendToClient(socket,
-        `<${CMD.userinfo} r="${escapeXml(r)}" u="${escapeXml(getDisplayName(u))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${bdPublicXml(ud)}" fj="${escapeXml(getFrutizJob(u, ud))}" fs="${ud.frutiSign >= 0 ? ud.frutiSign : ''}" fsb="${ud.frutiSignB >= 0 ? ud.frutiSignB : ''}" ft="${escapeXml(getFrutizSubscribeDate(ud))}" fr="${consUserA.overall || 0}" bn="${escapeXml(ud.blogName || '')}" co="${escapeXml(ud.countryIndex || '1')}" rg="${escapeXml(ud.regionIndex || '0')}" ct="${escapeXml(ud.city || '')}" rj="${escapeXml(ud.realJob || '')}" fn="${escapeXml(ud.firstName || '')}" ln="${escapeXml(ud.lastName || '')}" cm="${escapeXml(ud.comment || '')}" su="${escapeXml(ud.siteUrl || '')}" lc="${escapeXml(getDerniereConnexion(ud))}" m="${ud.isModerator ? 1 : 0}" a="${ud.isAnimator ? 1 : 0}" />`
+        `<${CMD.userinfo} r="${escapeXml(r)}" u="${escapeXml(getDisplayName(u))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${bdPublicXml(ud)}" fj="${escapeXml(frutijobEnTexte(getFrutizJob(u, ud)))}" fs="${ud.frutiSign >= 0 ? ud.frutiSign : ''}" fsb="${ud.frutiSignB >= 0 ? ud.frutiSignB : ''}" ft="${escapeXml(getFrutizSubscribeDate(ud))}" fr="${consUserA.overall || 0}" bn="${escapeXml(ud.blogName || '')}" co="${escapeXml(ud.countryIndex || '1')}" rg="${escapeXml(ud.regionIndex || '0')}" ct="${escapeXml(ud.city || '')}" rj="${escapeXml(ud.realJob || '')}" fn="${escapeXml(ud.firstName || '')}" ln="${escapeXml(ud.lastName || '')}" cm="${escapeXml(ud.comment || '')}" su="${escapeXml(ud.siteUrl || '')}" lc="${escapeXml(getDerniereConnexion(ud))}" m="${ud.isModerator ? 1 : 0}" a="${ud.isAnimator ? 1 : 0}" />`
       );
       break;
     }
@@ -40486,7 +40550,7 @@ case 'createchannel': {
   const consOtherUser = computeConsecration(otherUser);
   sendToClient(
     socket,
-    `<${CMD.userinfo} r="pm" u="${escapeXml(getDisplayName(otherUser))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${bdPublicXml(ud)}" fj="${escapeXml(getFrutizJob(otherUser, ud))}" fs="${ud.frutiSign >= 0 ? ud.frutiSign : ''}" fsb="${ud.frutiSignB >= 0 ? ud.frutiSignB : ''}" ft="${escapeXml(getFrutizSubscribeDate(ud))}" fr="${consOtherUser.overall || 0}" bn="${escapeXml(ud.blogName || '')}" co="${escapeXml(ud.countryIndex || '1')}" rg="${escapeXml(ud.regionIndex || '0')}" ct="${escapeXml(ud.city || '')}" rj="${escapeXml(ud.realJob || '')}" fn="${escapeXml(ud.firstName || '')}" ln="${escapeXml(ud.lastName || '')}" cm="${escapeXml(ud.comment || '')}" su="${escapeXml(ud.siteUrl || '')}" lc="${escapeXml(getDerniereConnexion(ud))}" m="${ud.isModerator ? 1 : 0}" a="${ud.isAnimator ? 1 : 0}" />`
+    `<${CMD.userinfo} r="pm" u="${escapeXml(getDisplayName(otherUser))}" x="${ud.xp || 0}" sx="${ud.gender || 'M'}" bd="${bdPublicXml(ud)}" fj="${escapeXml(frutijobEnTexte(getFrutizJob(otherUser, ud)))}" fs="${ud.frutiSign >= 0 ? ud.frutiSign : ''}" fsb="${ud.frutiSignB >= 0 ? ud.frutiSignB : ''}" ft="${escapeXml(getFrutizSubscribeDate(ud))}" fr="${consOtherUser.overall || 0}" bn="${escapeXml(ud.blogName || '')}" co="${escapeXml(ud.countryIndex || '1')}" rg="${escapeXml(ud.regionIndex || '0')}" ct="${escapeXml(ud.city || '')}" rj="${escapeXml(ud.realJob || '')}" fn="${escapeXml(ud.firstName || '')}" ln="${escapeXml(ud.lastName || '')}" cm="${escapeXml(ud.comment || '')}" su="${escapeXml(ud.siteUrl || '')}" lc="${escapeXml(getDerniereConnexion(ud))}" m="${ud.isModerator ? 1 : 0}" a="${ud.isAnimator ? 1 : 0}" />`
   );
 
   sendToClient(

@@ -1343,6 +1343,8 @@
   .fiche-ligne .lib { color: #446531; }
   .fiche-ligne .val { color: #444; text-align: right; min-width: 0; overflow-wrap: anywhere; }
   .fiche-ligne .val a { color: #2f6b16; }
+  /* Les icônes de jeu du frutijob (« Maître ÈS [snake] [kaluga] 2026 »). */
+  .fiche-ligne .val .fj-jeu { width: 16px; height: 16px; vertical-align: -3px; margin: 0 1px; }
   /* L'onglet « perso » encadre ses lignes de deux séparateurs. */
   /* ── Onglet « scores » de la fiche, à la façon du bureau ──
      win.Frutiz y montre la RANGÉE DES MÉDAILLES (les disques d'awards.swf,
@@ -11485,6 +11487,25 @@
       });
   }
 
+  // Le frutijob, avec les icônes des jeux : le serveur envoie le titre en
+  // morceaux (`jobMorceaux`) quand il contient des codes comme [snake] ; sinon,
+  // ou pour un serveur plus ancien, le texte seul.
+  function frutijobAvecIcones(f) {
+    if (!f || !f.jobMorceaux || !f.jobMorceaux.length) return (f && f.job) || "Frutiz";
+    var s = document.createElement("span");
+    f.jobMorceaux.forEach(function (m) {
+      if (m.jeu) {
+        var img = document.createElement("img");
+        img.className = "fj-jeu";
+        img.src = srcVoyant(m.jeu);
+        img.alt = m.nom; img.title = m.nom;
+        s.appendChild(img);
+      } else {
+        s.appendChild(document.createTextNode(m.texte || ""));
+      }
+    });
+    return s;
+  }
   function ligneFiche(lib, val) {
     var l = el("div", "fiche-ligne");
     var a = el("span", "lib"); a.textContent = lib + " :"; l.appendChild(a);
@@ -11655,7 +11676,7 @@
       });
       page.appendChild(rangSignes);
       var lignes = el("div", "fiche-lignes");
-      lignes.appendChild(ligneFiche("frutiJob", d.frutiz.job || "Frutiz"));
+      lignes.appendChild(ligneFiche("frutiJob", frutijobAvecIcones(d.frutiz)));
       lignes.appendChild(ligneFiche("consécration", (Number(d.frutiz.consecration) || 0).toFixed(2) + " %"));
       lignes.appendChild(ligneFiche("niveau", d.basic.niveau));
       lignes.appendChild(ligneFiche("frutiAge", d.frutiz.frutiAgeMois + " mois"));

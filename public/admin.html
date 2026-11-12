@@ -1791,6 +1791,11 @@ questions sans énoncé ou sans réponse sont ignorées. "image" doit correspond
     <label><span>XP :</span> <input id="edit-xp" type="number"></label>
     <label><span>Kikooz :</span> <input id="edit-kikooz" type="number"></label>
     <label><span>FrutiJob :</span> <input id="edit-frutijob" maxlength="80" placeholder="Frutiz"></label>
+    <div id="frutijob-aide" style="margin:-4px 0 8px;font-size:11px;color:#666;line-height:1.7">
+      Icônes de jeu : écrire le code entre crochets, ex. <code>Maître ÈS [snake] [kaluga] 2026</code>
+      (le bureau Flash affichera « Maître ÈS Frutisnake, Kaluga 2026 »). Clic sur un code pour l'insérer.
+      <div id="frutijob-codes"></div>
+    </div>
     <label><span>Email :</span> <input id="edit-email" type="email" maxlength="120" placeholder="vide = aucun email"></label>
     <label><span>Mot de passe :</span> <input id="edit-password" placeholder="(laisser vide = inchangé)"></label>
     <label><span>FrutiSigne :</span>
@@ -5317,7 +5322,33 @@ function renderUsers() {
     </tr>`).join('');
 }
 
+// Le pense-bête des codes de jeu du frutijob, chargé une fois depuis le
+// serveur (la table vit dans server.js : FRUTIJOB_JEUX). Un clic insère le
+// code à l'emplacement du curseur.
+let frutijobCodesCharges = false;
+function chargerCodesFrutijob() {
+  if (frutijobCodesCharges) return;
+  frutijobCodesCharges = true;
+  fetch('/api/frutijob/jeux').then((r) => r.json()).then((d) => {
+    const box = $('#frutijob-codes');
+    if (!box || !d || !d.jeux) return;
+    box.innerHTML = d.jeux.map((j) =>
+      `<button type="button" class="btn btn-sm" data-code="[${esc(j.code)}]" title="${esc(j.nom)}" style="margin:2px 4px 0 0;padding:1px 6px">`
+      + `<img src="/fb/voyant_${esc(j.voyant)}.png" alt="" style="width:14px;height:14px;vertical-align:-2px"> [${esc(j.code)}]</button>`
+    ).join('');
+    box.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => {
+      const inp = $('#edit-frutijob');
+      const a = inp.selectionStart ?? inp.value.length, z = inp.selectionEnd ?? inp.value.length;
+      inp.value = (inp.value.slice(0, a) + b.dataset.code + inp.value.slice(z)).slice(0, 80);
+      inp.focus();
+      const pos = Math.min(a + b.dataset.code.length, inp.value.length);
+      inp.setSelectionRange(pos, pos);
+    }));
+  }).catch(() => { frutijobCodesCharges = false; });
+}
+
 function editUser(name, xp, kikooz, fb, dn, fs, fsb, fj, email) {
+  chargerCodesFrutijob();
   $('#edit-user-name').textContent = name;
   $('#edit-user-name').dataset.name = name;
   $('#edit-displayname').value = dn || name;
