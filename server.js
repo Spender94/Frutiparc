@@ -26242,6 +26242,14 @@ async function snake3Tournoi() {
  * d'await. L'état est chargé au démarrage (cf. l'appel à snake3Tournoi() plus
  * bas) ; tant qu'il ne l'est pas, on montre — c'est la valeur par défaut.
  */
+// LES CLASSEMENTS RETIRÉS DE LA SECTION « CHAMPIONNAT » du tableau des scores
+// (bureau et light) : le championnat de Frutisnake et son tournoi, à la demande
+// du parc (novembre 2026). Les scores continuent de s'écrire et le livre des
+// records du Club les garde ; seule la ligne du tableau disparaît. Pour les
+// remettre : CHAMPIONNATS_MASQUES (liste à virgules, vide = aucun).
+const CHAMPIONNATS_MASQUES = new Set(String(process.env.CHAMPIONNATS_MASQUES !== undefined
+  ? process.env.CHAMPIONNATS_MASQUES : 'snake3_battle,snake3_tournoi').split(',').map((x) => x.trim()).filter(Boolean));
+
 function snake3TournoiClassementVisible() {
   return !snake3TournoiEtat || snake3TournoiEtat.classement !== false;
 }
@@ -31683,7 +31691,7 @@ app.get('/api/light/challenge', async (req, res) => {
         label: Number(s.score).toLocaleString('fr-FR') });
     }
     sn.sort(scoreComparator('snake3_battle'));
-    games.push(permanent('snake3_battle',
+    if (!CHAMPIONNATS_MASQUES.has('snake3_battle')) games.push(permanent('snake3_battle',
       nomBureau('snake3_battle', 'Frutisnake'), 'snake3', sn));
   } catch (e) { console.error('[LIGHT] snake3 champion ranking error:', e.message); }
   // Et le CHAMPIONNAT de Grapiz (les parties en différé), même note d'Elo.
@@ -31704,7 +31712,7 @@ app.get('/api/light/challenge', async (req, res) => {
   // de la carte partagée ne se lisait qu'au livre des records du Club.
   // Il suit l'interrupteur « classement » de l'admin, comme partout ailleurs.
   try {
-    if (snake3TournoiClassementVisible()) {
+    if (snake3TournoiClassementVisible() && !CHAMPIONNATS_MASQUES.has('snake3_tournoi')) {
       const tt = [];
       for (const [u, rlist] of Object.entries(scoresData.users || {})) {
         const s = rlist && rlist.snake3_tournoi;
@@ -39256,6 +39264,7 @@ case 'join': {
           // Le tournoi Frutisnake suit son interrupteur d'admin : masqué, il
           // quitte le tableau des scores comme il quitte le livre du Club.
           if (d.internal === 'snake3_tournoi' && !snake3TournoiClassementVisible()) continue;
+          if (d.section === 'L' && CHAMPIONNATS_MASQUES.has(d.internal)) continue;
           const sec = d.section === 'L' ? 'L' : 'C';
           bySection[sec].push(d);
         }

@@ -369,6 +369,9 @@ before(async () => {
     env: Object.assign({}, process.env, {
       PORT: String(PORT), DATABASE_URL: '', REGISTER_MAX: '1000', REGISTER_DAILY_MAX: '1000',
       ADMIN_KEY: CLE, XMLSOCKET_PORT: '5142', FRUTISCORE_PORT: '5143',
+      // L'onglet du tournoi est retiré du Championnat par défaut (novembre
+      // 2026) : ces essais vérifient l'onglet tel qu'il est quand on le remet.
+      CHAMPIONNATS_MASQUES: '',
     }),
     stdio: ['ignore', 'pipe', 'pipe'],
   });

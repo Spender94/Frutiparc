@@ -132,3 +132,12 @@ test('la règle est portée par le classement, pas par tous', () => {
   assert.match(SERVEUR,
     /if \(info\) persistScore\(username, 'bandas_challenge', Math\.max\(0, Number\(info\.series\) \|\| 0\)\);/);
 });
+
+test('le Championnat ne montre plus Frutisnake ni son tournoi (les autres restent)', async () => {
+  const sid = await inscrire(joueur('c'));
+  await poserScore(joueur('c'), 'snake3_battle', 1200);
+  const ids = ((await tableau(sid)).games || []).map((g) => g.id);
+  assert.ok(!ids.includes('snake3_battle'), ids.join(' '));
+  assert.ok(!ids.includes('snake3_tournoi'), ids.join(' '));
+  for (const id of ['kikooz', 'bandas_champion', 'grapiz_champion', '_xp', '_rate']) assert.ok(ids.includes(id), id);
+});
