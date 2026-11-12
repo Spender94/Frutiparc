@@ -1792,8 +1792,11 @@ questions sans énoncé ou sans réponse sont ignorées. "image" doit correspond
     <label><span>Kikooz :</span> <input id="edit-kikooz" type="number"></label>
     <label><span>FrutiJob :</span> <input id="edit-frutijob" maxlength="80" placeholder="Frutiz"></label>
     <div id="frutijob-aide" style="margin:-4px 0 8px;font-size:11px;color:#666;line-height:1.7">
-      Icônes de jeu : écrire le code entre crochets, ex. <code>Maître ÈS [snake] [kaluga] 2026</code>
-      (le bureau Flash affichera « Maître ÈS Frutisnake, Kaluga 2026 »). Clic sur un code pour l'insérer.
+      Icônes de jeu : écrire le code entre crochets, et l'année du titre après « : » (2 ou 4 chiffres, facultative),
+      plusieurs années séparées par des virgules, ex. <code>Maître ÈS [snake:25,26] [kaluga:26]</code>
+      — les années s'affichent en petit sur l'icône
+      (le bureau Flash affichera « Maître ÈS Frutisnake 2025 et 2026, Kaluga 2026 »). Sans année : <code>[snake]</code>.
+      Clic sur un code pour l'insérer.
       <div id="frutijob-codes"></div>
     </div>
     <label><span>Email :</span> <input id="edit-email" type="email" maxlength="120" placeholder="vide = aucun email"></label>

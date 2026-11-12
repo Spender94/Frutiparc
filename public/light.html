@@ -1345,6 +1345,22 @@
   .fiche-ligne .val a { color: #2f6b16; }
   /* Les icônes de jeu du frutijob (« Maître ÈS [snake] [kaluga] 2026 »). */
   .fiche-ligne .val .fj-jeu { width: 16px; height: 16px; vertical-align: -3px; margin: 0 1px; }
+  /* Ses années (« [snake:25,26,27] ») : un badge au coin de l'icône — l'année
+     seule (« 26 »), ou le nombre de titres (« ×3 »). */
+  .fiche-ligne .val .fj-ico { position: relative; display: inline-block; margin: 0 5px 0 1px; cursor: pointer; }
+  .fiche-ligne .val .fj-ico .fj-jeu { margin: 0; }
+  .fiche-ligne .val .fj-badge {
+    position: absolute; right: -6px; bottom: -4px; white-space: nowrap;
+    font-size: 8px; line-height: 10px; padding: 0 2px; border-radius: 5px;
+    background: #E3756A; color: #fff; font-weight: bold;
+  }
+  /* Touché : les années, en bulle AU-DESSUS de l'icône — dépliées au coin,
+     elles recouvraient le texte voisin. */
+  .fiche-ligne .val .fj-badge.ouvert {
+    right: auto; left: 50%; bottom: 19px; transform: translateX(-50%);
+    font-size: 9px; line-height: 12px; padding: 1px 5px; z-index: 2;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, .25);
+  }
   /* L'onglet « perso » encadre ses lignes de deux séparateurs. */
   /* ── Onglet « scores » de la fiche, à la façon du bureau ──
      win.Frutiz y montre la RANGÉE DES MÉDAILLES (les disques d'awards.swf,
@@ -11498,8 +11514,37 @@
         var img = document.createElement("img");
         img.className = "fj-jeu";
         img.src = srcVoyant(m.jeu);
-        img.alt = m.nom; img.title = m.nom;
-        s.appendChild(img);
+        // Les années du titre (« [snake:25,26,27] ») : dans l'info-bulle
+        // (« Frutisnake 2025, 2026 et 2027 »), et en BADGE au coin de
+        // l'icône — l'année seule (« 26 »), ou le nombre de titres (« ×3 »).
+        var a = m.annees || [];
+        var nom = m.nom + (a.length ? " " + (a.length === 1 ? a[0]
+          : a.slice(0, -1).join(", ") + " et " + a[a.length - 1]) : "");
+        img.alt = nom; img.title = nom;
+        if (!a.length) { s.appendChild(img); return; }
+        var ico = document.createElement("span");
+        ico.className = "fj-ico";
+        ico.title = nom;
+        ico.appendChild(img);
+        var badge = document.createElement("b");
+        badge.className = "fj-badge";
+        var court = a.length === 1 ? String(a[0]).slice(-2) : "×" + a.length;
+        badge.textContent = court;
+        ico.appendChild(badge);
+        // Un clic (ou un toucher : un téléphone n'a pas d'info-bulle) montre
+        // les années ENTIÈRES en bulle au-dessus de l'icône
+        // (« 2025 · 2026 · 2027 »), le temps de les lire.
+        var minuteur = null;
+        ico.addEventListener("click", function () {
+          badge.textContent = a.join(" · ");
+          badge.classList.add("ouvert");
+          clearTimeout(minuteur);
+          minuteur = setTimeout(function () {
+            badge.textContent = court;
+            badge.classList.remove("ouvert");
+          }, 3000);
+        });
+        s.appendChild(ico);
       } else {
         s.appendChild(document.createTextNode(m.texte || ""));
       }

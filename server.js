@@ -5622,9 +5622,14 @@ function getFrutizJob(username, user) {
 //     via `jobMorceaux` dans /api/light/profile ;
 //   · sur le bureau (le SWF d'origine, qu'on ne retouche pas), le nom du jeu :
 //     « Maître ÈS Frutisnake, Kaluga 2026 » (codes voisins → virgules).
-// Un code inconnu reste tel quel : une faute de frappe se voit. La casse du
-// code ne compte pas. L'admin rappelle la liste (/api/frutijob/jeux).
-// test/frutijobIcones.test.js.
+// L'ANNÉE DU TITRE se colle au code, sur deux ou quatre chiffres :
+// « Maître ÈS [snake:25] [kaluga:26] » — chaque titre a la sienne, posée en
+// exposant sur l'icône du light, et le bureau lit « Frutisnake 2025, Kaluga
+// 2026 ». Un même titre gagné plusieurs années tient dans un seul code :
+// « [snake:25,26] » → une icône « 25·26 », et « Frutisnake 2025 et 2026 ».
+// Un code inconnu (ou une année mal formée) reste tel quel : une faute de
+// frappe se voit. La casse du code ne compte pas. L'admin rappelle la liste
+// (/api/frutijob/jeux). test/frutijobIcones.test.js.
 const FRUTIJOB_JEUX = {
   snake: { voyant: 'snake3', nom: 'Frutisnake' },
   kaluga: { voyant: 'kaluga', nom: 'Kaluga' },
@@ -5638,8 +5643,8 @@ const FRUTIJOB_JEUX = {
   minifever: { voyant: 'minifever', nom: 'Mini-Fever' },
   jamajama: { voyant: 'jamajama', nom: 'JamaJama' },
 };
-// Le titre en morceaux : { texte } et { jeu, nom }. null s'il n'a aucun code
-// connu — le texte suffit alors.
+// Le titre en morceaux : { texte } et { jeu, nom[, annees] } (années rangées,
+// sans doublon). null s'il n'a aucun code connu — le texte suffit alors.
 function frutijobMorceaux(job) {
   const s = String(job || '');
   const morceaux = [];
@@ -5649,14 +5654,30 @@ function frutijobMorceaux(job) {
     const der = morceaux[morceaux.length - 1];
     if (der && der.texte !== undefined) der.texte += t; else morceaux.push({ texte: t });
   };
-  for (const m of s.matchAll(/\[([a-z0-9]+)\]/gi)) {
+  const AN = '(?:\\d{2}|\\d{4})';
+  const CODE = new RegExp(`\\[([a-z0-9]+)(?::(${AN}(?:\\s*,\\s*${AN})*))?\\]`, 'gi');
+  for (const m of s.matchAll(CODE)) {
     const j = FRUTIJOB_JEUX[m[1].toLowerCase()];
     ajouterTexte(s.slice(reste, m.index));
-    if (j) { morceaux.push({ jeu: j.voyant, nom: j.nom }); jeux++; } else ajouterTexte(m[0]);
+    if (j) {
+      const morceau = { jeu: j.voyant, nom: j.nom };
+      if (m[2]) {
+        const annees = m[2].split(',').map((a) => a.trim()).map((a) => (a.length === 2 ? 2000 : 0) + Number(a));
+        morceau.annees = [...new Set(annees)].sort((a, b) => a - b);
+      }
+      morceaux.push(morceau);
+      jeux++;
+    } else ajouterTexte(m[0]);
     reste = m.index + m[0].length;
   }
   ajouterTexte(s.slice(reste));
   return jeux ? morceaux : null;
+}
+// « 2025 », « 2025 et 2026 », « 2024, 2025 et 2026 ».
+function frutijobAnneesEnTexte(annees) {
+  if (!annees || !annees.length) return '';
+  return annees.length === 1 ? String(annees[0])
+    : annees.slice(0, -1).join(', ') + ' et ' + annees[annees.length - 1];
 }
 // La version texte, pour le bureau : deux jeux que seuls des espaces séparent
 // sont joints par une virgule.
@@ -5665,7 +5686,11 @@ function frutijobEnTexte(job) {
   if (!morceaux) return String(job || '');
   let out = '';
   morceaux.forEach((m, i) => {
-    if (m.jeu) { out += (i > 0 && morceaux[i - 1].jeu ? ', ' : '') + m.nom; return; }
+    if (m.jeu) {
+      out += (i > 0 && morceaux[i - 1].jeu ? ', ' : '') + m.nom
+        + (m.annees ? ' ' + frutijobAnneesEnTexte(m.annees) : '');
+      return;
+    }
     const entreDeuxJeux = i > 0 && morceaux[i - 1].jeu && morceaux[i + 1] && morceaux[i + 1].jeu;
     out += (entreDeuxJeux && !m.texte.trim()) ? ', ' : m.texte;
   });

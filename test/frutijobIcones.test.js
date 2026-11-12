@@ -67,6 +67,48 @@ test('light : le titre en morceaux — du texte et des jeux', () => {
   assert.strictEqual(frutijobMorceaux('Animateur'), null, 'sans icône, pas de morceaux : le texte suffit');
 });
 
+// L'ANNÉE DU TITRE, COLLÉE À L'ICÔNE. « Maître ÈS [snake:25] [kaluga:26] » :
+// chaque titre a la sienne, et la ligne raccourcit. Deux ou quatre chiffres ;
+// sans année, rien ne change.
+test('bureau : l\'année suit le nom du jeu', () => {
+  assert.strictEqual(frutijobEnTexte('Maître ÈS [snake:25] [kaluga:26]'), 'Maître ÈS Frutisnake 2025, Kaluga 2026');
+  assert.strictEqual(frutijobEnTexte('Maître ÈS [snake:2026]'), 'Maître ÈS Frutisnake 2026', 'quatre chiffres');
+  assert.strictEqual(frutijobEnTexte('[SNAKE:26][kiwi]'), 'Frutisnake 2026, Burning Kiwi', 'avec et sans année');
+  assert.strictEqual(frutijobEnTexte('Maître ÈS [snake:7]'), 'Maître ÈS [snake:7]', 'une année mal formée reste visible');
+  assert.strictEqual(frutijobEnTexte('Maître ÈS [toto:26]'), 'Maître ÈS [toto:26]', 'un jeu inconnu aussi');
+});
+
+// LE MÊME TITRE, PLUSIEURS ANNÉES : « [snake:25,26] » — une icône, toutes ses
+// années, rangées et sans doublon.
+test('bureau : plusieurs années pour un même jeu', () => {
+  assert.strictEqual(frutijobEnTexte('Maître ÈS [snake:25,26] [kaluga:26]'), 'Maître ÈS Frutisnake 2025 et 2026, Kaluga 2026');
+  assert.strictEqual(frutijobEnTexte('Maître ÈS [snake:26, 24,2025]'), 'Maître ÈS Frutisnake 2024, 2025 et 2026', 'rangées, espaces tolérés');
+  assert.strictEqual(frutijobEnTexte('[snake:26,26]'), 'Frutisnake 2026', 'sans doublon');
+  assert.strictEqual(frutijobEnTexte('[snake:25] [snake:26]'), 'Frutisnake 2025, Frutisnake 2026', 'la forme répétée marche toujours');
+  assert.strictEqual(frutijobEnTexte('[snake:25,]'), '[snake:25,]', 'une liste mal formée reste visible');
+});
+
+test('light : les années voyagent avec le jeu', () => {
+  assert.deepStrictEqual(frutijobMorceaux('Maître ÈS [snake:26,25] [kaluga:2026] [kiwi]'), [
+    { texte: 'Maître ÈS ' },
+    { jeu: 'snake3', nom: 'Frutisnake', annees: [2025, 2026] },
+    { texte: ' ' },
+    { jeu: 'kaluga', nom: 'Kaluga', annees: [2026] },
+    { texte: ' ' },
+    { jeu: 'bkiwi', nom: 'Burning Kiwi' },
+  ]);
+  // Le light pose un BADGE sur l'icône : l'année seule (« 26 »), ou le nombre
+  // de titres (« ×3 »). Les années sont dans l'info-bulle, et un toucher les
+  // montre dans le badge (pas d'info-bulle sur un téléphone).
+  const f = LIGHT.slice(LIGHT.indexOf('function frutijobAvecIcones(f) {'), LIGHT.indexOf('function ligneFiche('));
+  assert.match(f, /m\.annees/);
+  assert.match(f, /"×" \+ a\.length/, 'le compteur');
+  assert.match(f, /addEventListener\("click"/, 'le clic (ou le toucher) montre les années');
+  assert.match(f, /a\.join\(" · "\)/, 'les années ENTIÈRES : « 2025 · 2026 · 2027 »');
+  assert.doesNotMatch(f, /if \(a\.length > 1\) \{\s*var minuteur/, 'aussi pour un seul titre');
+  assert.match(LIGHT, /\.fiche-ligne \.val \.fj-badge \{/);
+});
+
 test('chaque code mène à une icône qui existe', () => {
   const codes = Object.keys(FRUTIJOB_JEUX);
   assert.ok(codes.length >= 11, 'les onze jeux');
@@ -91,4 +133,5 @@ test('l\'admin rappelle tous les codes sous le champ FrutiJob', () => {
   assert.match(SRV, /app\.get\('\/api\/frutijob\/jeux'/);
   assert.match(ADMIN, /<input id="edit-frutijob"[^>]*>[\s\S]{0,400}id="frutijob-aide"/);
   assert.match(ADMIN, /fetch\('\/api\/frutijob\/jeux'\)/);
+  assert.match(ADMIN, /id="frutijob-aide"[\s\S]{0,600}\[snake:\d\d,\d\d\]/, 'le pense-bête montre les années');
 });
