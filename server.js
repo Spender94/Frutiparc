@@ -10561,7 +10561,7 @@ app.post('/api/admin/swapou/parties/:id/accord', adminAuth, async (req, res) => 
  * LES COUPS À GROS COMBO D'UNE PARTIE, plateau à l'appui (demande de l'admin :
  * « voir le coup qu'ils ont joué et évaluer si le coup est humain »). Le rejeu
  * reconstitue le plateau d'avant chaque coup d'où sort un combo d'au moins
- * `seuil` (10 : le cocktail Swapolotof) : rien n'est demandé au navigateur du
+ * `seuil` (9 : l'iceberg de fruits et le cocktail Swapolotof) : rien n'est demandé au navigateur du
  * joueur, donc rien ne se truque. On y joint ce qui se lit du coup : sa
  * rangée (comptée du haut du plateau, et du haut de la pile de fruits), et
  * le temps de réflexion.
@@ -10570,7 +10570,7 @@ app.get('/api/admin/swapou/parties/:id/captures', adminAuth, async (req, res) =>
   if (!process.env.DATABASE_URL) return res.status(400).json({ ok: false, error: 'no db' });
   const p = await db.lirePartieSwapou(req.params.id).catch(() => null);
   if (!p || !p.coups || p.graine == null) return res.status(404).json({ ok: false, error: 'introuvable' });
-  const seuil = Math.max(0, Math.min(10, Number(req.query.seuil) >= 0 && req.query.seuil !== undefined ? Math.trunc(Number(req.query.seuil)) : 10));
+  const seuil = Math.max(0, Math.min(10, Number(req.query.seuil) >= 0 && req.query.seuil !== undefined ? Math.trunc(Number(req.query.seuil)) : 9));
   const rep = await swapouFilVerif.demander({ type: 'captures', graine: Number(p.graine), coups: p.coups, perso: p.perso, seuil });
   if (!rep || rep.erreur || !rep.resultat) return res.json({ ok: false, error: (rep && rep.erreur) || 'rejeu en panne' });
   const captures = (rep.resultat.captures || []).map((c) => {
