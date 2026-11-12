@@ -32,6 +32,18 @@ test('le rejeu rend le plateau d’avant chaque coup à gros combo, et le coup l
     const joue = coups[c.coup - 1];
     assert.deepEqual([joue.t, joue.x, joue.y, joue.ms], ['s', c.x, c.y, c.ms], 'le coup du journal');
     const lignes = c.grille.split('/');
+    // Les peaux (les vraies images du jeu, pour l'admin) : même plateau, deux
+    // caractères par case, vides aux mêmes endroits.
+    const peaux = c.peaux.split('/');
+    assert.equal(peaux.length, lignes.length);
+    peaux.forEach((l, y) => {
+      assert.equal(l.length, lignes[y].length * 2);
+      for (let x = 0; x < lignes[y].length; x++) {
+        const pe = l.substr(x * 2, 2);
+        assert.equal(pe === '..', lignes[y][x] === '.', 'case ' + x + ',' + y);
+        if (pe !== '..') assert.match(pe, /^(f[0-9a]|[gme][0-2])$/);
+      }
+    });
     assert.deepEqual([lignes.length, lignes[0].length], [14, 12], 'quatorze rangées de douze, du haut vers le bas');
     assert.notEqual(lignes[c.y][c.x], '.', 'un fruit sous la première case échangée');
   }

@@ -2430,7 +2430,39 @@ async function swapouHeritage(username, action) {
 // LES COUPS À GROS COMBO, plateau à l'appui (/api/admin/swapou/parties/:id/captures).
 let swcId = null;
 const SWC_COULEURS = ['#e8542c', '#9fce30', '#f5a623', '#a06ee0', '#4aa3e8', '#e84a8a', '#7ddb6f', '#f0e040', '#40c8c0', '#c08050', '#8090a0'];
+// Les vraies images du jeu (Games/swapou2/images/fruits), comme assets.js les
+// range : onze fruits nus, et trois gelés, trois métal, trois étoile.
+const SWC_FRUITS = ['pomme', 'poire', 'orange', 'classic-04', 'classic-05', 'classic-06', 'classic-07',
+  'classic-08', 'classic-09', 'classic-10', 'classic-11'];
+const SWC_GENRES = { g: 'frozen-', m: 'metal-', e: 'star-' };
+function swcImage(peau) {
+  const i = parseInt(peau[1], 36) || 0;
+  const nom = peau[0] === 'f' ? SWC_FRUITS[i] : (SWC_GENRES[peau[0]] || '') + SWC_FRUITS[i % 3];
+  return nom ? '/games/swapou2/images/fruits/' + nom + '.png' : '';
+}
+// Le plateau tel qu'en jeu : les peaux des fruits sur le fond du Challenge.
+function swcPlateauImages(c) {
+  const lignes = String(c.peaux).split('/');
+  const T = 24, L = lignes[0].length / 2, H = lignes.length;
+  let h = `<svg width="${L * T}" height="${H * T}" style="background:#7da43b url(/games/swapou2/images/bg.jpg);border:1px solid #4d6b1e">`;
+  // Les quatre rangées du haut, voilées de clair : c'est là qu'on regarde.
+  h += `<rect x="0" y="0" width="${L * T}" height="${4 * T}" fill="#fff" opacity=".22"/>`;
+  lignes.forEach((l, y) => {
+    for (let x = 0; x < L; x++) {
+      const peau = l.substr(x * 2, 2);
+      if (peau === '..') continue;
+      // Le bitmap de 38 déborde la case de 35 de trois pixels, à droite et en bas.
+      h += `<image href="${swcImage(peau)}" x="${x * T}" y="${y * T}" width="${T * 38 / 35}" height="${T * 38 / 35}"/>`;
+    }
+  });
+  for (const k of [{ x: c.x, y: c.y }, { x: c.x + c.dx, y: c.y + c.dy }]) {
+    h += `<rect x="${k.x * T + 1}" y="${k.y * T + 1}" width="${T - 2}" height="${T - 2}" rx="3" fill="none" stroke="#fff" stroke-width="3"/>`
+      + `<rect x="${k.x * T + 1}" y="${k.y * T + 1}" width="${T - 2}" height="${T - 2}" rx="3" fill="none" stroke="#c00" stroke-width="1.5"/>`;
+  }
+  return h + '</svg>';
+}
 function swcPlateau(c) {
+  if (c.peaux) return swcPlateauImages(c);
   const lignes = String(c.grille).split('/');
   const T = 17;
   const a = { x: c.x, y: c.y }, b = { x: c.x + c.dx, y: c.y + c.dy };

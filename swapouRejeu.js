@@ -166,7 +166,7 @@ function rejouer(p, opts) {
             f1: col ? (col[c.y] === undefined ? null : col[c.y]) : null,
             f2: col2 ? (col2[c.y + dy] === undefined ? null : col2[c.y + dy]) : null,
           };
-          if (capt) capt.avant = { coup: i, x: c.x, y: c.y, dx, dy, ms: c.ms, ia: !!c.ia, grille: grilleTexte(lvl) };
+          if (capt) capt.avant = { coup: i, x: c.x, y: c.y, dx, dy, ms: c.ms, ia: !!c.ia, grille: grilleTexte(lvl), peaux: peauxTexte(lvl) };
           if (!paire.f1 || !chal.jouerPaire(paire)) { raison = 'échange impossible au coup ' + i; break; }
         }
       }
@@ -209,6 +209,29 @@ function grilleTexte(lvl) {
     for (let x = 0; x < lvl.width; x++) {
       const f = lvl.fruits[x] ? lvl.fruits[x][y] : null;
       l += f == null ? '.' : (Number(f.t) >= 0 && Number(f.t) < 36 ? Number(f.t).toString(36) : '?');
+    }
+    lignes.push(l);
+  }
+  return lignes.join('/');
+}
+
+// Le même plateau, avec la PEAU de chaque fruit — celle que le joueur voyait
+// (assets.js, fruitImage) : deux caractères par case, « .. » si vide, sinon le
+// genre (f : fruit nu, g : gelé, m : métal, e : étoile) et l'indice de l'image
+// en base 36 (la couleur pour un fruit nu, save_t % 3 pour les autres).
+function peauxTexte(lvl) {
+  const lignes = [];
+  for (let y = 0; y < lvl.height; y++) {
+    let l = '';
+    for (let x = 0; x < lvl.width; x++) {
+      const f = lvl.fruits[x] ? lvl.fruits[x][y] : null;
+      if (f == null) { l += '..'; continue; }
+      const drap = Number(f.flags) || 0;
+      const base = ((Number(f.save_t) % 3) + 3) % 3;
+      if (drap & 2) l += 'm' + base;
+      else if (drap & 1) l += 'g' + base;
+      else if (drap & 4) l += 'e' + base;
+      else l += 'f' + (Number(f.t) >= 0 && Number(f.t) < 36 ? Number(f.t).toString(36) : '0');
     }
     lignes.push(l);
   }
