@@ -5,9 +5,11 @@
  * State du SWF ; la partie rejoue les lots d'animations du moteur de règles
  * et n'accepte une entrée que quand tout est retombé, comme GameManager.
  *
- * Au doigt (le jeu d'origine était clavier seul) : glisser = un pas dans la
- * direction du geste, toucher = la barre d'espace (le fantôme), le bouton en
- * haut à droite = Échap.
+ * Au doigt (le jeu d'origine était clavier seul) : en partie, une MANETTE
+ * s'affiche — une croix directionnelle (maintenue, elle enchaîne les pas
+ * comme une flèche tenue) et un bouton d'action (la barre d'espace : le
+ * fantôme). Glisser sur le plateau fait aussi un pas ; le bouton en haut à
+ * droite = Échap.
  */
 'use strict';
 
@@ -25,8 +27,18 @@
 
   // ── l'échelle : 384 logique, net sur tout écran ──
   let K = 1;
+  let manette = false;                         // la manette au doigt est-elle affichée ?
   function dimensionner() {
-    const taille = Math.min(window.innerWidth, window.innerHeight);
+    const l = window.innerWidth, h = window.innerHeight;
+    let taille = Math.min(l, h);
+    // La manette prend sa place dans la marge : sous le plateau (téléphone
+    // debout), ou de part et d'autre (couché). Quand la marge manque, le
+    // plateau cède un peu — jamais plus de trente pour cent.
+    const debout = h >= l;
+    if (manette) {
+      taille = Math.max(taille * 0.7, Math.min(taille, debout ? h - 178 : l - 2 * 172));
+    }
+    document.body.classList.toggle('debout', debout);
     const dpr = window.devicePixelRatio || 1;
     K = taille / Consts.WIDTH;
     canvas.style.width = taille + 'px';
@@ -126,7 +138,12 @@
     if (distance < 12) {
       // un TOUCHER : un clic pour les écrans, la barre d'espace en partie
       souris.x = p.x; souris.y = p.y; souris.clic = true;
-      if (etat && etat.nom === 'partie') { espaceBascule = true; souris.clic = false; }
+      // (en partie : sauf sur le bouton Échap, et sauf devant un dialogue —
+      // « Abandonner ? », « Rejouer ? » —, qui se touchent comme des boutons.)
+      if (etat && etat.nom === 'partie') {
+        if (etat.clicEsc && etat.clicEsc(p.x, p.y)) { echapDemande = true; souris.clic = false; }
+        else if (!(etat.enDialogue && etat.enDialogue())) { espaceBascule = true; souris.clic = false; }
+      }
     } else if (etat && etat.nom === 'partie') {
       geste = Math.abs(dx) > Math.abs(dy)
         ? (dx > 0 ? Direction.EAST : Direction.WEST)
@@ -136,6 +153,44 @@
     e.preventDefault();
   }, { passive: false });
   let geste = null;
+
+  // ── la manette (au doigt, en partie) ──
+  //
+  // Elle n'apparaît qu'après un premier toucher (un ordinateur ne la voit
+  // jamais) et seulement en partie. Une direction TENUE vaut une flèche
+  // tenue : elle entre dans `flechesTenues`, et le personnage enchaîne les
+  // pas au rythme du jeu ; un appui bref est gardé par `enAttente`.
+  let auDoigt = false;
+  window.addEventListener('touchstart', () => { auDoigt = true; }, { passive: true, capture: true });
+  const boiteManette = document.getElementById('jama-manette');
+  function reglerManette() {
+    const voulue = !!(auDoigt && etat && etat.nom === 'partie');
+    if (voulue === manette) return;
+    manette = voulue;
+    document.body.classList.toggle('manette', manette);
+    if (!manette) for (const b of boiteManette.querySelectorAll('button')) lacherBouton(b);
+    dimensionner();
+  }
+  function lacherBouton(b) {
+    b.classList.remove('tenu');
+    if (b.dataset.dir !== undefined) flechesTenues.delete('manette' + b.dataset.dir);
+  }
+  for (const b of (boiteManette ? boiteManette.querySelectorAll('button') : [])) {
+    b.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      try { b.setPointerCapture(e.pointerId); } catch (err) { /* tant pis */ }
+      b.classList.add('tenu');
+      if (b.dataset.dir !== undefined) {
+        const d = Number(b.dataset.dir);
+        flechesTenues.set('manette' + d, d);
+        enAttente = d;
+      } else espaceBascule = true;
+    });
+    for (const n of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+      b.addEventListener(n, () => lacherBouton(b));
+    }
+    b.addEventListener('contextmenu', (e) => e.preventDefault());
+  }
 
   // ── la ronde des états ──
   let etat = null;
@@ -484,6 +539,7 @@
 
     return {
       nom: 'partie',
+      enDialogue() { return !!dialogue; },
       update(tmod) {
         vue.update(tmod);
         if (dialogue) {
@@ -590,6 +646,7 @@
       etat.update(tmod);
       if (etat) etat.dessiner();
     }
+    reglerManette();
     souris.clic = false;
     requestAnimationFrame(boucle);
   }

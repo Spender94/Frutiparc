@@ -21,6 +21,32 @@
     color: #000; background: transparent; z-index: 5;
     -webkit-overflow-scrolling: touch; touch-action: pan-y;
   }
+  /* LA MANETTE (au doigt, en partie) : une croix et un bouton d'action,
+     posés dans la marge que le plateau laisse — sous lui, téléphone debout ;
+     de part et d'autre, téléphone couché. Cf. jeu.js. */
+  body.manette.debout { align-items: flex-start; }
+  #jama-manette { display: none; }
+  body.manette #jama-manette { display: block; }
+  #jama-manette .croix, #jama-manette .action {
+    position: fixed; bottom: max(14px, env(safe-area-inset-bottom)); z-index: 4;
+    touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+  }
+  #jama-manette .croix { left: 14px; width: 150px; height: 150px; }
+  #jama-manette .action { right: 18px; width: 92px; height: 92px; bottom: max(40px, env(safe-area-inset-bottom)); }
+  body.manette:not(.debout) #jama-manette .croix,
+  body.manette:not(.debout) #jama-manette .action { bottom: 50%; transform: translateY(50%); }
+  #jama-manette button {
+    position: absolute; margin: 0; padding: 0; border: 2px solid #2e2412; color: #fff3d0;
+    background: rgba(74, 60, 33, .82); font: bold 24px/1 Verdana, sans-serif;
+    box-shadow: 0 2px 0 #2e2412; touch-action: none; -webkit-tap-highlight-color: transparent;
+  }
+  #jama-manette button.tenu { background: #c98a2b; transform: translateY(2px); box-shadow: none; }
+  #jama-manette .croix button { width: 50px; height: 50px; border-radius: 9px; }
+  #jama-manette .h { left: 50px; top: 0; }
+  #jama-manette .b { left: 50px; top: 100px; }
+  #jama-manette .g { left: 0; top: 50px; }
+  #jama-manette .d { left: 100px; top: 50px; }
+  #jama-manette .action button { inset: 0; width: 100%; height: 100%; border-radius: 50%; font-size: 13px; }
   .jama-aide p, .jama-aide ul { margin: 0 0 .6em; }
   .jama-aide img { max-width: 45%; height: auto; float: left; margin: 0 6px 4px 0; }
   .jama-aide a { color: #4a3c21; }
@@ -28,6 +54,15 @@
 </head>
 <body>
 <canvas id="jama" tabindex="0"></canvas>
+<div id="jama-manette" aria-hidden="true">
+  <div class="croix">
+    <button type="button" class="h" data-dir="0">▲</button>
+    <button type="button" class="d" data-dir="1">▶</button>
+    <button type="button" class="b" data-dir="2">▼</button>
+    <button type="button" class="g" data-dir="3">◀</button>
+  </div>
+  <div class="action"><button type="button" data-action="1">Fantôme</button></div>
+</div>
 <script src="regles.js"></script>
 <script src="rendu.js"></script>
 <script src="plateforme.js"></script>
