@@ -1667,6 +1667,23 @@ questions sans énoncé ou sans réponse sont ignorées. "image" doit correspond
   Frutiparc Admin &copy; <a href="https://www.motiontwin.com">Motion Twin</a>
 </div>
 
+<div class="modal-bg" id="modal-swapou-coups">
+  <div class="modal" style="max-width:1000px;width:94vw;max-height:90vh;overflow:auto">
+    <h3>Swapou — les coups à gros combo <span id="swc-titre" style="font-weight:normal"></span></h3>
+    <div style="font-size:12px;color:#555;margin-bottom:8px">Le plateau tel que le joueur l'avait sous les yeux, reconstitué par le rejeu
+      (rien ne vient de son navigateur). Les deux cases échangées sont encadrées. Une IA trouve volontiers de longues chaînes en
+      jouant dans les rangées du HAUT ; un humain joue plutôt en bas, et prend son temps avant un gros coup.
+      <label style="margin-left:8px">Combo minimum :
+        <select id="swc-seuil" onchange="swapouCoups(swcId)">
+          <option value="10">cocktail swapolotof</option><option value="9">iceberg de fruits et plus</option>
+          <option value="8">éclair suprême et plus</option><option value="6">orange folie's et plus</option>
+        </select></label></div>
+    <div id="swc-bilan" style="margin-bottom:8px"></div>
+    <div id="swc-corps" style="display:flex;flex-wrap:wrap;gap:12px"></div>
+    <div class="actions"><button class="btn" onclick="closeModal('modal-swapou-coups')">Fermer</button></div>
+  </div>
+</div>
+
 <div class="modal-bg" id="modal-edit-channel">
   <div class="modal">
     <h3>Modifier le salon <span id="edit-channel-name"></span></h3>
@@ -2343,6 +2360,7 @@ async function loadSwapouVerif() {
         <td>${svRegularite(ry.variation)}</td>
         <td>${svAccord(p)}</td>
         <td style="white-space:nowrap"><button class="btn btn-sm" title="Rejouer la partie à nouveau (le classement n’est pas touché)" onclick="swapouRejouer('${p.id}')">Rejouer</button>
+          ${p.nb_coups && p.graine != null ? `<button class="btn btn-sm" title="Voir le plateau au moment des coups à gros combo (cocktail swapolotof…)" onclick="swapouCoups('${p.id}')">Coups</button>` : ''}
           ${peutClasser ? `<button class="btn-success btn-sm" title="Faire entrer à la main le score déclaré au classement" onclick="swapouClasser('${p.id}', ${Number(p.score_declare) || 0}, '${esc(p.verdict)}')">Classer</button>` : ''}</td>
       </tr>`;
     }).join('') || '<tr><td colspan="12" style="text-align:center;color:#999;padding:14px">Aucune partie.</td></tr>';
@@ -2408,6 +2426,52 @@ async function swapouHeritage(username, action) {
     toast(username + ' : ' + d.note + (d.pictosRetires && d.pictosRetires.length ? ' — pictos repris : ' + d.pictosRetires.join(', ') : ''));
     loadSwapouCombos();
   } catch (e) { toast('Erreur: ' + e.message); }
+}
+// LES COUPS À GROS COMBO, plateau à l'appui (/api/admin/swapou/parties/:id/captures).
+let swcId = null;
+const SWC_COULEURS = ['#e8542c', '#9fce30', '#f5a623', '#a06ee0', '#4aa3e8', '#e84a8a', '#7ddb6f', '#f0e040', '#40c8c0', '#c08050', '#8090a0'];
+function swcPlateau(c) {
+  const lignes = String(c.grille).split('/');
+  const T = 17;
+  const a = { x: c.x, y: c.y }, b = { x: c.x + c.dx, y: c.y + c.dy };
+  let h = `<svg width="${lignes[0].length * T}" height="${lignes.length * T}" style="background:#f4ecd8;border:1px solid #b9a37a">`;
+  lignes.forEach((l, y) => {
+    // Les quatre rangées du haut, légèrement teintées : c'est là qu'on regarde.
+    if (y < 4) h += `<rect x="0" y="${y * T}" width="${l.length * T}" height="${T}" fill="#e6d3ad"/>`;
+    [...l].forEach((ch, x) => {
+      if (ch === '.') return;
+      const t = parseInt(ch, 36);
+      const coul = ch === '?' ? '#333' : SWC_COULEURS[t % SWC_COULEURS.length];
+      h += `<circle cx="${x * T + T / 2}" cy="${y * T + T / 2}" r="${T / 2 - 1.5}" fill="${coul}" stroke="#0004"/>`;
+      if (ch === '?') h += `<text x="${x * T + T / 2}" y="${y * T + T / 2 + 4}" text-anchor="middle" font-size="10" fill="#fff">★</text>`;
+    });
+  });
+  for (const k of [a, b]) h += `<rect x="${k.x * T + 0.5}" y="${k.y * T + 0.5}" width="${T - 1}" height="${T - 1}" fill="none" stroke="#000" stroke-width="2.5"/>`;
+  return h + '</svg>';
+}
+async function swapouCoups(id) {
+  swcId = id;
+  $('#modal-swapou-coups').classList.add('open');
+  $('#swc-corps').innerHTML = '<i>Rejeu en cours…</i>';
+  $('#swc-bilan').innerHTML = '';
+  try {
+    const d = await (await fetch('/api/admin/swapou/parties/' + id + '/captures?seuil=' + $('#swc-seuil').value, { headers: hdr() })).json();
+    if (!d.ok) { $('#swc-corps').innerHTML = `<span style="color:#b31111">${esc(d.error || 'échec')}</span>`; return; }
+    $('#swc-titre').textContent = `— ${d.username}, ${Number(d.score || 0).toLocaleString('fr-FR')} points, ${d.coups} coups`;
+    const L = d.captures;
+    if (!L.length) { $('#swc-corps').innerHTML = '<i>Aucun combo de ce niveau dans cette partie.</i>'; return; }
+    const haut = L.filter((c) => c.rangee <= 4).length;
+    const ms = L.map((c) => c.ms).sort((x, y) => x - y);
+    $('#swc-bilan').innerHTML = `<b>${L.length}</b> coup(s) · joués dans les 4 rangées du haut : <b style="color:${haut * 2 > L.length ? '#b31111' : 'inherit'}">${haut}</b>`
+      + ` · réflexion médiane avant le coup : <b>${(ms[Math.floor(ms.length / 2)] / 1000).toFixed(1).replace('.', ',')} s</b>`
+      + (L.some((c) => c.ia) ? ' · <span style="color:#b31111">dont joués par le bouton de l’IA</span>' : '');
+    $('#swc-corps').innerHTML = L.map((c) => `<div style="font-size:12px">
+      ${swcPlateau(c)}
+      <div><b>Coup ${c.coup}</b> · ${esc(SV_COMBOS[c.combo] || 'combo ' + c.combo)}</div>
+      <div>rangée <b style="color:${c.rangee <= 4 ? '#b31111' : 'inherit'}">${c.rangee}</b> sur ${c.hauteur} (du haut)${c.depuisSommet ? ` · ${c.depuisSommet}<sup>e</sup> de la pile` : ''}</div>
+      <div>${c.dx ? 'échange horizontal' : 'échange vertical'} · réflexion ${(c.ms / 1000).toFixed(1).replace('.', ',')} s${c.ia ? ' · <b style="color:#b31111">bouton IA</b>' : ''}</div>
+    </div>`).join('');
+  } catch (e) { $('#swc-corps').innerHTML = `<span style="color:#b31111">${esc(e.message)}</span>`; }
 }
 async function swapouAccord(id) {
   try {

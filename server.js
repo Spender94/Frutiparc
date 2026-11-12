@@ -10557,6 +10557,33 @@ app.post('/api/admin/swapou/parties/:id/accord', adminAuth, async (req, res) => 
     .catch((e) => console.error('[SWAPOU] accord :', e.message))
     .finally(() => swapouAccordsEnCours.delete(p.id));
 });
+/*
+ * LES COUPS À GROS COMBO D'UNE PARTIE, plateau à l'appui (demande de l'admin :
+ * « voir le coup qu'ils ont joué et évaluer si le coup est humain »). Le rejeu
+ * reconstitue le plateau d'avant chaque coup d'où sort un combo d'au moins
+ * `seuil` (10 : le cocktail Swapolotof) : rien n'est demandé au navigateur du
+ * joueur, donc rien ne se truque. On y joint ce qui se lit du coup : sa
+ * rangée (comptée du haut du plateau, et du haut de la pile de fruits), et
+ * le temps de réflexion.
+ */
+app.get('/api/admin/swapou/parties/:id/captures', adminAuth, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(400).json({ ok: false, error: 'no db' });
+  const p = await db.lirePartieSwapou(req.params.id).catch(() => null);
+  if (!p || !p.coups || p.graine == null) return res.status(404).json({ ok: false, error: 'introuvable' });
+  const seuil = Math.max(0, Math.min(10, Number(req.query.seuil) >= 0 && req.query.seuil !== undefined ? Math.trunc(Number(req.query.seuil)) : 10));
+  const rep = await swapouFilVerif.demander({ type: 'captures', graine: Number(p.graine), coups: p.coups, perso: p.perso, seuil });
+  if (!rep || rep.erreur || !rep.resultat) return res.json({ ok: false, error: (rep && rep.erreur) || 'rejeu en panne' });
+  const captures = (rep.resultat.captures || []).map((c) => {
+    const lignes = String(c.grille).split('/');
+    const sommet = lignes.findIndex((l) => /[^.]/.test(l));
+    // L'échange touche deux cases : on retient la plus haute.
+    const rangee = Math.min(c.y, c.y + c.dy);
+    return Object.assign({}, c, { rangee: rangee + 1, hauteur: lignes.length, depuisSommet: sommet < 0 ? null : rangee - sommet + 1 });
+  });
+  res.json({ ok: true, id: p.id, username: p.username, score: p.score_rejoue != null ? p.score_rejoue : p.score_declare,
+    seuil, coups: p.nb_coups, verdict: p.verdict, captures });
+});
+
 // Rejouer à nouveau (après une panne du fil, une correction du moteur…). Le
 // verdict est mis à jour avec les mêmes horloges ; le classement, lui, n'est
 // pas touché (pour classer, il y a le bouton « Classer »).

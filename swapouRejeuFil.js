@@ -12,6 +12,8 @@
  *   → { n, type: 'accord', graine, coups, perso, budgetMs }
  *   ← { n, avance: { fait, total } }  (de temps en temps)
  *   ← { n, resultat: { …, accord } }
+ *   → { n, type: 'captures', graine, coups, perso, seuil }
+ *   ← { n, resultat: { …, captures: [{ coup, combo, x, y, dx, dy, ms, ia, grille }] } }
  *   ← { n, erreur }                    si le rejeu a planté
  */
 const { parentPort } = require('worker_threads');
@@ -32,6 +34,9 @@ parentPort.on('message', (m) => {
         },
       });
       parentPort.postMessage({ n: m.n, resultat });
+    } else if (m.type === 'captures') {
+      // Le plateau d'avant chaque gros combo (cf. swapouRejeu.js, « LES CAPTURES »).
+      parentPort.postMessage({ n: m.n, resultat: R.rejouer(m, { captures: { seuil: m.seuil } }) });
     } else {
       const resultat = R.rejouer(m);
       parentPort.postMessage({ n: m.n, resultat, rythme: R.rythme(m.coups) });

@@ -123,8 +123,23 @@ function rejouer(p, opts) {
   // à la fin, quoi qu'il arrive.
   const combos = new Array(NB_COMBOS).fill(0);
   const addComboJeu = SW.TItem.addCombo;
+  /*
+   * LES CAPTURES (opts.captures = { seuil }) : le plateau tel que le joueur
+   * l'avait sous les yeux quand il a joué le coup d'où est sorti un gros
+   * combo — de quoi juger à l'œil si le coup est « humain ». Pas besoin
+   * d'une image prise chez le joueur (elle se truquerait) : le rejeu
+   * reconstitue le plateau, case par case. On garde la grille d'avant chaque
+   * échange, et on l'attache au combo quand il tombe.
+   */
+  const capt = opts.captures ? { seuil: Number(opts.captures.seuil) || NB_COMBOS - 1, liste: [], avant: null } : null;
   SW.TItem.addCombo = function (n) {
     if (n >= 0 && n < NB_COMBOS) combos[n]++;
+    if (capt && capt.avant && n >= capt.seuil && capt.liste.length < 40) {
+      // Une chaîne passe par tous les paliers : on ne garde que le plus haut.
+      const der = capt.liste[capt.liste.length - 1];
+      if (der && der.coup === capt.avant.coup) der.combo = Math.max(der.combo, n);
+      else capt.liste.push(Object.assign({ combo: n }, capt.avant));
+    }
   };
   let i = 0, images = 0, raison = null;
   const A = opts.analyse ? chargerAnalyseur() : null;
@@ -151,6 +166,7 @@ function rejouer(p, opts) {
             f1: col ? (col[c.y] === undefined ? null : col[c.y]) : null,
             f2: col2 ? (col2[c.y + dy] === undefined ? null : col2[c.y + dy]) : null,
           };
+          if (capt) capt.avant = { coup: i, x: c.x, y: c.y, dx, dy, ms: c.ms, ia: !!c.ia, grille: grilleTexte(lvl) };
           if (!paire.f1 || !chal.jouerPaire(paire)) { raison = 'échange impossible au coup ' + i; break; }
         }
       }
@@ -180,7 +196,23 @@ function rejouer(p, opts) {
     tempsJeuMs: Math.round(images * TMOD * 25),
   };
   if (A) r.accord = bilanAccord(rangs, coups);
+  if (capt) r.captures = capt.liste;
   return r;
+}
+
+// Le plateau en texte : une ligne par rangée, du HAUT vers le bas, un
+// caractère par case (« . » : vide ; sinon le type du fruit, en base 36).
+function grilleTexte(lvl) {
+  const lignes = [];
+  for (let y = 0; y < lvl.height; y++) {
+    let l = '';
+    for (let x = 0; x < lvl.width; x++) {
+      const f = lvl.fruits[x] ? lvl.fruits[x][y] : null;
+      l += f == null ? '.' : (Number(f.t) >= 0 && Number(f.t) < 36 ? Number(f.t).toString(36) : '?');
+    }
+    lignes.push(l);
+  }
+  return lignes.join('/');
 }
 
 // Le rang du coup joué dans le classement de l'analyseur (1 = son meilleur),
