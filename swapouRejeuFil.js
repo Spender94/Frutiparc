@@ -14,6 +14,8 @@
  *   ← { n, resultat: { …, accord } }
  *   → { n, type: 'captures', graine, coups, perso, seuil }
  *   ← { n, resultat: { …, captures: [{ coup, combo, x, y, dx, dy, ms, ia, grille }] } }
+ *   → { n, type: 'film', graine, coups, perso }
+ *   ← { n, resultat: { …, film: { plateaux, scores, etoiles, combos, coups } }, rythme }
  *   ← { n, erreur }                    si le rejeu a planté
  */
 const { parentPort } = require('worker_threads');
@@ -34,6 +36,9 @@ parentPort.on('message', (m) => {
         },
       });
       parentPort.postMessage({ n: m.n, resultat });
+    } else if (m.type === 'film') {
+      // La partie entière, coup par coup (cf. swapouRejeu.js, « LE FILM »).
+      parentPort.postMessage({ n: m.n, resultat: R.rejouer(m, { film: true }), rythme: R.rythme(m.coups) });
     } else if (m.type === 'captures') {
       // Le plateau d'avant chaque gros combo (cf. swapouRejeu.js, « LES CAPTURES »).
       parentPort.postMessage({ n: m.n, resultat: R.rejouer(m, { captures: { seuil: m.seuil } }) });

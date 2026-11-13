@@ -132,8 +132,19 @@ function rejouer(p, opts) {
    * échange, et on l'attache au combo quand il tombe.
    */
   const capt = opts.captures ? { seuil: Number(opts.captures.seuil) || NB_COMBOS - 1, liste: [], avant: null } : null;
+  /*
+   * LE FILM (opts.film) : la partie entière, coup par coup, pour la revoir
+   * comme une partie d'échecs. Avant chaque coup — au moment où le plateau
+   * rend la main, donc ce que le joueur avait sous les yeux pendant sa
+   * réflexion —, on note le plateau (ses peaux), le score et les étoiles ;
+   * pendant le coup, le plus haut palier de combo atteint. Une dernière image
+   * dit la fin de partie. Rien de plus que ce que le journal contient déjà :
+   * le rejeu ne fait que le rendre visible.
+   */
+  const film = opts.film ? { plateaux: [], scores: [], etoiles: [], combos: [] } : null;
   SW.TItem.addCombo = function (n) {
     if (n >= 0 && n < NB_COMBOS) combos[n]++;
+    if (film && film.combos.length && n > film.combos[film.combos.length - 1]) film.combos[film.combos.length - 1] = n;
     if (capt && capt.avant && n >= capt.seuil && capt.liste.length < 40) {
       // Une chaîne passe par tous les paliers : on ne garde que le plus haut.
       const der = capt.liste[capt.liste.length - 1];
@@ -151,6 +162,12 @@ function rejouer(p, opts) {
       if (!chal.lock && !chal.pause.activated()) {
         if (i >= coups.length) { raison = 'la partie continue après le dernier coup'; break; }
         const c = coups[i++];
+        if (film) {
+          film.plateaux.push(peauxTexte(chal.player.level));
+          film.scores.push(chal.player.score);
+          film.etoiles.push(chal.player.star_counter);
+          film.combos.push(-1);
+        }
         if (A) rangs.push(rangDuCoup(A, aide, c, opts.analyse));
         if (opts.surCoup) opts.surCoup(i, coups.length);
         if (c.t === 'd') {
@@ -178,6 +195,12 @@ function rejouer(p, opts) {
   const fini = Manager.mode !== chal;
   if (fini && i < coups.length) raison = raison || ('partie finie au coup ' + i + ' sur ' + coups.length);
   const score = chal.player.score;
+  if (film) {
+    // L'image de fin : le plateau tel que la partie l'a laissé.
+    film.plateaux.push(peauxTexte(chal.player.level));
+    film.scores.push(score);
+    film.etoiles.push(chal.player.star_counter);
+  }
   // L'écran de fin, refermé : le bac à sable est prêt pour la suivante.
   if (Manager.mode && Manager.mode.destroy) Manager.mode.destroy();
   Manager.mode = null;
@@ -197,6 +220,18 @@ function rejouer(p, opts) {
   };
   if (A) r.accord = bilanAccord(rangs, coups);
   if (capt) r.captures = capt.liste;
+  if (film) {
+    // Les coups joués (autant que d'images, moins la dernière), tels que le
+    // journal les donne : échange ou défense, temps de réflexion, bouton IA.
+    film.coups = coups.slice(0, film.combos.length);
+    // Ce qu'il faut pour lire les étoiles : le plein (6), le prix d'une
+    // défense pour ce personnage, et son nom.
+    const Eng = S.SwapouEngine;
+    film.etoilesMax = Eng.MAX_POWER;
+    film.prixDefense = Eng.DEFENSE_STARS[perso];
+    film.perso = Eng.CHAR_NAMES[perso];
+    r.film = film;
+  }
   return r;
 }
 
@@ -247,6 +282,12 @@ function peauxTexte(lvl) {
 function rangDuCoup(A, aide, c, options) {
   const res = A.analyserGrille(aide.grille(), aide.etat(), Object.assign({ budgetMs: 1500 }, options));
   const liste = res.coups || [];
+  // Le coup préféré de l'IA (le premier de son classement), pour le montrer
+  // sur le plateau quand l'admin revoit la partie : « d » pour une défense,
+  // « x,y,dx,dy » pour un échange.
+  const top = liste[0];
+  const ia = !top ? '' : (top.type === 'defend' ? 'd'
+    : (top.pair ? [top.pair.x, top.pair.y, top.pair.dx, top.pair.dy].join(',') : ''));
   let cle = null;
   if (c.t === 's') {
     const [dx, dy] = SENS[c.sens];
@@ -258,10 +299,10 @@ function rangDuCoup(A, aide, c, options) {
       : (m.type === 'swap' && m.pair && cleEchange(m.pair.x, m.pair.y, m.pair.dx, m.pair.dy) === cle)) {
       let devant = 0;
       for (const o of liste) if (o.valeur > m.valeur + 1e-9) devant++;
-      return { rang: devant + 1, sur: liste.length };
+      return { rang: devant + 1, sur: liste.length, ia };
     }
   }
-  return { rang: 0, sur: liste.length };
+  return { rang: 0, sur: liste.length, ia };
 }
 
 // Ce que l'accord dit : la part des coups qui sont LE meilleur de l'IA, ou
@@ -290,6 +331,9 @@ function bilanAccord(rangs, coups) {
     // Par tranche de cinquante coups : un joueur qui passe à l'IA en cours de
     // partie se voit à la courbe.
     tranches: parTranche.map((t) => (t && t.coups ? Math.round((t.premier / t.coups) * 100) : null)),
+    // Coup par coup, pour la revue de la partie : [rang du coup joué, nombre
+    // de coups possibles, coup préféré de l'IA].
+    detail: rangs.map((r) => [r.rang, r.sur, r.ia || '']),
   };
 }
 

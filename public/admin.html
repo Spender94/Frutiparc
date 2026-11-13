@@ -416,6 +416,23 @@
     z-index: 200;
     box-shadow: 0 2px 8px rgba(0,0,0,.2);
   }
+  /* Swapou — revoir une partie coup par coup (modal-swapou-film) */
+  .swf-corps { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-start; margin: 8px 0; }
+  .swf-gauche { flex: 0 0 auto; }
+  .swf-droite { flex: 1 1 320px; min-width: 300px; }
+  .swf-commandes { display: flex; gap: 4px; align-items: center; margin: 6px 0 2px; flex-wrap: wrap; }
+  .swf-commandes .btn { min-width: 30px; font-size: 13px; }
+  .swf-num { font-size: 15px; font-weight: bold; }
+  .swf-grand { font-size: 16px; margin: 2px 0 6px; }
+  .swf-infos td { padding: 2px 8px 2px 0; vertical-align: top; }
+  .swf-infos td:first-child { color: #777; }
+  .swf-liste { max-height: 300px; overflow: auto; border: 1px solid #dfe8cc; margin-top: 8px; position: relative; }
+  .swf-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .swf-table th { position: sticky; top: 0; background: #eef5df; color: #335511; text-align: left; padding: 3px 5px; z-index: 1; }
+  .swf-table td { padding: 2px 5px; border-top: 1px solid #f0f0f0; cursor: pointer; white-space: nowrap; }
+  .swf-table tr:hover td { background: #f6f9ef; }
+  .swf-table tr.swf-ici td { background: #ffe9a8; }
+  .swf-table tr.swf-ia td { color: #b31111; }
 </style>
 <!-- LE BOUILLOSCOPE EN JAVASCRIPT — le moteur lit les SWF de famille d'époque
      (public/fbouille) et dessine dans un canevas : plus d'iframe Ruffle par
@@ -1685,6 +1702,41 @@ questions sans énoncé ou sans réponse sont ignorées. "image" doit correspond
   </div>
 </div>
 
+<div class="modal-bg" id="modal-swapou-film">
+  <div class="modal" style="max-width:1180px;width:96vw;max-height:94vh;overflow:auto;padding:0 12px">
+    <h3>Swapou — revoir la partie <span id="swf-titre" style="font-weight:normal"></span></h3>
+    <div style="font-size:12px;color:#555;margin-bottom:6px">La partie entière, rejouée par le serveur depuis son journal (rien ne vient
+      du navigateur du joueur). Chaque image montre le plateau tel que le joueur l'avait sous les yeux pendant sa réflexion, et le coup
+      qu'il a choisi, encadré de <b style="color:#c00">rouge</b> ; le coup que l'IA aurait joué, en tirets <b style="color:#1f5fbf">bleus</b>
+      (si l'accord est calculé). Clavier : ← → (Maj : dix coups), Début, Fin, espace pour la lecture.</div>
+    <div id="swf-resume" style="line-height:1.7"></div>
+    <div class="swf-corps">
+      <div class="swf-gauche">
+        <div id="swf-plateau"></div>
+        <div class="swf-commandes">
+          <button class="btn" onclick="swfStop();swfAller(0)" title="Début">⏮</button>
+          <button class="btn" onclick="swfStop();swfAller(swf.i - 1)" title="Coup précédent (←)">‹</button>
+          <button class="btn" id="swf-lecture" onclick="swfLecture()" title="Lecture / pause (espace)">▶</button>
+          <button class="btn" onclick="swfStop();swfAller(swf.i + 1)" title="Coup suivant (→)">›</button>
+          <button class="btn" onclick="swfStop();swfAller(swf.n)" title="Fin">⏭</button>
+          <select id="swf-vitesse" title="Vitesse de lecture">
+            <option value="reel">au rythme du joueur</option><option value="reel4">rythme du joueur × 4</option>
+            <option value="1000">1 coup par seconde</option><option value="250">4 coups par seconde</option>
+          </select>
+        </div>
+        <input type="range" id="swf-curseur" min="0" max="0" value="0" oninput="swfStop();swfAller(+this.value)" style="width:100%">
+        <label style="display:flex;align-items:center;gap:5px;margin-top:4px;cursor:pointer"><input type="checkbox" id="swf-voir-ia" onchange="swfDessiner()" checked style="width:auto;margin:0"> montrer le coup de l’IA</label>
+      </div>
+      <div class="swf-droite">
+        <div id="swf-coup"></div>
+        <div id="swf-liste" class="swf-liste"></div>
+      </div>
+    </div>
+    <div id="swf-frise"></div>
+    <div class="actions"><button class="btn" onclick="swfFermer()">Fermer</button></div>
+  </div>
+</div>
+
 <div class="modal-bg" id="modal-edit-channel">
   <div class="modal">
     <h3>Modifier le salon <span id="edit-channel-name"></span></h3>
@@ -2361,6 +2413,7 @@ async function loadSwapouVerif() {
         <td>${svRegularite(ry.variation)}</td>
         <td>${svAccord(p)}</td>
         <td style="white-space:nowrap"><button class="btn btn-sm" title="Rejouer la partie à nouveau (le classement n’est pas touché)" onclick="swapouRejouer('${p.id}')">Rejouer</button>
+          ${p.nb_coups && p.graine != null ? `<button class="btn btn-sm" title="Revoir la partie entière, coup par coup (réflexion, étoiles, coup de l’IA)" onclick="swapouFilm('${p.id}')">Revoir</button>` : ''}
           ${p.nb_coups && p.graine != null ? `<button class="btn btn-sm" title="Voir le plateau au moment des coups à gros combo (cocktail swapolotof…)" onclick="swapouCoups('${p.id}')">Coups</button>` : ''}
           ${peutClasser ? `<button class="btn-success btn-sm" title="Faire entrer à la main le score déclaré au classement" onclick="swapouClasser('${p.id}', ${Number(p.score_declare) || 0}, '${esc(p.verdict)}')">Classer</button>` : ''}</td>
       </tr>`;
@@ -2511,6 +2564,293 @@ async function swapouCoups(id) {
     </div>`).join('');
   } catch (e) { $('#swc-corps').innerHTML = `<span style="color:#b31111">${esc(e.message)}</span>`; }
 }
+/*
+ * REVOIR UNE PARTIE ENTIÈRE, coup par coup — comme une partie d'échecs en
+ * mode analyse (/api/admin/swapou/parties/:id/film). Le serveur rejoue le
+ * journal de la partie (graine + coups, déjà en base) et rend, pour chaque
+ * coup, le plateau que le joueur avait sous les yeux, son score et ses
+ * étoiles ; l'admin fait défiler. L'image i (0 ≤ i < n) montre le plateau
+ * AVANT le coup i+1, ce coup encadré ; l'image n, la fin de partie.
+ */
+let swf = null;
+const SWF_SENS = [[1, 0], [0, 1], [-1, 0], [0, -1]];
+const SWF_COLS = 'ABCDEFGHIJKLMNOP';
+const swfSec = (ms) => (Number(ms) / 1000).toFixed(1).replace('.', ',') + ' s';
+const swfNb = (n) => Number(n || 0).toLocaleString('fr-FR');
+function swfCase(x, y) { return SWF_COLS[x] + (y + 1); }
+// « C5 ↔ D5 » pour un échange (colonnes de gauche à droite, rangées comptées
+// du HAUT, comme dans les captures), « Défense » sinon.
+function swfNotation(c) {
+  if (!c) return '';
+  if (c.t === 'd') return 'Défense';
+  const [dx, dy] = SWF_SENS[c.sens];
+  return swfCase(c.x, c.y) + ' ↔ ' + swfCase(c.x + dx, c.y + dy);
+}
+function swfEtoiles(n, max) {
+  let h = '';
+  for (let k = 0; k < max; k++) {
+    h += `<img src="/games/swapou2/images/powerStar.png" width="15" height="15" style="vertical-align:-3px;${k < n ? '' : 'opacity:.18;filter:grayscale(1)'}" alt="">`;
+  }
+  return h;
+}
+
+async function swapouFilm(id) {
+  swfStop();
+  swf = null;
+  $('#modal-swapou-film').classList.add('open');
+  $('#swf-titre').textContent = '';
+  $('#swf-resume').innerHTML = '<i>Rejeu de la partie…</i>';
+  ['#swf-plateau', '#swf-coup', '#swf-liste', '#swf-frise'].forEach((s) => { $(s).innerHTML = ''; });
+  try {
+    const d = await (await fetch('/api/admin/swapou/parties/' + id + '/film', { headers: hdr() })).json();
+    if (!d.ok) { $('#swf-resume').innerHTML = `<span style="color:#b31111">${esc(d.error || 'échec')}</span>`; return; }
+    const f = d.film;
+    swf = { d, f, n: f.coups.length, i: 0, minuterie: null };
+    $('#swf-titre').textContent = `— ${d.username}, ${swfNb(d.scoreRejoue)} points, ${swf.n} coups`;
+    swfResume();
+    swfListe();
+    $('#swf-curseur').max = swf.n;
+    swfAller(0);
+  } catch (e) { $('#swf-resume').innerHTML = `<span style="color:#b31111">${esc(e.message)}</span>`; }
+}
+
+function swfResume() {
+  const { d, f } = swf;
+  const ry = d.rythme || {};
+  const parts = [
+    `<b>${esc(f.perso || '')}</b> (défense : ${f.prixDefense} ★)`,
+    `<span class="vd vd-${esc(d.verdict)}">${esc(String(d.verdict).replace('_', ' '))}</span>`
+      + (d.scoreDeclare != null && Number(d.scoreDeclare) !== Number(d.scoreRejoue)
+        ? ` <span style="color:#b31111">déclaré ${swfNb(d.scoreDeclare)}</span>` : ''),
+    d.fin ? 'le ' + tFmtDate(d.fin) : '',
+    d.dureeMs ? `durée ${Math.round(d.dureeMs / 60000)} min` : '',
+    `réflexion médiane <b>${swfSec(ry.medianeMs || 0)}</b> (10 % sous ${swfSec(ry.q10Ms || 0)}, 10 % au-dessus de ${swfSec(ry.q90Ms || 0)})`,
+    `régularité ${String(ry.variation || 0).replace('.', ',')}`,
+    ry.parIa ? `<b style="color:#b31111">${ry.parIa} coup(s) au bouton de l’IA</b>` : '',
+    ry.defenses ? `${ry.defenses} défense(s)` : '',
+  ];
+  if (d.accord && !d.accord.sansDetail) parts.push(`accord avec l’IA : <b>${String(d.accord.premierPct).replace('.', ',')} %</b> de premiers choix`);
+  else if (d.accord) parts.push('accord calculé sans le détail coup par coup : <i>relancez-le</i> pour voir le coup de l’IA');
+  else parts.push('<i>accord avec l’IA non calculé : calculez-le (colonne « Accord ») pour voir le coup de l’IA à chaque coup</i>');
+  if (d.raison) parts.push(`<span style="color:#b31111">${esc(d.raison)}</span>`);
+  $('#swf-resume').innerHTML = parts.filter(Boolean).join(' · ');
+  $('#swf-voir-ia').disabled = !(d.accord && d.accord.detail);
+}
+
+// La liste des coups, comme la feuille de partie d'un site d'échecs.
+function swfListe() {
+  const { d, f, n } = swf;
+  const det = d.accord && d.accord.detail;
+  let h = '<table class="swf-table"><thead><tr><th>#</th><th>Coup</th><th>Réflexion</th><th>Points</th><th>Combo</th><th>★</th>'
+    + (det ? '<th title="Rang du coup joué dans le classement de l’IA">IA</th>' : '') + '</tr></thead><tbody>';
+  for (let k = 0; k < n; k++) {
+    const c = f.coups[k];
+    const pts = f.scores[k + 1] - f.scores[k];
+    const cb = f.combos[k];
+    const e0 = f.etoiles[k], e1 = f.etoiles[k + 1];
+    const rang = det && det[k] ? det[k][0] : null;
+    h += `<tr id="swf-l${k}" onclick="swfAller(${k})"${c.ia ? ' class="swf-ia"' : ''}>
+      <td>${k + 1}</td><td>${swfNotation(c)}${c.ia ? ' <b title="joué par le bouton de l’IA">IA</b>' : ''}</td>
+      <td>${swfSec(c.ms)}</td><td>${pts ? '+' + swfNb(pts) : ''}</td>
+      <td${cb >= 8 ? ' style="color:#b31111;font-weight:bold"' : ''}>${cb >= 0 ? esc(SV_COMBOS[cb] || 'combo ' + cb) : ''}</td>
+      <td>${e1 !== e0 ? `${e0}→${e1}` : e0}</td>
+      ${det ? `<td>${rang == null ? '' : (rang === 0 ? '—' : rang === 1 ? '<b>1</b>' : rang)}</td>` : ''}</tr>`;
+  }
+  $('#swf-liste').innerHTML = h + `<tr id="swf-l${n}" onclick="swfAller(${n})"><td></td><td colspan="${det ? 6 : 5}"><i>Fin de partie</i></td></tr></tbody></table>`;
+}
+
+function swfAller(i) {
+  if (!swf) return;
+  i = Math.max(0, Math.min(swf.n, Math.round(Number(i) || 0)));
+  const ancien = $('#swf-l' + swf.i);
+  if (ancien) ancien.classList.remove('swf-ici');
+  swf.i = i;
+  $('#swf-curseur').value = i;
+  const ligne = $('#swf-l' + i);
+  if (ligne) {
+    ligne.classList.add('swf-ici');
+    // La ligne courante reste en vue dans la feuille de partie.
+    const boite = $('#swf-liste');
+    if (ligne.offsetTop < boite.scrollTop + 24 || ligne.offsetTop > boite.scrollTop + boite.clientHeight - 24) {
+      boite.scrollTop = ligne.offsetTop - boite.clientHeight / 2;
+    }
+  }
+  swfDessiner();
+}
+
+function swfDessiner() {
+  if (!swf) return;
+  const { d, f, n, i } = swf;
+  const c = i < n ? f.coups[i] : null;
+  const det = d.accord && d.accord.detail ? d.accord.detail[i] : null;
+  const voirIa = $('#swf-voir-ia').checked && det && det[2];
+  $('#swf-plateau').innerHTML = swfPlateau(f.plateaux[i], c, voirIa ? det[2] : '');
+  // Le coup courant, en clair.
+  let h;
+  if (!c) {
+    h = `<div class="swf-num">Fin de partie</div><div>score final <b>${swfNb(f.scores[n])}</b> · ${swfEtoiles(f.etoiles[n], f.etoilesMax)}</div>`;
+  } else {
+    const pts = f.scores[i + 1] - f.scores[i];
+    const cb = f.combos[i];
+    const med = (d.rythme && d.rythme.medianeMs) || 0;
+    const rangee = c.t === 's' ? Math.min(c.y, c.y + SWF_SENS[c.sens][1]) + 1 : null;
+    h = `<div class="swf-num">Coup ${i + 1} <span style="font-weight:normal;color:#777">/ ${n}</span></div>
+      <div class="swf-grand">${swfNotation(c)}${c.t === 's' ? ` <span style="font-size:11px;color:#777">${SWF_SENS[c.sens][0] ? 'horizontal' : 'vertical'}</span>` : ` <span style="font-size:11px">(−${f.prixDefense} ★)</span>`}</div>
+      <table class="swf-infos">
+        <tr><td>Réflexion</td><td><b>${swfSec(c.ms)}</b>${med ? ` <span style="color:#777">(${(c.ms / med).toFixed(1).replace('.', ',')} × la médiane)</span>` : ''}</td></tr>
+        <tr><td>Score</td><td>${swfNb(f.scores[i])} → <b>${swfNb(f.scores[i + 1])}</b>${pts ? ` <span style="color:#2f8f2f">(+${swfNb(pts)})</span>` : ''}</td></tr>
+        <tr><td>Étoiles</td><td>${swfEtoiles(f.etoiles[i], f.etoilesMax)} ${f.etoiles[i]}${f.etoiles[i + 1] !== f.etoiles[i] ? ` → <b>${f.etoiles[i + 1]}</b>` : ''}</td></tr>
+        ${cb >= 0 ? `<tr><td>Combo</td><td><b${cb >= 8 ? ' style="color:#b31111"' : ''}>${esc(SV_COMBOS[cb] || 'combo ' + cb)}</b></td></tr>` : ''}
+        ${rangee ? `<tr><td>Rangée</td><td><b${rangee <= 4 ? ' style="color:#b31111"' : ''}>${rangee}</b> (du haut)${rangee === 1 ? ' · dernière ligne' : ''}</td></tr>` : ''}
+        ${c.ia ? '<tr><td></td><td><b style="color:#b31111">joué par le bouton de l’IA</b></td></tr>' : ''}
+        ${det ? `<tr><td>IA</td><td>${det[0] === 1 ? '<b>le premier choix de l’IA</b>' : det[0] ? `${det[0]}<sup>e</sup> choix de l’IA` : 'hors du classement de l’IA'} · ${det[1]} coups possibles${det[2] && det[0] !== 1 ? ` · l’IA aurait joué <b style="color:#1f5fbf">${det[2] === 'd' ? 'une défense' : swfNotationIa(det[2])}</b>` : ''}</td></tr>` : ''}
+      </table>`;
+  }
+  $('#swf-coup').innerHTML = h;
+  swfFrise();
+}
+function swfNotationIa(cle) {
+  const [x, y, dx, dy] = String(cle).split(',').map(Number);
+  return swfCase(x, y) + ' ↔ ' + swfCase(x + dx, y + dy);
+}
+
+// Le plateau : les vraies images des fruits (swcImage), les coordonnées, le
+// coup joué encadré de rouge, celui de l'IA en tirets bleus.
+function swfPlateau(peaux, c, cleIa) {
+  const lignes = String(peaux).split('/');
+  const T = 28, L = lignes[0].length / 2, H = lignes.length, G = 18, HT = 16;
+  let h = `<svg width="${G + L * T}" height="${HT + H * T}" style="display:block">`;
+  for (let x = 0; x < L; x++) h += `<text x="${G + x * T + T / 2}" y="11" text-anchor="middle" font-size="10" fill="#557">${SWF_COLS[x]}</text>`;
+  for (let y = 0; y < H; y++) h += `<text x="${G - 4}" y="${HT + y * T + T / 2 + 3}" text-anchor="end" font-size="10" fill="#557">${y + 1}</text>`;
+  h += `<g transform="translate(${G},${HT})">`
+    + `<rect width="${L * T}" height="${H * T}" fill="#7da43b"/>`
+    + `<image href="/games/swapou2/images/bg.jpg" width="${L * T}" height="${H * T}" preserveAspectRatio="xMidYMid slice"/>`
+    + `<rect width="${L * T}" height="${4 * T}" fill="#fff" opacity=".18"/>`
+    + `<rect width="${L * T}" height="${T}" fill="#e02020" opacity=".28"/>`
+    + `<line x1="0" y1="${T}" x2="${L * T}" y2="${T}" stroke="#fff" stroke-width="1.5" stroke-dasharray="6 4"/>`;
+  lignes.forEach((l, y) => {
+    for (let x = 0; x < L; x++) {
+      const peau = l.substr(x * 2, 2);
+      if (peau === '..') continue;
+      h += `<image href="${swcImage(peau)}" x="${x * T}" y="${y * T}" width="${T * 38 / 35}" height="${T * 38 / 35}"/>`;
+    }
+  });
+  const cadre = (x, y, coul, tirets) => `<rect x="${x * T + 1.5}" y="${y * T + 1.5}" width="${T - 3}" height="${T - 3}" rx="4" fill="none" stroke="#fff" stroke-width="4"/>`
+    + `<rect x="${x * T + 1.5}" y="${y * T + 1.5}" width="${T - 3}" height="${T - 3}" rx="4" fill="none" stroke="${coul}" stroke-width="2"${tirets ? ' stroke-dasharray="4 3"' : ''}/>`;
+  if (cleIa && cleIa !== 'd') {
+    const [x, y, dx, dy] = String(cleIa).split(',').map(Number);
+    h += cadre(x, y, '#1f5fbf', true) + cadre(x + dx, y + dy, '#1f5fbf', true);
+  }
+  if (c && c.t === 's') {
+    const [dx, dy] = SWF_SENS[c.sens];
+    h += cadre(c.x, c.y, '#c00', false) + cadre(c.x + dx, c.y + dy, '#c00', false);
+  } else if (c && c.t === 'd') {
+    h += `<rect x="${L * T / 2 - 70}" y="${H * T / 2 - 16}" width="140" height="32" rx="8" fill="#000" opacity=".6"/>`
+      + `<text x="${L * T / 2}" y="${H * T / 2 + 5}" text-anchor="middle" font-size="15" font-weight="bold" fill="#fff">DÉFENSE</text>`;
+  }
+  if (cleIa === 'd') h += `<text x="${L * T - 4}" y="${H * T - 6}" text-anchor="end" font-size="12" font-weight="bold" fill="#1f5fbf" stroke="#fff" stroke-width="3" paint-order="stroke">IA : défense</text>`;
+  return h + '</g></svg>';
+}
+
+/*
+ * LA FRISE : toute la partie d'un coup d'œil, en trois bandes — le temps de
+ * réflexion de chaque coup (rouge : bouton de l'IA ; orange : gros combo),
+ * les étoiles, le score. Un clic (ou un glissé) dessus y conduit.
+ */
+function swfFrise() {
+  const { f, n, i } = swf;
+  const W = 1100, X0 = 70, LW = W - X0 - 8, HR = 70, HE = 40, HS = 40, GAP = 10;
+  const yR = 4, yE = yR + HR + GAP, yS = yE + HE + GAP, HT = yS + HS + 14;
+  const x = (k) => X0 + (n ? (k / n) * LW : 0);
+  const bw = Math.max(1, LW / Math.max(1, n) - (n > 300 ? 0 : 1));
+  // L'échelle des réflexions : plafonnée (deux fois le 9e décile, au moins
+  // 5 s) pour qu'une longue pause n'écrase pas tout le reste.
+  const ms = f.coups.map((c) => c.ms);
+  const tri = ms.slice().sort((a, b) => a - b);
+  const plafond = Math.max(5000, 2 * (tri[Math.floor(tri.length * 0.9)] || 0));
+  const chemins = { n: '', ia: '', cb: '' };
+  f.coups.forEach((c, k) => {
+    const hgt = Math.max(1, (Math.min(c.ms, plafond) / plafond) * HR);
+    const cle = c.ia ? 'ia' : (f.combos[k] >= 8 ? 'cb' : 'n');
+    chemins[cle] += `M${x(k).toFixed(1)} ${(yR + HR).toFixed(1)}v${(-hgt).toFixed(1)}h${bw.toFixed(2)}v${hgt.toFixed(1)}z`;
+  });
+  let h = `<svg id="swf-frise-svg" viewBox="0 0 ${W} ${HT}" width="100%" style="display:block;cursor:pointer;user-select:none">`;
+  const bande = (y, hh, titre, sous) => `<rect x="${X0}" y="${y}" width="${LW}" height="${hh}" fill="#f6f9ef" stroke="#dfe8cc"/>`
+    + `<text x="${X0 - 6}" y="${y + 12}" text-anchor="end" font-size="11" fill="#335511">${titre}</text>`
+    + `<text x="${X0 - 6}" y="${y + 24}" text-anchor="end" font-size="9" fill="#889">${sous}</text>`;
+  h += bande(yR, HR, 'réflexion', 'max ' + swfSec(plafond)) + bande(yE, HE, 'étoiles', '0 à ' + f.etoilesMax) + bande(yS, HS, 'score', swfNb(f.scores[n]));
+  h += `<path d="${chemins.n}" fill="#6f9a2c"/><path d="${chemins.cb}" fill="#e08a00"/><path d="${chemins.ia}" fill="#d01818"/>`;
+  // La médiane des réflexions, en pointillés.
+  const med = tri[Math.floor(tri.length / 2)] || 0;
+  const ym = yR + HR - (Math.min(med, plafond) / plafond) * HR;
+  h += `<line x1="${X0}" x2="${X0 + LW}" y1="${ym}" y2="${ym}" stroke="#335511" stroke-dasharray="3 3" opacity=".6"/>`;
+  // Les étoiles : un escalier ; la ligne du prix d'une défense.
+  const yEt = (e) => yE + HE - (e / f.etoilesMax) * (HE - 4);
+  let pe = `M${x(0)} ${yEt(f.etoiles[0])}`;
+  for (let k = 1; k <= n; k++) pe += `H${x(k).toFixed(1)}V${yEt(f.etoiles[k]).toFixed(1)}`;
+  h += `<line x1="${X0}" x2="${X0 + LW}" y1="${yEt(f.prixDefense)}" y2="${yEt(f.prixDefense)}" stroke="#1f5fbf" stroke-dasharray="2 3" opacity=".7"/>`
+    + `<path d="${pe}" fill="none" stroke="#c8a000" stroke-width="2"/>`;
+  f.coups.forEach((c, k) => { if (c.t === 'd') h += `<circle cx="${x(k)}" cy="${yEt(f.etoiles[k])}" r="3" fill="#1f5fbf"/>`; });
+  // Le score.
+  const smax = Math.max(1, f.scores[n], ...f.scores);
+  let ps = '';
+  for (let k = 0; k <= n; k++) ps += (k ? 'L' : 'M') + x(k).toFixed(1) + ' ' + (yS + HS - (f.scores[k] / smax) * (HS - 4)).toFixed(1);
+  h += `<path d="${ps}" fill="none" stroke="#335511" stroke-width="1.5"/>`;
+  // Le curseur.
+  h += `<line x1="${x(i)}" x2="${x(i)}" y1="0" y2="${yS + HS}" stroke="#c00" stroke-width="1.5"/>`
+    + `<text x="${Math.min(Math.max(x(i), X0 + 20), X0 + LW - 20)}" y="${HT - 2}" text-anchor="middle" font-size="10" fill="#c00">${i < n ? 'coup ' + (i + 1) : 'fin'}</text>`;
+  $('#swf-frise').innerHTML = h + '</svg>';
+  const svg = $('#swf-frise-svg');
+  const vers = (ev) => {
+    const r = svg.getBoundingClientRect();
+    const vx = ((ev.clientX - r.left) / r.width) * W;
+    swfAller(((vx - X0) / LW) * n);
+  };
+  svg.onpointerdown = (ev) => { swfStop(); swf.glisse = true; svg.setPointerCapture(ev.pointerId); vers(ev); };
+  svg.onpointermove = (ev) => { if (swf && swf.glisse) vers(ev); };
+  svg.onpointerup = () => { if (swf) swf.glisse = false; };
+}
+
+// La lecture : au rythme du joueur (ses vrais temps de réflexion), ou à
+// cadence fixe.
+function swfLecture() {
+  if (!swf) return;
+  if (swf.minuterie) { swfStop(); return; }
+  if (swf.i >= swf.n) swfAller(0);
+  $('#swf-lecture').textContent = '⏸';
+  const pas = () => {
+    if (!swf || swf.i >= swf.n) { swfStop(); return; }
+    const v = $('#swf-vitesse').value;
+    const c = swf.f.coups[swf.i];
+    const attente = v === 'reel' ? c.ms + 350 : v === 'reel4' ? (c.ms + 350) / 4 : Number(v);
+    swf.minuterie = setTimeout(() => { swfAller(swf.i + 1); pas(); }, Math.max(60, Math.min(attente, 20000)));
+  };
+  pas();
+}
+function swfStop() {
+  if (swf && swf.minuterie) clearTimeout(swf.minuterie);
+  if (swf) swf.minuterie = null;
+  const b = $('#swf-lecture');
+  if (b) b.textContent = '▶';
+}
+function swfFermer() { swfStop(); closeModal('modal-swapou-film'); }
+// Le clavier, fenêtre ouverte : ← → (Maj : dix coups), Début, Fin, espace.
+document.addEventListener('keydown', (ev) => {
+  if (!swf || !$('#modal-swapou-film').classList.contains('open')) return;
+  const cible = ev.target && ev.target.tagName;
+  if (cible === 'INPUT' && ev.target.type !== 'range' && ev.target.type !== 'checkbox') return;
+  if (cible === 'SELECT' || cible === 'TEXTAREA') return;
+  const pas = ev.shiftKey ? 10 : 1;
+  if (ev.key === 'ArrowRight') { swfStop(); swfAller(swf.i + pas); }
+  else if (ev.key === 'ArrowLeft') { swfStop(); swfAller(swf.i - pas); }
+  else if (ev.key === 'Home') { swfStop(); swfAller(0); }
+  else if (ev.key === 'End') { swfStop(); swfAller(swf.n); }
+  else if (ev.key === ' ') swfLecture();
+  else if (ev.key === 'Escape') { swfFermer(); return; }
+  else return;
+  ev.preventDefault();
+});
+
 async function swapouAccord(id) {
   try {
     const r = await fetch('/api/admin/swapou/parties/' + id + '/accord', { method: 'POST', headers: hdr() });

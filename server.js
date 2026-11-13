@@ -10700,6 +10700,37 @@ app.get('/api/admin/swapou/parties/:id/captures', adminAuth, async (req, res) =>
     seuil, coups: p.nb_coups, verdict: p.verdict, captures });
 });
 
+/*
+ * LA PARTIE ENTIÈRE, À REVOIR COUP PAR COUP (demande de l'admin : « revoir
+ * les parties comme aux échecs, en mode analyse, avec les temps de réflexion
+ * et le nombre d'étoiles »). Rien de neuf n'est enregistré : le journal de
+ * chaque partie (graine + coups + réflexion) est déjà en base pour la
+ * vérification ; le rejeu, dans le fil à part, en tire le plateau, le score
+ * et les étoiles d'avant chaque coup. Quelques dixièmes de seconde de calcul,
+ * à la demande seulement, et jamais dans la boucle du serveur.
+ * Si l'accord avec l'IA a été calculé, son détail coup par coup suit (le
+ * rang du coup joué, et le coup que l'IA aurait joué).
+ */
+app.get('/api/admin/swapou/parties/:id/film', adminAuth, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(400).json({ ok: false, error: 'no db' });
+  const p = await db.lirePartieSwapou(req.params.id).catch(() => null);
+  if (!p || !p.coups || p.graine == null) return res.status(404).json({ ok: false, error: 'introuvable' });
+  const rep = await swapouFilVerif.demander({ type: 'film', graine: Number(p.graine), coups: p.coups, perso: p.perso });
+  if (!rep || rep.erreur || !rep.resultat || !rep.resultat.film) return res.json({ ok: false, error: (rep && rep.erreur) || 'rejeu en panne' });
+  const r = rep.resultat;
+  const accord = p.accord && typeof p.accord === 'object' ? p.accord : null;
+  res.json({
+    ok: true, id: p.id, username: p.username, perso: p.perso,
+    debut: p.cree_le, fin: p.fini_le, dureeMs: p.duree_ms == null ? null : Number(p.duree_ms),
+    tempsJeuMs: r.tempsJeuMs, scoreDeclare: p.score_declare, scoreRejoue: r.score,
+    verdict: p.verdict, raison: r.raison || p.raison || null, rejeuOk: r.ok,
+    rythme: rep.rythme || null,
+    film: r.film,
+    accord: accord && Array.isArray(accord.detail) ? { premierPct: accord.premierPct, top3Pct: accord.top3Pct, detail: accord.detail }
+      : (accord && !accord.erreur ? { premierPct: accord.premierPct, top3Pct: accord.top3Pct, sansDetail: true } : null),
+  });
+});
+
 // Rejouer à nouveau (après une panne du fil, une correction du moteur…). Le
 // verdict est mis à jour avec les mêmes horloges ; le classement, lui, n'est
 // pas touché (pour classer, il y a le bouton « Classer »).

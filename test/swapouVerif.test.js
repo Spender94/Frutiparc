@@ -355,6 +355,32 @@ test('l’admin : liste, bilan par joueur, détail, rejeu, reclassement d’une 
   assert.equal((await post('/api/admin/swapou/parties/' + ess.id + '/classer', {}, ADMIN)).status, 400);
 });
 
+test('l’admin revoit une partie entière, coup par coup : plateau, score, étoiles, réflexion', async (t) => {
+  if (!dispo) return t.skip('Postgres indisponible sur 5433');
+  assert.equal((await fetch(BASE + '/api/admin/swapou/parties/x/film')).status, 403, 'clé maître exigée');
+  assert.equal((await fetch(BASE + '/api/admin/swapou/parties/inconnue/film', { headers: ADMIN })).status, 404);
+  const [p] = await sql(`SELECT id, coups, score_declare FROM swapou_parties
+    WHERE verdict = 'conforme' AND NOT essai ORDER BY fini_le DESC LIMIT 1`);
+  assert.ok(p, 'une partie conforme à revoir');
+  const d = await (await fetch(BASE + '/api/admin/swapou/parties/' + p.id + '/film', { headers: ADMIN })).json();
+  assert.ok(d.ok, JSON.stringify(d).slice(0, 200));
+  const f = d.film;
+  const n = p.coups.split(';').filter(Boolean).length;
+  assert.equal(f.coups.length, n, 'un coup par entrée du journal');
+  // Une image par coup (le plateau d'avant), plus celle de la fin.
+  assert.equal(f.plateaux.length, n + 1);
+  assert.equal(f.scores.length, n + 1);
+  assert.equal(f.etoiles.length, n + 1);
+  assert.equal(f.combos.length, n);
+  assert.equal(f.scores[0], 0);
+  assert.equal(f.scores[n], Number(p.score_declare), 'le film finit au score de la partie');
+  assert.ok(f.etoiles.every((e) => e >= 0 && e <= f.etoilesMax));
+  assert.ok(f.coups.every((c) => Number.isFinite(c.ms)), 'le temps de réflexion de chaque coup');
+  assert.match(f.plateaux[0], /^([.fgme][.0-9a-z]){12}(\/([.fgme][.0-9a-z]){12}){13}$/);
+  assert.ok(d.rythme && d.rythme.medianeMs >= 0);
+  assert.equal(d.accord, null, 'pas d’accord calculé : pas de coup de l’IA');
+});
+
 // ── Le journal des connexions et les comptes liés ────────────────────────
 
 test('la connexion laisse sa ligne ; deux comptes du même appareil sont liés', async (t) => {
