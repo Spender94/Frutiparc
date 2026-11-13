@@ -739,7 +739,8 @@
     <b>la main</b>, pièce par pièce : <b>réaction</b>, le temps entre l'apparition d'une pièce et la première touche
     (médiane des parties) et sa <b>variation</b> (écart type / moyenne : un humain varie, un programme beaucoup moins) ;
     <b>corrections</b>, la part des pièces poussées d'un côté puis de l'autre (une hésitation) ; déplacements et
-    rotations par pièce, pièces par minute, chute accélérée. <span class="rythme-moyen">Orange</span> / <span class="rythme-fort">rouge</span> :
+    rotations par pièce, pièces par minute, chute accélérée — sur les parties d'au moins trente pièces (une partie lâchée
+    au bout de quelques secondes ne dit rien de la main ; sous « Parties », combien en restent). <span class="rythme-moyen">Orange</span> / <span class="rythme-fort">rouge</span> :
     1,5 / 2 fois la médiane des joueurs de la liste (pour la réaction et les corrections : 1,5 / 2 fois <i>moins</i>).
     Des indices, pas des preuves : un très bon joueur sort aussi du lot. Un clic sur un joueur montre ses parties.
   </p>
@@ -2218,7 +2219,8 @@ function pfAfficher() {
     const ici = cherche && p.username.toLowerCase() === cherche;
     let h = `<tr${ici ? ' style="outline:2px solid #e0a000"' : ''}>
       <td><a href="#" class="uname" onclick="pfBasculer('${esc(p.username)}');return false">${ouvert ? '▾' : '▸'} ${esc(p.username)}</a></td>
-      <td>${p.parties}</td><td>${min(p.minutes)}</td><td>${p.dureeMediane == null ? '—' : min(p.dureeMediane / 60000)}</td>
+      <td title="${p.partiesMain != null ? `dont ${p.partiesMain} d’au moins 30 pièces : la main se lit sur celles-là` : ''}">${p.parties}${p.partiesMain != null && p.partiesMain < p.parties ? `<div style="font-size:10px;color:#777">${p.partiesMain} longue${p.partiesMain > 1 ? 's' : ''}</div>` : ''}</td>
+      <td>${min(p.minutes)}</td><td>${p.dureeMediane == null ? '—' : min(p.dureeMediane / 60000)}</td>
       <td>${nb(p.meilleur)}</td>
       ${pfCellule(p.ppm, meds.ppm, nb(p.ppm))}
       ${p.paliers.map((x, k) => pfCellule(x.ppm, meds.pal[k], x.ppm == null ? '—' : `${nb(x.ppm)}<div style="font-size:10px;color:#777;font-weight:normal">${min(x.minutes)}</div>`)).join('')}

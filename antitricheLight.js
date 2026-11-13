@@ -874,6 +874,7 @@ function verifierArbre(partie) {
  * demandé au joueur. Un indice pour l'admin, jamais un verdict.
  */
 const ANALYSE_VERSION = 1;
+const MAIN_PIECES_MIN = 30;                     // une partie qui dit quelque chose de la main
 function quantiles(liste) {
   const t = liste.slice().sort((a, b) => a - b);
   const q = (f) => (t.length ? t[Math.min(t.length - 1, Math.floor(f * t.length))] : null);
@@ -994,6 +995,12 @@ function profilsArbre(lignes) {
     });
     const tempsMs = parts.reduce((s, p) => s + p.analyse.tempsJeuMs, 0);
     const score = parts.reduce((s, p) => s + p.analyse.score, 0);
+    // LA MAIN se lit sur les vraies parties : une partie lâchée au bout de
+    // quelques secondes (pièces jetées sans bouger, pour recommencer) ferait
+    // pencher la médiane vers « zéro déplacement, zéro hésitation ». Au moins
+    // trente pièces — à défaut, toutes.
+    const longues = parts.filter((p) => Number(p.analyse.pieces) >= MAIN_PIECES_MIN);
+    const main = longues.length ? longues : parts;
     profils.push({
       username, parties: parts.length,
       minutes: Math.round(tempsMs / 6000) / 10,
@@ -1001,13 +1008,14 @@ function profilsArbre(lignes) {
       meilleur: Math.max(...parts.map((p) => p.analyse.score)),
       dureeMediane: med(parts.map((p) => p.analyse.tempsJeuMs)),
       paliers: pal,
-      reaction: med(parts.map((p) => p.analyse.reaction.med)),
-      reactionCv: med(parts.map((p) => p.analyse.reaction.cv)),
-      correctionsPct: med(parts.map((p) => p.analyse.correctionsPct)),
-      deplacementsParPiece: med(parts.map((p) => p.analyse.deplacementsParPiece)),
-      rotationsParPiece: med(parts.map((p) => p.analyse.rotationsParPiece)),
-      piecesParMinute: med(parts.map((p) => p.analyse.piecesParMinute)),
-      chutePct: med(parts.map((p) => p.analyse.chutePct)),
+      partiesMain: longues.length,
+      reaction: med(main.map((p) => p.analyse.reaction.med)),
+      reactionCv: med(main.map((p) => p.analyse.reaction.cv)),
+      correctionsPct: med(main.map((p) => p.analyse.correctionsPct)),
+      deplacementsParPiece: med(main.map((p) => p.analyse.deplacementsParPiece)),
+      rotationsParPiece: med(main.map((p) => p.analyse.rotationsParPiece)),
+      piecesParMinute: med(main.map((p) => p.analyse.piecesParMinute)),
+      chutePct: med(main.map((p) => p.analyse.chutePct)),
       // Partie par partie, pour le détail.
       liste: parts.map((p) => ({ id: p.id, le: p.cree_le, score: p.analyse.score, tempsJeuMs: p.analyse.tempsJeuMs,
         paliers: p.analyse.paliers, reaction: p.analyse.reaction.med, correctionsPct: p.analyse.correctionsPct })),

@@ -79,6 +79,21 @@ test('les profils : par joueur, les points par minute de chaque palier, toutes p
   assert.equal(P[0].reactionCv, 0.1);
 });
 
+test('la main se lit sur les vraies parties, pas sur celles lâchées au bout de quelques secondes', () => {
+  const an = (pieces, corrections, deplacements) => ({ v: AT.ANALYSE_VERSION, score: 10, tempsJeuMs: 60000, pieces,
+    paliers: [{ m: 1, ms: 60000, pts: 10, pieces }, { m: 2, ms: 0, pts: 0, pieces: 0 }, { m: 3, ms: 0, pts: 0, pieces: 0 }, { m: 4, ms: 0, pts: 0, pieces: 0 }],
+    reaction: { med: 250, cv: 0.7 }, correctionsPct: corrections, deplacementsParPiece: deplacements, rotationsParPiece: 1, piecesParMinute: 40, chutePct: 90 });
+  const lignes = [{ id: 'l', username: 'u', cree_le: 'x', analyse: an(120, 30, 2.5) }];
+  for (let k = 0; k < 5; k++) lignes.push({ id: 'c' + k, username: 'u', cree_le: 'x', analyse: an(3, 0, 0) });
+  const [p] = AT.profilsArbre(lignes);
+  assert.equal(p.parties, 6);
+  assert.equal(p.partiesMain, 1);
+  assert.deepEqual([p.correctionsPct, p.deplacementsParPiece], [30, 2.5], 'la partie longue seule');
+  // Sans aucune partie longue, on garde ce qu'on a.
+  const [q] = AT.profilsArbre(lignes.slice(1));
+  assert.deepEqual([q.partiesMain, q.correctionsPct], [0, 0]);
+});
+
 test('l’admin a sa route, son rattrapage et sa section', () => {
   const SRV = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
   const ADM = fs.readFileSync(path.join(ROOT, 'public/admin.html'), 'utf8');
