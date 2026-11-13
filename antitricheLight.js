@@ -843,7 +843,178 @@ function verifierArbre(partie) {
       return sortie('refuse', examen.refus.raison);
     }
   }
+  // Le profil de jeu (cf. analyserArbre) : quelques dixièmes de seconde de
+  // plus dans le fil, gardés avec la partie pour les comparaisons de l'admin.
+  details.analyse = analyserArbreSansRisque(partie);
   return sortie('conforme', '');
+}
+
+/*
+ * ══════════════════════════════════════════════════════════════════════════
+ * LE PROFIL DE JEU D'UNE PARTIE D'ARBRE (l'admin : « il fait beaucoup plus de
+ * points par minute que les autres »)
+ * ══════════════════════════════════════════════════════════════════════════
+ *
+ * Les points par minute d'une partie entière ne se comparent pas d'un joueur
+ * à l'autre : le multiplicateur ne monte qu'avec le temps de jeu, si bien
+ * qu'une partie courte DEVRAIT en faire moins qu'une longue. On rejoue donc la
+ * partie et on la découpe :
+ *
+ *   · PAR PALIER (×1 à ×4) : le temps de jeu passé et les points gagnés. Au
+ *     même palier, tous les joueurs ont le même multiplicateur, le même nombre
+ *     de couleurs et la même vitesse de chute : là, les points par minute se
+ *     comparent honnêtement.
+ *   · PIÈCE PAR PIÈCE, ce que fait la main : le temps avant la première
+ *     touche (la réaction), les allers-retours (une pièce poussée à gauche
+ *     puis à droite : une hésitation), les déplacements et les rotations, la
+ *     chute accélérée. Un humain hésite, se corrige, varie ; un programme qui
+ *     joue à sa place, beaucoup moins.
+ *
+ * Tout vient du journal que la partie a déjà rendu : rien de neuf n'est
+ * demandé au joueur. Un indice pour l'admin, jamais un verdict.
+ */
+const ANALYSE_VERSION = 1;
+function quantiles(liste) {
+  const t = liste.slice().sort((a, b) => a - b);
+  const q = (f) => (t.length ? t[Math.min(t.length - 1, Math.floor(f * t.length))] : null);
+  const moy = t.length ? t.reduce((a, b) => a + b, 0) / t.length : 0;
+  const et = t.length ? Math.sqrt(t.reduce((a, b) => a + (b - moy) * (b - moy), 0) / t.length) : 0;
+  return { med: q(0.5), q10: q(0.1), q90: q(0.9), cv: moy ? Math.round((et / moy) * 100) / 100 : 0 };
+}
+function analyserArbre(partie) {
+  const lu = PixizRejeu.lireJournal(partie.journal);
+  if (lu.erreur) return { erreur: lu.erreur };
+  const Lieux = moteurArbre();
+  const ETAPE_JEU = require('./public/minipixiz/engine.js').ETAPE.JEU;
+  const pas = lu.pas;
+  const n = pas.length / 2;
+  const QMS = 1000 / 32 / J.QUANTUM_TMOD;      // un tmod en 1024es → des millisecondes
+  let t = 0;                                    // temps de jeu, en ms
+  let multi = 1;
+  const paliers = { 1: { ms: 0, pts: 0, pieces: 0 }, 2: { ms: 0, pts: 0, pieces: 0 }, 3: { ms: 0, pts: 0, pieces: 0 }, 4: { ms: 0, pts: 0, pieces: 0 } };
+  let piece = null;                             // la pièce en main
+  let nouvelle = false;
+  const reactions = [], vies = [];
+  let pieces = 0, sansCommande = 0, corrections = 0, deplacements = 0, rotations = 0, chutes = 0;
+  const a = new Lieux.Arbre({
+    graine: Number(partie.graine) >>> 0, carte: null,
+    surEvenement: (nom, d) => {
+      if (nom === 'multiplicateur') multi = Math.min(4, Number(d.multi) || multi);
+      else if (nom === 'scoreArbre') paliers[Math.min(4, Number(d.multi) || multi)].pts += Number(d.gagne) || 0;
+      else if (nom === 'nouvellePiece') nouvelle = true;
+    },
+  });
+  const finirPiece = () => {
+    if (!piece) return;
+    pieces++;
+    paliers[piece.multi].pieces++;
+    vies.push(Math.round(t - piece.t0));
+    if (piece.reaction === null) sansCommande++;
+    else reactions.push(piece.reaction);
+    if (piece.inversions > 0) corrections++;
+    deplacements += piece.lateraux;
+    rotations += piece.tours;
+    if (piece.bas) chutes++;
+    piece = null;
+  };
+  const e = a.jeu.entree;
+  let prec = 0;
+  let i = 0;
+  for (; i < n && !a.fini; i++) {
+    const q = pas[i * 2], b = pas[i * 2 + 1];
+    // Les touches qui s'ENFONCENT à ce pas (pas celles qu'on tient).
+    const neuves = b & ~prec;
+    if (piece && neuves) {
+      if (piece.reaction === null) piece.reaction = -1;
+      if (neuves & 1) { piece.lateraux++; if (piece.dernier === 2) piece.inversions++; piece.dernier = 1; }
+      if (neuves & 2) { piece.lateraux++; if (piece.dernier === 1) piece.inversions++; piece.dernier = 2; }
+      if (neuves & 8) piece.tours++;
+      if (neuves & 4) piece.bas = true;
+    }
+    prec = b;
+    e.gauche = !!(b & 1); e.droite = !!(b & 2); e.bas = !!(b & 4); e.tourner = !!(b & 8);
+    const dt = q * QMS;
+    paliers[multi].ms += dt;
+    t += dt;
+    // La réaction court jusqu'à l'image où la touche est lue.
+    if (piece && piece.reaction === -1) piece.reaction = Math.round(t - piece.t0);
+    a.update(q / J.QUANTUM_TMOD);
+    if (piece && a.jeu.step !== ETAPE_JEU) finirPiece();
+    if (nouvelle) {
+      nouvelle = false;
+      finirPiece();
+      piece = { t0: t, multi, reaction: null, lateraux: 0, inversions: 0, tours: 0, bas: false, dernier: 0 };
+    }
+  }
+  finirPiece();
+  const r1 = (x) => Math.round(x * 10) / 10;
+  const pct = (x) => (pieces ? Math.round((x / pieces) * 1000) / 10 : 0);
+  return {
+    v: ANALYSE_VERSION,
+    score: a.score, multiMax: a.multi, tempsJeuMs: Math.round(t),
+    paliers: [1, 2, 3, 4].map((m) => ({ m, ms: Math.round(paliers[m].ms), pts: paliers[m].pts, pieces: paliers[m].pieces })),
+    pieces,
+    piecesParMinute: t ? r1(pieces / (t / 60000)) : 0,
+    reaction: quantiles(reactions),
+    vie: quantiles(vies),
+    sansCommandePct: pct(sansCommande),
+    correctionsPct: pct(corrections),
+    deplacementsParPiece: pieces ? r1(deplacements / pieces) : 0,
+    rotationsParPiece: pieces ? r1(rotations / pieces) : 0,
+    chutePct: pct(chutes),
+  };
+}
+// Le même, sans jamais faire tomber la vérification.
+function analyserArbreSansRisque(partie) {
+  try { return analyserArbre(partie); } catch (e) { return { erreur: String((e && e.message) || e) }; }
+}
+
+/*
+ * LES PROFILS : les analyses des parties conformes d'une période, joueur par
+ * joueur. Par palier, les points par minute (tous ses points du palier sur
+ * tout son temps passé au palier) ; pour la main, la médiane des parties.
+ * `lignes` = [{ id, username, cree_le, analyse }].
+ */
+function profilsArbre(lignes) {
+  const parJoueur = new Map();
+  for (const l of lignes) {
+    const an = l.analyse;
+    if (!an || an.erreur || an.v !== ANALYSE_VERSION) continue;
+    const u = String(l.username);
+    if (!parJoueur.has(u)) parJoueur.set(u, []);
+    parJoueur.get(u).push(l);
+  }
+  const med = (xs) => { const v = xs.filter((x) => x != null && Number.isFinite(x)); return v.length ? quantiles(v).med : null; };
+  const profils = [];
+  for (const [username, parts] of parJoueur) {
+    const pal = [1, 2, 3, 4].map((m) => {
+      let ms = 0, pts = 0;
+      for (const p of parts) { const x = p.analyse.paliers[m - 1]; ms += x.ms; pts += x.pts; }
+      return { m, minutes: Math.round(ms / 6000) / 10, pts, ppm: ms >= 30000 ? Math.round(pts / (ms / 60000)) : null };
+    });
+    const tempsMs = parts.reduce((s, p) => s + p.analyse.tempsJeuMs, 0);
+    const score = parts.reduce((s, p) => s + p.analyse.score, 0);
+    profils.push({
+      username, parties: parts.length,
+      minutes: Math.round(tempsMs / 6000) / 10,
+      ppm: tempsMs ? Math.round(score / (tempsMs / 60000)) : 0,
+      meilleur: Math.max(...parts.map((p) => p.analyse.score)),
+      dureeMediane: med(parts.map((p) => p.analyse.tempsJeuMs)),
+      paliers: pal,
+      reaction: med(parts.map((p) => p.analyse.reaction.med)),
+      reactionCv: med(parts.map((p) => p.analyse.reaction.cv)),
+      correctionsPct: med(parts.map((p) => p.analyse.correctionsPct)),
+      deplacementsParPiece: med(parts.map((p) => p.analyse.deplacementsParPiece)),
+      rotationsParPiece: med(parts.map((p) => p.analyse.rotationsParPiece)),
+      piecesParMinute: med(parts.map((p) => p.analyse.piecesParMinute)),
+      chutePct: med(parts.map((p) => p.analyse.chutePct)),
+      // Partie par partie, pour le détail.
+      liste: parts.map((p) => ({ id: p.id, le: p.cree_le, score: p.analyse.score, tempsJeuMs: p.analyse.tempsJeuMs,
+        paliers: p.analyse.paliers, reaction: p.analyse.reaction.med, correctionsPct: p.analyse.correctionsPct })),
+    });
+  }
+  profils.sort((x, y) => y.ppm - x.ppm);
+  return profils;
 }
 
 /**
@@ -1256,6 +1427,7 @@ function verifierEnFil(type, partie) {
 module.exports = {
   SEUILS, poserSecret, creerJeton, lireJeton, dejaRendu, marquerRendu,
   verifierArbre, verifierArcade, verifierEnFil, auditer, pictosAttendus, moteurFever,
+  analyserArbre, analyserArbreSansRisque, profilsArbre, ANALYSE_VERSION,
   rythmePartie, pointsParMinute, dureeLisible,
   DEMARRAGE, ouvrirBattements, noterBattement, fermerBattements, debitBattement,
   encoderBattements, decoderBattements, examinerBattements, positionsArbre, positionsArcade,

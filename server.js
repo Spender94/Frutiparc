@@ -19104,6 +19104,49 @@ app.get('/api/admin/antitriche/parties', adminAuth, async (req, res) => {
   }
 });
 
+/*
+ * LES PROFILS DE JEU DE L'ARBRE CREUX (antitricheLight.analyserArbre) : par
+ * joueur, les points par minute PALIER PAR PALIER — la seule comparaison
+ * honnête, le multiplicateur ne montant qu'avec le temps — et ce que fait la
+ * main, pièce par pièce. Chaque partie conforme reçoit son profil à la
+ * vérification ; celles d'avant se rattrapent ici, une à une dans le fil du
+ * rejeu (une vérification qui arrive passe entre deux), vingt secondes par
+ * appel au plus.
+ */
+let arbreProfilsRattrapage = false;
+app.get('/api/admin/antitriche/arbre/profils', adminAuth, async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.json({ ok: true, profils: [], sansBase: true });
+  try {
+    const jours = Math.max(1, Math.min(Number(req.query.jours) || 30, 400));
+    const depuis = new Date(Date.now() - jours * 86400000);
+    let rattrapees = 0;
+    if (!arbreProfilsRattrapage) {
+      arbreProfilsRattrapage = true;
+      const t0 = Date.now();
+      try {
+        while (Date.now() - t0 < 20000) {
+          const lot = await db.partiesArbreSansAnalyse(depuis, AT.ANALYSE_VERSION, 10);
+          if (!lot.length) break;
+          for (const p of lot) {
+            const an = await AT.verifierEnFil('analyseArbre', { graine: Number(p.graine), journal: p.journal });
+            // Un échec se note aussi (avec sa version) : on ne le retente pas à chaque appel.
+            const propre = an && !an.verdict && !an.erreur ? an
+              : { v: AT.ANALYSE_VERSION, erreur: (an && (an.erreur || an.raison)) || 'analyse impossible' };
+            await db.noterAnalyseArbre(p.id, propre);
+            rattrapees++;
+            if (Date.now() - t0 >= 20000) break;
+          }
+        }
+      } finally { arbreProfilsRattrapage = false; }
+    }
+    const restantes = await db.compterArbreSansAnalyse(depuis, AT.ANALYSE_VERSION);
+    const profils = AT.profilsArbre(await db.analysesArbre(depuis));
+    res.json({ ok: true, profils, rattrapees, restantes });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // Rejouer à nouveau une partie gardée (après une correction du moteur, par
 // exemple). Le verdict est mis à jour ; le classement, lui, n'est pas touché.
 app.post('/api/admin/antitriche/parties/:id/rejouer', adminAuth, async (req, res) => {

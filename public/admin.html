@@ -729,6 +729,41 @@
     <thead><tr><th>Fin</th><th>Joueur</th><th>Jeu</th><th>Déclaré</th><th>Vérifié</th><th>Verdict</th><th>Indices</th><th>Durée réelle</th><th>Temps de jeu</th><th title="Les battements datés par le serveur : le jeu suit-il son horloge ?">Battements</th><th>Rythme</th><th>Classée</th><th></th></tr></thead>
     <tbody id="pv-parties"></tbody>
   </table>
+  <h3>Profils de jeu — Arbre creux</h3>
+  <p class="integ-note">
+    Les points par minute d'une partie entière ne se comparent pas d'un joueur à l'autre : le multiplicateur ne monte
+    qu'avec le temps passé une pièce en main (l'escargot s'arrête pendant les cascades), donc une partie <i>courte</i>
+    devrait en faire <i>moins</i>. Ici, chaque partie conforme est rejouée et découpée <b>par palier</b> : au même palier,
+    tout le monde a le même multiplicateur, le même nombre de couleurs et la même vitesse de chute — c'est là que les
+    rythmes se comparent (sous chaque nombre, le temps total passé à ce palier ; rien sous trente secondes). Puis
+    <b>la main</b>, pièce par pièce : <b>réaction</b>, le temps entre l'apparition d'une pièce et la première touche
+    (médiane des parties) et sa <b>variation</b> (écart type / moyenne : un humain varie, un programme beaucoup moins) ;
+    <b>corrections</b>, la part des pièces poussées d'un côté puis de l'autre (une hésitation) ; déplacements et
+    rotations par pièce, pièces par minute, chute accélérée. <span class="rythme-moyen">Orange</span> / <span class="rythme-fort">rouge</span> :
+    1,5 / 2 fois la médiane des joueurs de la liste (pour la réaction et les corrections : 1,5 / 2 fois <i>moins</i>).
+    Des indices, pas des preuves : un très bon joueur sort aussi du lot. Un clic sur un joueur montre ses parties.
+  </p>
+  <div class="toolbar">
+    <select id="pf-jours">
+      <option value="7">7 jours</option>
+      <option value="30" selected>30 jours</option>
+      <option value="90">90 jours</option>
+      <option value="183">6 mois</option>
+    </select>
+    <button class="btn" onclick="loadProfilsArbre()">Calculer les profils</button>
+    <span id="pf-etat" style="margin-left:auto;font-size:13px"></span>
+  </div>
+  <table>
+    <thead><tr><th>Joueur</th><th>Parties</th><th>Temps de jeu</th><th>Durée médiane</th><th>Meilleur</th>
+      <th title="Points par minute de jeu, toutes parties confondues">Pts/min</th>
+      <th title="Points par minute au palier ×1 (3 couleurs)">×1</th><th title="Points par minute au palier ×2 (4 couleurs)">×2</th>
+      <th title="Points par minute au palier ×3 (5 couleurs)">×3</th><th title="Points par minute au palier ×4 (6 couleurs)">×4</th>
+      <th title="Médiane du temps entre l'apparition d'une pièce et la première touche">Réaction</th>
+      <th title="Variation des temps de réaction (écart type / moyenne)">Variation</th>
+      <th title="Part des pièces poussées d'un côté puis de l'autre">Corrections</th>
+      <th>Dépl./pièce</th><th>Rot./pièce</th><th>Pièces/min</th><th title="Part des pièces descendues en chute accélérée">Chute</th></tr></thead>
+    <tbody id="pf-profils"></tbody>
+  </table>
   <h3>Audit des scores déjà classés</h3>
   <p class="integ-note">
     Lecture seule. Les scores du challenge (le jour en cours et les archives) confrontés à ce que la base sait du joueur :
@@ -2129,6 +2164,88 @@ function switchTab(name) {
 // ─── Intégrité : MiniPixiz et Mini-Fever vérifiés ───
 const PV_JEU = { minipixiz: 'MiniPixiz', minifever: 'Mini-Fever' };
 let pvJour = '';
+// LES PROFILS DE JEU DE L'ARBRE CREUX (/api/admin/antitriche/arbre/profils).
+let pfProfils = [];
+const pfOuverts = new Set();
+async function loadProfilsArbre() {
+  $('#pf-etat').innerHTML = '<i>Analyse des parties… (jusqu’à vingt secondes la première fois)</i>';
+  try {
+    const r = await fetch('/api/admin/antitriche/arbre/profils?jours=' + $('#pf-jours').value, { headers: hdr() });
+    const d = await r.json();
+    if (!d.ok) { $('#pf-etat').innerHTML = `<span style="color:#b31111">${esc(d.error || r.status)}</span>`; return; }
+    pfProfils = d.profils || [];
+    const n = pfProfils.reduce((s, p) => s + p.parties, 0);
+    $('#pf-etat').innerHTML = d.sansBase ? 'sans base de données : rien à montrer'
+      : `<span class="count">${pfProfils.length}</span> joueur(s), ${n} partie(s) conforme(s)`
+        + (d.rattrapees ? ` · ${d.rattrapees} profil(s) calculé(s) à l’instant` : '')
+        + (d.restantes ? ` · <b>${d.restantes} partie(s) restent à analyser</b> <button class="btn btn-sm" onclick="loadProfilsArbre()">Continuer</button>` : '');
+    pfAfficher();
+  } catch (e) { $('#pf-etat').innerHTML = `<span style="color:#b31111">${esc(e.message)}</span>`; }
+}
+// La médiane d'une colonne, chez tous les joueurs qui y ont une valeur.
+function pfMediane(vals) {
+  const v = vals.filter((x) => x != null && Number.isFinite(x)).sort((a, b) => a - b);
+  return v.length ? v[Math.floor(v.length / 2)] : null;
+}
+// Une valeur comparée à la médiane des joueurs : orange au-delà de 1,5 fois,
+// rouge au-delà de 2 fois (`bas` : pour les colonnes où c'est PEU qui étonne).
+function pfCellule(v, med, texte, bas) {
+  if (v == null) return '<td style="color:#bbb">—</td>';
+  let style = '', titre = '';
+  if (med) {
+    const k = bas ? med / Math.max(v, 1e-9) : v / med;
+    titre = ` title="${(v / med).toFixed(2).replace('.', ',')} × la médiane des joueurs"`;
+    if (k >= 2) style = ' style="background:#f6c9c9;color:#8a0f0f;font-weight:bold"';
+    else if (k >= 1.5) style = ' style="background:#fde3bf;color:#8a4a00;font-weight:bold"';
+  }
+  return `<td${style}${titre}>${texte}</td>`;
+}
+function pfAfficher() {
+  const P = pfProfils;
+  const cherche = ($('#pv-joueur').value || '').trim().toLowerCase();
+  const nb = (v) => Number(v || 0).toLocaleString('fr-FR');
+  const ms = (v) => (v == null ? '—' : (v / 1000).toFixed(2).replace('.', ',') + ' s');
+  const min = (v) => (v == null ? '—' : v.toFixed(1).replace('.', ',') + ' min');
+  const meds = {
+    ppm: pfMediane(P.map((p) => p.ppm)),
+    pal: [0, 1, 2, 3].map((k) => pfMediane(P.map((p) => p.paliers[k].ppm))),
+    reaction: pfMediane(P.map((p) => p.reaction)),
+    cv: pfMediane(P.map((p) => p.reactionCv)),
+    corrections: pfMediane(P.map((p) => p.correctionsPct)),
+  };
+  $('#pf-profils').innerHTML = P.map((p) => {
+    const ouvert = pfOuverts.has(p.username);
+    const ici = cherche && p.username.toLowerCase() === cherche;
+    let h = `<tr${ici ? ' style="outline:2px solid #e0a000"' : ''}>
+      <td><a href="#" class="uname" onclick="pfBasculer('${esc(p.username)}');return false">${ouvert ? '▾' : '▸'} ${esc(p.username)}</a></td>
+      <td>${p.parties}</td><td>${min(p.minutes)}</td><td>${p.dureeMediane == null ? '—' : min(p.dureeMediane / 60000)}</td>
+      <td>${nb(p.meilleur)}</td>
+      ${pfCellule(p.ppm, meds.ppm, nb(p.ppm))}
+      ${p.paliers.map((x, k) => pfCellule(x.ppm, meds.pal[k], x.ppm == null ? '—' : `${nb(x.ppm)}<div style="font-size:10px;color:#777;font-weight:normal">${min(x.minutes)}</div>`)).join('')}
+      ${pfCellule(p.reaction, meds.reaction, ms(p.reaction), true)}
+      ${pfCellule(p.reactionCv, meds.cv, p.reactionCv == null ? '—' : String(p.reactionCv).replace('.', ','), true)}
+      ${pfCellule(p.correctionsPct, meds.corrections, p.correctionsPct == null ? '—' : String(p.correctionsPct).replace('.', ',') + ' %', true)}
+      <td>${String(p.deplacementsParPiece).replace('.', ',')}</td><td>${String(p.rotationsParPiece).replace('.', ',')}</td>
+      <td>${String(p.piecesParMinute).replace('.', ',')}</td><td>${p.chutePct == null ? '—' : String(p.chutePct).replace('.', ',') + ' %'}</td>
+    </tr>`;
+    if (ouvert) {
+      h += p.liste.map((g) => {
+        const ppm = (x) => (x.ms >= 30000 ? nb(Math.round(x.pts / (x.ms / 60000))) : '—');
+        return `<tr style="background:#f7f9f2;font-size:11px"><td style="padding-left:22px">${tFmtDate(g.le)}</td><td></td>
+          <td>${min(g.tempsJeuMs / 60000)}</td><td></td><td>${nb(g.score)}</td>
+          <td>${g.tempsJeuMs ? nb(Math.round(g.score / (g.tempsJeuMs / 60000))) : '—'}</td>
+          ${g.paliers.map((x) => `<td>${ppm(x)}${x.ms >= 3000 ? `<div style="font-size:10px;color:#777">${min(x.ms / 60000)}</div>` : ''}</td>`).join('')}
+          <td>${ms(g.reaction)}</td><td></td><td>${g.correctionsPct == null ? '—' : String(g.correctionsPct).replace('.', ',') + ' %'}</td><td colspan="4"></td></tr>`;
+      }).join('');
+    }
+    return h;
+  }).join('') || '<tr><td colspan="17" style="text-align:center;color:#999;padding:14px">Aucune partie conforme analysée sur la période.</td></tr>';
+}
+function pfBasculer(u) {
+  if (pfOuverts.has(u)) pfOuverts.delete(u); else pfOuverts.add(u);
+  pfAfficher();
+}
+
 async function loadPortagesVerif() {
   try {
     const q = new URLSearchParams({ jeu: $('#pv-jeu').value, jours: $('#pv-jours').value,

@@ -3016,6 +3016,41 @@ async function listSwapouIaScores(username, limit = 50) {
   return rows;
 }
 
+// ── Les profils de jeu de l'Arbre creux (antitricheLight.analyserArbre) ──
+// Les parties conformes d'une période dont le profil manque (les parties
+// d'avant l'analyse, ou d'une version plus ancienne) : à rattraper.
+async function partiesArbreSansAnalyse(depuis, version, limit) {
+  const { rows } = await pool.query(
+    `SELECT id, graine, journal FROM parties_verifiees
+      WHERE jeu = 'minipixiz' AND verdict = 'conforme' AND source = 'serveur' AND journal <> ''
+        AND cree_le >= $1
+        AND (details IS NULL OR details->'analyse' IS NULL OR COALESCE((details->'analyse'->>'v')::int, 0) < $2)
+      ORDER BY cree_le DESC LIMIT $3`,
+    [depuis, version, Math.max(1, Math.min(Number(limit) || 20, 200))]);
+  return rows;
+}
+async function noterAnalyseArbre(id, analyse) {
+  await pool.query(
+    `UPDATE parties_verifiees SET details = COALESCE(details, '{}'::jsonb) || jsonb_build_object('analyse', $2::jsonb) WHERE id = $1`,
+    [String(id), JSON.stringify(analyse)]);
+}
+async function compterArbreSansAnalyse(depuis, version) {
+  const { rows } = await pool.query(
+    `SELECT COUNT(*)::int AS n FROM parties_verifiees
+      WHERE jeu = 'minipixiz' AND verdict = 'conforme' AND source = 'serveur' AND journal <> ''
+        AND cree_le >= $1
+        AND (details IS NULL OR details->'analyse' IS NULL OR COALESCE((details->'analyse'->>'v')::int, 0) < $2)`,
+    [depuis, version]);
+  return rows[0].n;
+}
+async function analysesArbre(depuis) {
+  const { rows } = await pool.query(
+    `SELECT id, username, cree_le, details->'analyse' AS analyse FROM parties_verifiees
+      WHERE jeu = 'minipixiz' AND verdict = 'conforme' AND cree_le >= $1 AND details->'analyse' IS NOT NULL
+      ORDER BY cree_le DESC`, [depuis]);
+  return rows;
+}
+
 // ── Les parties de Swapou Challenge, vérifiées par rejeu (swapou_parties) ──
 /**
  * Le meilleur score de Swapou Challenge de chacun, entre deux instants : sert
@@ -6184,6 +6219,7 @@ async function upsertBouilleVariante(v, rang) {
 }
 
 module.exports = {
+  partiesArbreSansAnalyse, compterArbreSansAnalyse, noterAnalyseArbre, analysesArbre,
   quetesChargerSemaine,
   quetesEnregistrer,
   quetesMarquerFaite,

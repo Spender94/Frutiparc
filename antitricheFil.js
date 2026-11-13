@@ -5,7 +5,7 @@
  * rejoue ici, hors de la boucle du serveur, une après l'autre.
  *
  * Protocole :
- *   → { n, type: 'arbre' | 'arcade', partie }
+ *   → { n, type: 'arbre' | 'arcade' | 'analyseArbre', partie }
  *   ← { n, resultat }   le verdict (verifierArbre / verifierArcade)
  *   ← { n, erreur }     si le rejeu a planté
  */
@@ -15,7 +15,9 @@ const AT = require('./antitricheLight.js');
 parentPort.on('message', (m) => {
   if (!m) return;
   try {
-    const resultat = m.type === 'arbre' ? AT.verifierArbre(m.partie) : AT.verifierArcade(m.partie);
+    // 'analyseArbre' : le profil de jeu d'une partie d'arbre déjà vérifiée.
+    const resultat = m.type === 'arbre' ? AT.verifierArbre(m.partie)
+      : m.type === 'analyseArbre' ? AT.analyserArbreSansRisque(m.partie) : AT.verifierArcade(m.partie);
     parentPort.postMessage({ n: m.n, resultat });
   } catch (e) {
     parentPort.postMessage({ n: m.n, erreur: String((e && e.message) || e) });

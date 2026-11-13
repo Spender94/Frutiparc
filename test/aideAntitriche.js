@@ -52,6 +52,37 @@ function arbreHonnete(graine, hasard) {
   return { score: lieu.score, journal: rec.journal(), tempsJeuMs: rec.tempsDeJeuMs, fini: lieu.fini };
 }
 
+/**
+ * Une partie d'arbre jouée « à la machine » : à chaque pièce, le même temps
+ * de réaction, puis droit vers une colonne (un seul sens, jamais d'aller-
+ * retour), une rotation au besoin, et la chute. De quoi éprouver le profil de
+ * jeu (antitricheLight.analyserArbre) face au joueur au hasard.
+ */
+function arbreRobot(graine, hasard) {
+  const r = de(hasard || 12345);
+  let nouvelle = false, plan = null, k = 0;
+  const lieu = new X.Arbre({ graine, carte: null, surEvenement: (n) => { if (n === 'nouvellePiece') nouvelle = true; } });
+  const rec = PR.brancher(lieu);
+  const en = lieu.jeu.entree;
+  for (let i = 0; !lieu.fini && i < 400000; i++) {
+    if (nouvelle) {
+      nouvelle = false; k = 0;
+      const d = Math.floor(r() * 9) - 4;
+      plan = { sens: d < 0 ? 'gauche' : 'droite', n: Math.abs(d), tour: r() < 0.5 };
+    }
+    en.gauche = en.droite = en.tourner = en.bas = false;
+    if (plan) {
+      const etape = k - 4;
+      if (etape >= 0 && etape < plan.n * 2) { if (etape % 2 === 0) en[plan.sens] = true; }
+      else if (etape === plan.n * 2 && plan.tour) en.tourner = true;
+      else if (etape > plan.n * 2 + 1) en.bas = true;
+      k++;
+    }
+    lieu.update(0.533);
+  }
+  return { score: lieu.score, journal: rec.journal(), tempsJeuMs: rec.tempsDeJeuMs, fini: lieu.fini };
+}
+
 /** Une arcade jouée au hasard par le VRAI socle, enregistrée comme dans la page. */
 function arcadeHonnete(graine, palier, hasard) {
   const r = de(hasard || 99);
@@ -134,4 +165,4 @@ function arcadeConstruite(graine, palier, victoires, regle) {
   };
 }
 
-module.exports = { arbreHonnete, arcadeHonnete, arcadeConstruite, epreuveVoulue, MESURES, de };
+module.exports = { arbreHonnete, arbreRobot, arcadeHonnete, arcadeConstruite, epreuveVoulue, MESURES, de };
