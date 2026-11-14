@@ -30,6 +30,9 @@
 (function () {
 
 const E = window.MinipixizEngine;
+// Les touches et les appuis SIMULÉS par un script ne jouent pas (cf.
+// js/garde-entrees.js) ; sans la garde (les bacs à sable des tests), tout passe.
+const Garde = window.GardeEntrees || { vraie() { return true; } };
 const CONCENTRATION = (window.MinipixizFee && window.MinipixizFee.CARAC.CONCENTRATION) || 4;
 const BASE = '/minipixiz/';
 const TS = E.TS;
@@ -3671,6 +3674,7 @@ class Client {
       && !this.gromelin && !this.evolution && !this.pause && !this.cine;
 
     this.canvas.addEventListener('touchstart', (ev) => {
+      if (!Garde.vraie(ev)) return;     // un doigt fabriqué par un script
       // Le panneau de montée de niveau n'a pas de survol au doigt : le PREMIER
       // appui sur une case la désigne — son nom dans le bandeau, sa
       // description en bas, comme au passage de la souris — et l'appui suivant
@@ -3715,6 +3719,7 @@ class Client {
     }, { passive: false });
 
     this.canvas.addEventListener('touchmove', (ev) => {
+      if (!Garde.vraie(ev)) return;
       const d = this.doigt;
       if (!d) return;
       const t = [...ev.changedTouches].find((q) => q.identifier === d.id);
@@ -3749,6 +3754,7 @@ class Client {
     // pointeur (clic bref = tourner, glisser = suivre la colonne, tirer vers
     // le bas = la descente rapide). On rejoue exactement le chemin du doigt.
     this.canvas.addEventListener('mousedown', (ev) => {
+      if (!Garde.vraie(ev)) return;
       if (!(this.pref && this.pref.$mouse)) return;
       if (!enJeu() || this.doigt) return;
       ev.preventDefault();
@@ -3764,6 +3770,7 @@ class Client {
       };
     });
     this.canvas.addEventListener('mousemove', (ev) => {
+      if (!Garde.vraie(ev)) return;
       const d = this.doigt;
       if (!d || d.id !== 'souris') return;
       const p = scene(ev);
@@ -3840,6 +3847,7 @@ class Client {
     };
     if (!this.prefRoles) this.prefRoles = {};
     window.addEventListener('keydown', (ev) => {
+      if (!Garde.vraie(ev)) return;     // une touche fabriquée par un script
       if (this.captureTouche) return;   // le moulin écoute : rien ne joue
       // Manager.update : P ou Échap mettent en PAUSE — un voile violet, le
       // panneau, et plus rien ne bouge jusqu'au prochain appui.
@@ -3869,11 +3877,13 @@ class Client {
       if (k) { this.entree[k] = true; ev.preventDefault(); }
     });
     window.addEventListener('keyup', (ev) => {
+      if (!Garde.vraie(ev)) return;
       if (this.prefRoles[ev.keyCode] === 'sort'
         || ev.key === 'Control' || ev.key === 'Shift' || ev.key === 'e') this.aideEnfoncee = false;
       if (ev.key === 'p' || ev.key === 'P' || ev.key === 'Escape') this.pauseEnfoncee = false;
     });
     window.addEventListener('keyup', (ev) => {
+      if (!Garde.vraie(ev)) return;
       const role = this.prefRoles[ev.keyCode];
       if (role && role !== 'sort') { this.entree[role] = false; ev.preventDefault(); return; }
       const k = touches[ev.key];
@@ -3882,7 +3892,7 @@ class Client {
     const boutons = racine.querySelectorAll('[data-cmd]');
     Array.prototype.forEach.call(boutons, (b) => {
       const cmd = b.getAttribute('data-cmd');
-      const on = (ev) => { ev.preventDefault(); this.entree[cmd] = true; b.classList.add('on'); };
+      const on = (ev) => { if (!Garde.vraie(ev)) return; ev.preventDefault(); this.entree[cmd] = true; b.classList.add('on'); };
       const off = (ev) => { ev.preventDefault(); this.entree[cmd] = false; b.classList.remove('on'); };
       b.addEventListener('touchstart', on, { passive: false });
       b.addEventListener('touchend', off, { passive: false });
@@ -3893,7 +3903,7 @@ class Client {
     });
     const aide = racine.querySelector('[data-cmd-aide]');
     if (aide) {
-      const appel = (ev) => { ev.preventDefault(); this.appelerFee(); };
+      const appel = (ev) => { if (!Garde.vraie(ev)) return; ev.preventDefault(); this.appelerFee(); };
       aide.addEventListener('touchstart', appel, { passive: false });
       aide.addEventListener('mousedown', appel);
     }
@@ -3903,7 +3913,7 @@ class Client {
     this.boutonPause = pause || null;
     this.etatBoutonPause = null;
     if (pause) {
-      const basculer = (ev) => { ev.preventDefault(); this.basculerPause(); this.majBoutonPause(); };
+      const basculer = (ev) => { if (!Garde.vraie(ev)) return; ev.preventDefault(); this.basculerPause(); this.majBoutonPause(); };
       pause.addEventListener('touchstart', basculer, { passive: false });
       pause.addEventListener('mousedown', basculer);
       this.majBoutonPause();

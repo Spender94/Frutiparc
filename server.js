@@ -18132,6 +18132,65 @@ function antitricheNoterPartie(p) {
 }
 
 /*
+ * LES ENTRÉES SIMULÉES ET LES SONDES (public/js/garde-entrees.js).
+ *
+ * Les jeux vérifiés refusent les touches et les appuis qu'un script fabrique
+ * (`isTrusted` faux), et leurs pages ne laissent plus l'état du jeu sur
+ * `window` — les anciens noms y sont des pièges muets. La garde compte ce
+ * qu'elle refuse et ce qu'on vient lire, et le dit ici : une alerte pour
+ * l'admin (onglet « Alertes »), au plus une par joueur, jeu et type toutes
+ * les dix minutes. Rien n'est écarté par cette route — le script, lui, n'a
+ * simplement pas joué. Le compte vient du navigateur : un tricheur outillé
+ * peut le taire, jamais le charger sur un autre que lui (la session décide).
+ */
+const entreesSignalees = new Map();
+app.post('/api/antitriche/entrees', (req, res) => {
+  const b = req.body || {};
+  const sid = getSidPorteParLaRequete(req, b);
+  const username = resolveUsernameFromSid(sid);
+  if (!username || !users[username]) return res.status(401).json({ ok: false, error: 'not_authenticated' });
+  const jeu = ['minipixiz', 'minifever'].includes(b.jeu) ? b.jeu : '';
+  if (!jeu) return res.json({ ok: false, error: 'jeu' });
+  const propre = (o) => {
+    const out = {};
+    if (o && typeof o === 'object') {
+      for (const k of Object.keys(o).slice(0, 12)) {
+        const n = Math.floor(Number(o[k]));
+        if (/^[\w$-]{1,24}$/.test(k) && n > 0) out[k] = Math.min(n, 1e6);
+      }
+    }
+    return out;
+  };
+  const types = propre(b.types), sondes = propre(b.sondes);
+  const refuses = Math.max(0, Math.min(1e6, Math.floor(Number(b.refuses) || 0)));
+  const maintenant = Date.now();
+  const noter = (type, alerte) => {
+    const cle = username + '|' + jeu + '|' + type;
+    if (maintenant - (entreesSignalees.get(cle) || 0) < 10 * 60 * 1000) return;
+    entreesSignalees.set(cle, maintenant);
+    signalerTriche(username, Object.assign({ jeu, type, gravite: 'suspect' }, alerte));
+  };
+  if (refuses > 0 && Object.keys(types).length) {
+    noter('entrees_simulees', {
+      resume: 'touches ou appuis fabriqués par un script, refusés par le jeu ('
+        + Object.keys(types).sort().join(', ') + ')',
+      details: { refuses, types },
+    });
+  }
+  if (Object.keys(sondes).length) {
+    noter('sonde_etat', {
+      resume: 'lecture de l’état du jeu depuis la page, par un script ou la console ('
+        + Object.keys(sondes).sort().join(', ') + ')',
+      details: { sondes },
+    });
+  }
+  if (entreesSignalees.size > 5000) {
+    for (const [k, t] of entreesSignalees) if (maintenant - t > 10 * 60 * 1000) entreesSignalees.delete(k);
+  }
+  res.json({ ok: true });
+});
+
+/*
  * LES BATTEMENTS d'une partie vérifiée (antitricheLight.js, « LE RALENTI »).
  *
  * Toutes les deux secondes, et à chaque changement d'état, le jeu dit où en

@@ -332,6 +332,7 @@
 </script>
 
 <!-- La carte de la forêt : un relais par vingt niveaux franchis. -->
+<script src="/js/garde-entrees.js"></script>
 <script src="/minipixiz/engine.js"></script>
 <script src="/minipixiz/items.js"></script>
 <script src="/minipixiz/faerie.js"></script>
@@ -353,6 +354,20 @@
   var $ = function (s) { return document.querySelector(s); };
   var P = window.MinipixizPlateforme;
   var sid = new URLSearchParams(location.search).get('sid') || '';
+  /*
+   * L'ÉTAT DU JEU NE SE LIT PLUS DEPUIS LA PAGE. Le client, la plateforme,
+   * l'inventaire… étaient posés sur `window` pour les vérifications
+   * automatisées : un script (une extension, un assistant) y lisait la grille
+   * et les pièces à venir en une ligne. Ils ne le sont plus qu'en LOCAL
+   * (127.0.0.1, là où tournent ces vérifications). Sur le site, leurs noms
+   * sont des pièges muets : qui les lit est signalé (js/garde-entrees.js), de
+   * même que les touches fabriquées par un script, qui ne jouent plus.
+   */
+  var EN_LOCAL = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+  if (window.GardeEntrees) {
+    window.GardeEntrees.surveiller({ jeu: 'minipixiz', sid: sid });
+    if (!EN_LOCAL) window.GardeEntrees.piege(['__client', 'minipixizClient', '__plateforme', '__inventaire', '__menu']);
+  }
   var plateforme = new P.Plateforme(sid);
   var client = null;
   // base/Forest : une COURSE est une suite de niveaux. On gagne, on passe au
@@ -697,7 +712,7 @@
           niveaux: course.niveaux, dernier: course.niveau,
           objets: course.objets, entree: course.entree,
         }, course.avant).then(function (r) {
-          window.__derniereSauvegarde = r;   // utile aux vérifications automatisées
+          if (EN_LOCAL) window.__derniereSauvegarde = r;   // utile aux vérifications automatisées
         });
         if (window.parent !== window) {
           window.parent.postMessage({ minipixiz: 'fin', score: info.score,
@@ -1232,7 +1247,7 @@
           surFermer: function () { ouvrirMenu(); },
           surAccepter: function () { plateforme.ecrire(plateforme.carte); },
         });
-        window.__gromelin = a;
+        if (EN_LOCAL) window.__gromelin = a;
         return a;
       }
 
@@ -1336,23 +1351,26 @@
       menu.iris = new window.MinipixizClient.Iris(photoTitre, 120, 120);
       client.demarrer();
 
-      window.minipixizClient = client;   // utile aux vérifications automatisées
-      window.__plateforme = plateforme;
-      window.__inventaire = inventaire;
-      window.__menu = menu;
-      window.__client = client;
-      window.__ouvrirMenu = ouvrirMenu;
-      window.__ouvrirMoulin = ouvrirMoulin;
-      window.__ouvrirBassin = ouvrirBassin;
-      window.__ouvrirLieu = ouvrirLieu;
-      window.__ouvrirGromelin = ouvrirGromelin;
-      window.__course = function () { return course; };
-      window.__courrier = courrier;
-      window.__ouvrirCourrier = ouvrirCourrier;
-      window.__ajouterCourrier = ajouterCourrier;
-      window.__feeCouranteSeed = feeCouranteSeed;
-      window.__ouvrirSac = ouvrirSac;
-      window.__entrerEnForet = function () { fermerMenu(); ouvrirCarte(); };
+      // Pour les vérifications automatisées, en local seulement (cf. EN_LOCAL).
+      if (EN_LOCAL) {
+        window.minipixizClient = client;   // utile aux vérifications automatisées
+        window.__plateforme = plateforme;
+        window.__inventaire = inventaire;
+        window.__menu = menu;
+        window.__client = client;
+        window.__ouvrirMenu = ouvrirMenu;
+        window.__ouvrirMoulin = ouvrirMoulin;
+        window.__ouvrirBassin = ouvrirBassin;
+        window.__ouvrirLieu = ouvrirLieu;
+        window.__ouvrirGromelin = ouvrirGromelin;
+        window.__course = function () { return course; };
+        window.__courrier = courrier;
+        window.__ouvrirCourrier = ouvrirCourrier;
+        window.__ajouterCourrier = ajouterCourrier;
+        window.__feeCouranteSeed = feeCouranteSeed;
+        window.__ouvrirSac = ouvrirSac;
+        window.__entrerEnForet = function () { fermerMenu(); ouvrirCarte(); };
+      }
     })
     .catch(function (e) {
       $('#chargement').innerHTML = '<div>Chargement impossible</div><div style="font-size:11px">'

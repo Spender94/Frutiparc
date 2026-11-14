@@ -15,6 +15,9 @@
 
 const sousNode = (typeof module !== 'undefined' && module.exports);
 const E = sousNode ? require('./engine.js') : racine.MinifeverEngine;
+// Les appuis SIMULÉS par un script ne jouent pas (cf. js/garde-entrees.js).
+// Sous Node (les tests), pas de garde : les événements y sont de simples objets.
+const Garde = (!sousNode && racine.GardeEntrees) || { vraie() { return true; } };
 const { LARGEUR, HAUTEUR, IPS, TMOD_LISSAGE, TMOD_SAUT, CADENCE_FLASH } = E;
 const IMAGE_FLASH = 1 / CADENCE_FLASH;
 
@@ -263,17 +266,22 @@ class Client {
     // Au doigt comme à la souris, la POSITION compte autant que l'appui : la
     // moitié des mini-jeux vise avec `_xmouse`. Un appui pose donc aussi le
     // pointeur, sans quoi le premier tour de boucle jouerait à côté.
-    const bouger = (ev) => {
+    const deplacer = (ev) => {
       if (!this.socle) return;
       const p = this.versScene(ev);
       this.socle.bouger(p.x, p.y);
     };
+    // Un pointeur fabriqué par un script ne vise pas et n'appuie pas. (Le
+    // relâchement, lui, n'est pas gardé : le light nous envoie un `blur` de
+    // sa main quand l'onglet change, et lâcher n'a jamais fait gagner.)
+    const bouger = (ev) => { if (Garde.vraie(ev)) deplacer(ev); };
     const bas = (ev) => {
+      if (!Garde.vraie(ev)) return;
       if (ev.cancelable) ev.preventDefault();
       // Figée, la partie ne prend pas cet appui pour un coup : il la RELANCE,
       // et c'est tout — sinon le panier tirerait, la grenouille sauterait.
-      if (this.enPause) { bouger(ev); this.reprendre(); return; }
-      bouger(ev);
+      if (this.enPause) { deplacer(ev); this.reprendre(); return; }
+      deplacer(ev);
       if (this.socle) {
         // Doigt ou souris ? Certains jeux en tiennent compte : Tubulo vise la
         // case VISIBLE au doigt (pas de survol pour guider la main), le

@@ -94,6 +94,7 @@
   </div>
 </div>
 
+<script src="/js/garde-entrees.js"></script>
 <script src="/minifever/engine.js"></script>
 <script src="/minifever/client.js"></script>
 <script src="/minifever/jeux.js"></script>
@@ -111,6 +112,9 @@ const J = window.JournalPartie || {};
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
 const sid = params.get('sid') || '';
+
+// Les appuis simulés par un script sont refusés et signalés (garde-entrees.js).
+if (window.GardeEntrees) window.GardeEntrees.surveiller({ jeu: 'minifever', sid });
 
 const canvas = $('stage');
 let client = null;
