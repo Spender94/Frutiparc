@@ -528,6 +528,7 @@
       <button class="tab" data-tab="alertes" onclick="switchTab('alertes')">Alertes</button>
       <button class="tab" data-tab="swapouverif" onclick="switchTab('swapouverif')">Swapou vérifié</button>
       <button class="tab" data-tab="portagesverif" onclick="switchTab('portagesverif')">Portages vérifiés</button>
+      <button class="tab" data-tab="partiestracees" onclick="switchTab('partiestracees')">Parties tracées</button>
       <button class="tab" data-tab="compteslies" onclick="switchTab('compteslies')">Comptes liés</button>
     </div></div>
   </div>
@@ -691,6 +692,45 @@
   <table>
     <thead><tr><th>Joueur</th><th>Cocktail Swapolotof<br><span style="font-weight:normal">hérités / vérifiés</span></th><th>Total hérités</th><th>Total vérifiés</th><th>Détail (hérités / vérifiés, par combo)</th><th>Décision</th><th></th></tr></thead>
     <tbody id="svc-joueurs"></tbody>
+  </table>
+</div>
+
+<div class="content" id="tab-partiestracees" style="display:none">
+  <div class="toolbar">
+    <button class="btn" onclick="loadPartiesTracees()">Rafraîchir</button>
+    <select id="pt-jeu" onchange="loadPartiesTracees()"><option value="">tous les jeux</option></select>
+    <select id="pt-jours" onchange="loadPartiesTracees()">
+      <option value="1">Aujourd'hui (24 h)</option>
+      <option value="7" selected>7 derniers jours</option>
+      <option value="30">30 derniers jours</option>
+      <option value="183">6 mois</option>
+    </select>
+    <input id="pt-joueur" placeholder="joueur" style="width:120px" onkeydown="if(event.key==='Enter')loadPartiesTracees()">
+    <select id="pt-tri" onchange="ptAfficher()">
+      <option value="fin">plus récentes d'abord</option>
+      <option value="score">score décroissant</option>
+      <option value="ppm">points par minute décroissant</option>
+      <option value="duree">durée croissante</option>
+    </select>
+    <span id="pt-etat" style="margin-left:auto;font-size:13px"></span>
+  </div>
+  <p class="integ-note">
+    Chaque score envoyé par les jeux qui <b>ne se rejouent pas</b> (Kaluga, MotionBall, Burning Kiwi, Frutisnake,
+    Mini-Wave…) laisse une ligne ici, qu'il soit classé ou non. Swapou, l'Arbre creux et Mini-Fever ont leurs propres
+    onglets, avec rejeu.
+    <b>Durée serveur</b> : du début de partie annoncé par le jeu à l'arrivée du score, mesurée par l'horloge du
+    <i>serveur</i> — le navigateur ne peut pas la raccourcir. <span style="color:#b31111">« sans début »</span> : le jeu
+    n'a rien annoncé (normal pour les jeux pas encore équipés ; un score sans début dans un jeu équipé est un indice).
+    <b>Temps de jeu</b> et <b>relevé</b> (statistiques, combos, compteurs) : <i>déclarés par le jeu</i>, donc à lire comme
+    un témoignage. Un temps de jeu <b>plus long que la durée serveur</b> est impossible : il est signalé en rouge.
+    Équipé aujourd'hui : <b>Kaluga</b> (début annoncé, temps de jeu hors pauses, pommes au panier et ratées, points par
+    origine, statistiques et combos du panneau de fin). Les parties d'avant ce traçage ne se reconstituent pas.
+  </p>
+  <table>
+    <thead><tr><th>Fin</th><th>Joueur</th><th>Jeu</th><th>Score</th><th>Réponse</th><th title="Mesurée par le serveur">Durée serveur</th>
+      <th title="Déclaré par le jeu, pauses retirées">Temps de jeu</th><th title="Score par minute de durée serveur (à défaut, de temps de jeu)">Pts/min</th>
+      <th>Relevé</th></tr></thead>
+    <tbody id="pt-liste"></tbody>
   </table>
 </div>
 
@@ -2275,7 +2315,7 @@ function toast(msg) {
 
 function switchTab(name) {
   $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
-  ['stats','serveur','palmares','users','scores','detail','referrals','tournoi','shop','purchases','wallpapers','custompictos','challenge','events','channels','gaspard','banwords','forumcensor','kiloute','trombinoscope','dons','alertes','swapouverif','portagesverif','compteslies','quetes'].forEach(t => {
+  ['stats','serveur','palmares','users','scores','detail','referrals','tournoi','shop','purchases','wallpapers','custompictos','challenge','events','channels','gaspard','banwords','forumcensor','kiloute','trombinoscope','dons','alertes','swapouverif','portagesverif','partiestracees','compteslies','quetes'].forEach(t => {
     const el = $(`#tab-${t}`);
     if (el) el.style.display = t === name ? '' : 'none';
   });
@@ -2305,6 +2345,7 @@ function switchTab(name) {
   if (name === 'compteslies') loadComptesLies();
   if (name === 'alertes') { loadAlertes(); loadBansJeu(); }
   if (name === 'portagesverif') loadPortagesVerif();
+  if (name === 'partiestracees') loadPartiesTracees();
   if (name === 'quetes') loadQuetes();
 }
 
@@ -3194,6 +3235,83 @@ async function loadAlertes() {
       <td><button class="btn btn-sm" onclick="ouvrirFicheTriche('${alAttr(j.username)}')">Fiche</button></td>
     </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;color:#999;padding:14px">Aucune alerte sur 90 jours.</td></tr>';
   } catch (e) { toast('Erreur: ' + e.message); }
+}
+
+// ─── Les parties tracées (/api/admin/parties-tracees) ───
+let ptParties = [];
+function ptDuree(ms) {
+  if (ms == null) return null;
+  const s = Math.round(ms / 1000);
+  return s >= 3600 ? `${Math.floor(s / 3600)} h ${String(Math.floor(s % 3600 / 60)).padStart(2, '0')}`
+    : `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, '0')}`;
+}
+const PT_LIBELLES = { panier: 'pommes au panier', ratees: 'pommes ratées (−500)', ptsPommes: 'points des pommes',
+  ptsCombos: 'points des combos', ptsGrappes: 'points des grappes', ptsOr: 'points des pommes d’or' };
+// Le relevé : l'essentiel sur une ligne, le détail dépliable.
+function ptReleve(r) {
+  if (!r) return '<span style="color:#bbb">—</span>';
+  const p = r.partie || {}, g = r.general || {}, c = r.combos || {};
+  const essentiel = [];
+  if (p.panier != null) essentiel.push(`<b>${p.panier}</b> au panier`);
+  if (p.ratees) essentiel.push(`<b style="color:#b31111">${p.ratees}</b> ratée${p.ratees > 1 ? 's' : ''}`);
+  if (g['Grappe maximum'] != null && g['Grappe maximum'] > 0) essentiel.push(`grappe max <b>${g['Grappe maximum']}</b>`);
+  const combos = Object.entries(c).sort((a, b) => b[1] - a[1]);
+  if (combos.length) essentiel.push(combos.slice(0, 3).map(([n, v]) => `${esc(n.trim())} ×${v}`).join(', '));
+  const table = (titre, o, lib) => {
+    const l = Object.entries(o || {});
+    return l.length ? `<div style="margin-top:4px"><b>${titre}</b><table style="font-size:11px">${l.map(([k, v]) =>
+      `<tr><td style="padding:0 8px 0 0">${esc((lib && lib[k]) || k)}</td><td>${Number(v).toLocaleString('fr-FR')}</td></tr>`).join('')}</table></div>` : '';
+  };
+  return `${essentiel.join(' · ') || '<i>relevé</i>'}<details><summary style="font-size:11px;color:#777">tout le relevé</summary>`
+    + table('La partie', p, PT_LIBELLES) + table('Général', g) + table('Combos', c) + '</details>';
+}
+async function loadPartiesTracees() {
+  try {
+    const q = new URLSearchParams({ jeu: $('#pt-jeu').value, jours: $('#pt-jours').value, joueur: $('#pt-joueur').value.trim() });
+    const d = await (await fetch('/api/admin/parties-tracees?' + q, { headers: hdr() })).json();
+    if (!d.ok) { toast('Erreur: ' + (d.error || 'parties')); return; }
+    const sel = $('#pt-jeu');
+    if (sel.options.length <= 1) {
+      for (const j of d.jeux) { const o = document.createElement('option'); o.value = j.id; o.textContent = j.nom; sel.appendChild(o); }
+    }
+    ptParties = d.parties;
+    ptAfficher();
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+function ptAfficher() {
+  const ppm = (p) => {
+    const ms = p.duree_serveur_ms != null ? p.duree_serveur_ms : p.duree_jeu_ms;
+    return ms > 10000 ? Math.round(Number(p.score) / (ms / 60000)) : null;
+  };
+  const l = ptParties.slice();
+  const tri = $('#pt-tri').value;
+  if (tri === 'score') l.sort((a, b) => Number(b.score) - Number(a.score));
+  else if (tri === 'ppm') l.sort((a, b) => (ppm(b) || -1) - (ppm(a) || -1));
+  else if (tri === 'duree') l.sort((a, b) => (a.duree_serveur_ms ?? 1e12) - (b.duree_serveur_ms ?? 1e12));
+  const sansDebut = l.filter((p) => p.duree_serveur_ms == null).length;
+  $('#pt-etat').innerHTML = `<span class="count">${l.length}</span> partie${l.length > 1 ? 's' : ''}`
+    + (sansDebut ? ` · ${sansDebut} sans début annoncé` : '');
+  $('#pt-liste').innerHTML = l.map((p) => {
+    const r = p.reponse || {};
+    const statut = r.ok === undefined ? '<span style="color:#b31111">refusé</span>'
+      : r.updated ? `<b style="color:#2f8f2f">record du jour</b>${r.newPos ? ` (${r.newPos}<sup>e</sup>)` : ''}`
+      : r.fdBlocked ? 'non classé (plus de FD)' : r.exclu ? '<span style="color:#b31111">non classé (sanction)</span>'
+      : r.horsJour ? 'hors jour (minuit)' : r.sansTemoin ? 'non classé (sans témoin)' : 'compté';
+    const ds = p.duree_serveur_ms, dj = p.duree_jeu_ms;
+    const ment = ds != null && dj != null && dj > ds + 5000;
+    const v = ppm(p);
+    return `<tr>
+      <td style="white-space:nowrap">${tFmtDate(p.fin)}</td>
+      <td><a href="#" class="uname" onclick="$('#pt-joueur').value='${alAttr(p.username)}';loadPartiesTracees();return false">${esc(p.username)}</a></td>
+      <td>${esc(p.ranking_id ? (p.ranking_id) : p.jeu)}</td>
+      <td>${Number(p.score).toLocaleString('fr-FR')}</td>
+      <td style="font-size:11px">${statut}</td>
+      <td>${ds != null ? ptDuree(ds) : '<span style="color:#b31111">sans début</span>'}</td>
+      <td${ment ? ' style="color:#b31111;font-weight:bold" title="Plus long que la durée mesurée par le serveur : impossible"' : ''}>${dj != null ? ptDuree(dj) : '—'}</td>
+      <td>${v != null ? v.toLocaleString('fr-FR') : '—'}</td>
+      <td style="font-size:11px;max-width:360px">${ptReleve(p.releve)}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="9" style="text-align:center;color:#999;padding:14px">Aucune partie tracée avec ces filtres.</td></tr>';
 }
 
 // ─── Les bans par jeu (/api/admin/triche/bans) ───

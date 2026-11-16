@@ -247,6 +247,9 @@ class Manager {
       if (this.root.mcPause) this.root.mcPause.removeMovieClip();
       J.MC.setPColor(this.current, this.fadeColor, 100);
       if (this.current && this.current.barTimer) this.current.barTimer.decal(K.getTimer() - this.pauseStart);
+      // Le temps passé en pause, cumulé : le relevé de la partie le retire de
+      // sa durée (Game.saveScore).
+      this.pauseTotal = (this.pauseTotal || 0) + (K.getTimer() - this.pauseStart);
     }
   }
 }

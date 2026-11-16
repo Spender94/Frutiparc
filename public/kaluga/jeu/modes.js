@@ -96,6 +96,11 @@ class Classic extends J.Game {
   initGame() { super.initGame(); this.initFeuillage('challenge'); }
   startGame() {
     super.startGame();
+    // Le relevé : l'heure du début (hors pauses à venir), et le serveur
+    // prévenu — c'est SON horloge qui dira la durée de la partie.
+    this.debutJeu = K.getTimer();
+    this.pausesAuDebut = this.mng.pauseTotal || 0;
+    if (this.tournament == null && this.mng.client.debutPartie) this.mng.client.debutPartie();
     this.difTimer = 0;
     this.kilo = 0;
     this.step = 1;

@@ -1347,6 +1347,28 @@ async function initSchema() {
         annule      BOOLEAN NOT NULL DEFAULT false
       );
       CREATE INDEX IF NOT EXISTS idx_bans_jeu_user ON bans_jeu(username, jeu);
+      -- LES PARTIES TRACÉES : chaque score qui passe par /api/saveScore (les
+      -- jeux qui ne se rejouent pas : Kaluga, MotionBall, Burning Kiwi…), avec
+      -- ce qu'on en sait — la durée mesurée par le SERVEUR quand le jeu a
+      -- annoncé son début (/api/partie/debut), le temps de jeu et le relevé que
+      -- le jeu déclare (statistiques, combos), et ce que le serveur a répondu.
+      CREATE TABLE IF NOT EXISTS parties_tracees (
+        id                SERIAL PRIMARY KEY,
+        username          TEXT NOT NULL,
+        jeu               TEXT NOT NULL,
+        ranking_id        TEXT NOT NULL DEFAULT '',
+        score             BIGINT NOT NULL DEFAULT 0,
+        data              TEXT NOT NULL DEFAULT '',
+        debut             TIMESTAMPTZ,
+        fin               TIMESTAMPTZ NOT NULL DEFAULT now(),
+        jour              TEXT NOT NULL DEFAULT '',
+        duree_serveur_ms  INTEGER,
+        duree_jeu_ms      INTEGER,
+        releve            JSONB,
+        reponse           JSONB
+      );
+      CREATE INDEX IF NOT EXISTS idx_parties_tracees_user ON parties_tracees(username, fin DESC);
+      CREATE INDEX IF NOT EXISTS idx_parties_tracees_jeu ON parties_tracees(jeu, fin DESC);
       CREATE TABLE IF NOT EXISTS triche_pictos_retires (
         username   TEXT NOT NULL,
         item_name  TEXT NOT NULL,
@@ -1828,6 +1850,32 @@ async function leverBanJeu(id, par, motif, annule) {
       WHERE id = $1 AND leve_le IS NULL RETURNING *`,
     [Number(id), String(par || ''), String(motif || '').slice(0, 500), !!annule]);
   return rows[0] || null;
+}
+// ── Les parties tracées (jeux sans rejeu) ──
+async function tracerPartie(p) {
+  await pool.query(
+    `INSERT INTO parties_tracees (username, jeu, ranking_id, score, data, debut, jour, duree_serveur_ms, duree_jeu_ms, releve, reponse)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+    [String(p.username).toLowerCase(), String(p.jeu || ''), String(p.rankingId || ''), Math.round(Number(p.score) || 0),
+      String(p.data || '').slice(0, 200), p.debut ? new Date(p.debut) : null, String(p.jour || ''),
+      p.dureeServeurMs == null ? null : Math.round(p.dureeServeurMs), p.dureeJeuMs == null ? null : Math.round(p.dureeJeuMs),
+      p.releve ? JSON.stringify(p.releve) : null, p.reponse ? JSON.stringify(p.reponse) : null]);
+}
+async function listerPartiesTracees(f) {
+  const cond = ['fin >= $1'];
+  const args = [f.depuis ? new Date(f.depuis) : new Date(0)];
+  if (f.jeu) { args.push(String(f.jeu)); cond.push(`jeu = $${args.length}`); }
+  if (f.username) { args.push(String(f.username).toLowerCase()); cond.push(`username = $${args.length}`); }
+  args.push(Math.max(1, Math.min(Number(f.limit) || 300, 2000)));
+  const { rows } = await pool.query(
+    `SELECT id, username, jeu, ranking_id, score, data, debut, fin, jour, duree_serveur_ms, duree_jeu_ms, releve, reponse
+       FROM parties_tracees WHERE ${cond.join(' AND ')} ORDER BY fin DESC LIMIT $${args.length}`, args);
+  return rows;
+}
+async function purgerPartiesTracees(jours) {
+  const r = await pool.query('DELETE FROM parties_tracees WHERE fin < now() - make_interval(days => $1)',
+    [Math.max(1, Number(jours) || 0)]);
+  return r.rowCount;
 }
 // Les pictos retirés : la sauvegarde suivante ne doit pas les rendre.
 async function listerPictosRetires() {
@@ -2473,6 +2521,7 @@ async function anonymiserJoueur(username) {
       ['alertes_triche', 'username', 'brut'],
       ['triche_exclusions', 'username', 'brut'],
       ['bans_jeu', 'username', 'brut'],
+      ['parties_tracees', 'username', 'brut'],
       ['triche_pictos_retires', 'username', 'brut'],
       // Ses paris : déjà payés ou bientôt sans objet. Les garder sous la
       // pierre tombale heurterait « un pari par joueur et par match » dès que
@@ -2666,6 +2715,7 @@ const RENOMMAGE_COLONNES = [
   ['alertes_triche', 'username'],
   ['triche_exclusions', 'username'],
   ['bans_jeu', 'username'],
+  ['parties_tracees', 'username'],
   ['triche_pictos_retires', 'username'],
   ['tournament_paris', 'username'],
   ['tournament_paris', 'choix'],
@@ -6549,6 +6599,9 @@ module.exports = {
   listerBansJeu,
   ajouterBanJeu,
   leverBanJeu,
+  tracerPartie,
+  listerPartiesTracees,
+  purgerPartiesTracees,
   listerPictosRetires,
   noterPictoRetire,
   oublierPictoRetire,

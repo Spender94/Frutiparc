@@ -192,6 +192,12 @@ class Game extends J.Slot {
     // repartent de zéro avec la partie.
     this.gOr = 0; this.gMax = 0;
     this.combosRecents = [];
+    // LE RELEVÉ DE LA PARTIE, pour le serveur (et l'admin : « la durée, le
+    // nombre de pommes mises dans le panier, les principaux combos ») — rien
+    // ne s'affiche au joueur, le panneau de fin reste celui d'origine.
+    // panier : pommes encaissées ; ratees : pommes croquées ou emportées
+    // (« beurk », −500) ; et les points selon leur origine.
+    this.trace = { panier: 0, ratees: 0, ptsPommes: 0, ptsCombos: 0, ptsGrappes: 0, ptsOr: 0 };
     this.flEndGame = false;
     this.flEndingGame = false;
     this.initList();
@@ -577,7 +583,18 @@ class Game extends J.Slot {
   }
   saveScore(score) {
     this.flSavingScore = true;
-    this.mng.client.saveScore(score, { tz: this.tzongreInfo.id, gOr: this.gOr | 0, gMax: this.gMax | 0 });
+    // Le relevé part avec le score : le temps de jeu (pauses retirées), les
+    // statistiques du panneau de fin (« Général », « Combo ») et les compteurs
+    // de la partie (initGame).
+    const duree = this.debutJeu != null
+      ? Math.max(0, Math.round(K.getTimer() - this.debutJeu - ((this.mng.pauseTotal || 0) - (this.pausesAuDebut || 0))))
+      : null;
+    const releve = {
+      general: this.stat ? this.stat.vals : {},
+      combos: this.statCombo ? this.statCombo.vals : {},
+      partie: this.trace || {},
+    };
+    this.mng.client.saveScore(score, { tz: this.tzongreInfo.id, gOr: this.gOr | 0, gMax: this.gMax | 0, duree, releve });
     this.endPanelStart.push({ label: 'basic', wait: { o: this, v: 'flSavingScore' }, list: [{ type: 'msg', title: '', msg: 'sauvegarde du score...' }] });
   }
   genEndGamePanel() { this.attachMovie('endGamePanel', 'endGamePanel', this.dp_endGamePanel); }

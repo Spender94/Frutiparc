@@ -186,13 +186,33 @@ class Client {
       this.onSaveScore();
     };
     if (!this.sid) { Promise.resolve().then(() => finir(null)); return; }
-    const p = new URLSearchParams({ sid: this.sid, game: 'kaluga', m: '0', score: String(Math.max(0, Math.floor(score))), data: tz + ':' + gOr + ':' + gMax });
-    fetch('/api/saveScore?' + p.toString())
+    const champs = { sid: this.sid, game: 'kaluga', m: '0', score: String(Math.max(0, Math.floor(score))), data: tz + ':' + gOr + ':' + gMax };
+    // LE RELEVÉ DE LA PARTIE (traçage côté serveur, onglet « Parties ») : le
+    // temps de jeu hors pauses, et les statistiques du panneau de fin. Il part
+    // dans le corps (POST) : il ne tiendrait pas proprement dans une URL.
+    if (data && data.duree != null) champs.duree = String(data.duree);
+    if (data && data.releve) {
+      try { champs.releve = JSON.stringify(data.releve).slice(0, 6000); } catch (e) { /* relevé illisible : sans */ }
+    }
+    fetch('/api/saveScore', { method: 'POST', body: new URLSearchParams(champs) })
       .then((r) => r.json().catch(() => null).then((j) => (j && typeof j === 'object' ? j : { ok: r.ok, error: 'reseau' })))
       .catch(() => ({ ok: false, error: 'reseau' }))
       .then(finir);
   }
   onSaveScore() { this.mng.scoreSaved(); }
+
+  /*
+   * LE DÉBUT D'UNE PARTIE CLASSÉE — l'heure en est prise par le SERVEUR
+   * (/api/partie/debut) : avec celle du score, elle donne la vraie durée de la
+   * partie, que le navigateur ne peut pas raconter à sa façon.
+   */
+  debutPartie() {
+    if (!this.sid) return;
+    fetch('/api/partie/debut', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sid: this.sid, jeu: 'kaluga' }), keepalive: true,
+    }).catch(() => {});
+  }
 
   /*
    * LES QUÊTES DE GROMELIN. Une épreuve n'a pas de classement : sa trace est

@@ -372,7 +372,9 @@ test('le portage envoie la plus grosse grappe, en troisième champ', () => {
   const r = methode(SPRITES, 'Panier extends Phys', 'removeScore');
   assert.match(r, /this\.game\.gOr = \(this\.game\.gOr \| 0\) \| this\.grappe;/, 'le OU du disque rustiné reste');
   assert.match(r, /this\.game\.gMax = Math\.max\(this\.game\.gMax \| 0, this\.grappe\);/, 'et le maximum s’y ajoute');
-  assert.match(GAME, /saveScore\(score, \{ tz: this\.tzongreInfo\.id, gOr: this\.gOr \| 0, gMax: this\.gMax \| 0 \}\)/);
+  // (Le relevé de la partie — temps de jeu, statistiques — voyage avec : cf.
+  // test/partiesTracees.test.js.)
+  assert.match(GAME, /saveScore\(score, \{ tz: this\.tzongreInfo\.id, gOr: this\.gOr \| 0, gMax: this\.gMax \| 0[^}]*\}\)/);
   assert.match(PLATEFORME, /data: tz \+ ':' \+ gOr \+ ':' \+ gMax/, '« tz:g:max »');
   // Côté serveur, le partage se fait sur ce maximum quand il est là — et une
   // partie SANS TÉMOIN n'entre dans aucun des deux tableaux plutôt que d'aller

@@ -3000,6 +3000,8 @@ function jeuDeClassement(jeu) {
 }
 function noterDebutPartie(username, jeu, quand) {
   if (!username || !jeu) return;
+  // Le même début date aussi la partie tracée (cf. « LES PARTIES TRACÉES »).
+  noterDebutTrace(username, jeu, quand);
   debutsDePartie.set(`${username}::${jeuDeClassement(jeu)}`, { t: Number(quand) || Date.now(), refusLe: 0 });
   if (debutsDePartie.size > 5000) {
     const limite = Date.now() - 24 * 3600 * 1000;
@@ -11223,8 +11225,138 @@ async function handleSaveScore(req, res) {
     horsJour: !!(result.horsJour || (extraResult && extraResult.horsJour)) || undefined,
   });
 }
-app.post('/api/saveScore', handleSaveScore);
-app.get('/api/saveScore', handleSaveScore);
+/*
+ * LES PARTIES TRACÉES — pour les jeux qui ne se rejouent pas (demande de
+ * l'admin : « un joueur vient de battre le record de Kaluga freestyle dès sa
+ * première partie… J'ai besoin de savoir à minima la durée de la partie, le
+ * nombre de pommes mises dans le panier, les principaux combos »).
+ *
+ * Chaque score qui passe par /api/saveScore laisse une ligne
+ * (parties_tracees) : le score, la donnée, ce que le serveur a répondu
+ * (classé ou non, et pourquoi), et ce qu'on sait de la partie :
+ *
+ *   · LA DURÉE SERVEUR — entre le début annoncé par le jeu (/api/partie/debut,
+ *     ou les débuts que le serveur voit déjà passer : le « claim » d'un Fruit
+ *     Défendu, la graine de Swapou…) et l'arrivée du score. C'est l'horloge
+ *     du serveur : le navigateur ne peut pas la raccourcir. Absente si le jeu
+ *     n'a rien annoncé (un score sans début annoncé est en soi un indice) ;
+ *   · LE TEMPS DE JEU et LE RELEVÉ que le jeu déclare (`duree`, `releve` :
+ *     statistiques, combos, compteurs) — utiles pour comprendre une partie,
+ *     mais écrits par le navigateur : à lire comme un témoignage, pas comme
+ *     une preuve. Un temps de jeu qui dépasse la durée serveur, lui, est un
+ *     mensonge.
+ *
+ * Swapou a son propre journal (swapou_parties, rejoué), MiniPixiz et
+ * Mini-Fever le leur (parties_verifiees) : ils ne passent pas par ici.
+ * Rétention : celle des autres journaux de parties (rgpdBalayage).
+ */
+const debutsTrace = new Map();               // « pseudo::jeu » → heure du début (serveur)
+const DEBUT_TRACE_MAX_MS = 6 * 3600 * 1000;  // au-delà, un début oublié ne date plus rien
+const PARTIES_TRACEES_MEMOIRE = [];          // sans base : les dernières, pour l'admin et les tests
+function noterDebutTrace(username, jeu, quand) {
+  if (!username || !jeu) return;
+  debutsTrace.set(`${String(username).toLowerCase()}::${jeuDeClassement(jeu)}`, Number(quand) || Date.now());
+  if (debutsTrace.size > 5000) {
+    const limite = Date.now() - DEBUT_TRACE_MAX_MS;
+    for (const [k, t] of debutsTrace) if (t < limite) debutsTrace.delete(k);
+  }
+}
+// Le relevé déclaré par le jeu : un objet de nombres, par rubriques, borné.
+function releveDeclare(brut) {
+  if (brut == null || brut === '') return null;
+  let o = brut;
+  if (typeof o === 'string') { if (o.length > 8000) return null; try { o = JSON.parse(o); } catch { return null; } }
+  if (!o || typeof o !== 'object' || Array.isArray(o)) return null;
+  const out = {};
+  for (const rub of Object.keys(o).slice(0, 8)) {
+    const v = o[rub];
+    if (!v || typeof v !== 'object' || Array.isArray(v)) continue;
+    const r = {};
+    for (const k of Object.keys(v).slice(0, 60)) {
+      const n = Number(v[k]);
+      if (Number.isFinite(n) && String(k).length <= 60) r[String(k)] = Math.round(n * 100) / 100;
+    }
+    if (Object.keys(r).length) out[String(rub).slice(0, 30)] = r;
+  }
+  return Object.keys(out).length ? out : null;
+}
+function tracerPartieJouee(req, corps, recuA) {
+  const params = Object.assign({}, req.query || {}, req.body || {});
+  const sid = String(params.sid || sidDuReferer(req) || '');
+  const username = sid && sessions[sid] ? sessions[sid].user : '';
+  if (!username || !corps || typeof corps !== 'object') return;
+  const gameName = String(params.game || params.g || params.disc || '');
+  const rk = corps.rankingId && RANKINGS[corps.rankingId] ? corps.rankingId : '';
+  const jeu = rk ? RANKINGS[rk].game : jeuDeClassement(gameName.toLowerCase());
+  if (!jeu || ['swapou2', 'minipixiz', 'minifever'].includes(jeu)) return;
+  const cle = `${String(username).toLowerCase()}::${jeu}`;
+  const debut = debutsTrace.get(cle);
+  const debutValable = debut && recuA - debut >= 0 && recuA - debut < DEBUT_TRACE_MAX_MS;
+  if (debut) debutsTrace.delete(cle);             // un début ne date qu'une partie
+  const dureeJeu = Number(params.duree);
+  const reponse = {};
+  for (const k of ['ok', 'updated', 'newPos', 'fdBlocked', 'horsJour', 'sansTemoin', 'exclu', 'error', 'iaNonClasse']) {
+    if (corps[k] !== undefined && corps[k] !== null && corps[k] !== false) reponse[k] = corps[k];
+  }
+  const ligne = {
+    username: String(username).toLowerCase(), jeu, rankingId: rk,
+    score: Number(params.score || params.s || 0) || 0,
+    data: serializeScoreData(params.data ?? params.da ?? params.r ?? params.misc ?? params.md ?? params.tz ?? ''),
+    debut: debutValable ? new Date(debut).toISOString() : null,
+    jour: parisDayKey(),
+    dureeServeurMs: debutValable ? recuA - debut : null,
+    dureeJeuMs: Number.isFinite(dureeJeu) && dureeJeu >= 0 && dureeJeu < 24 * 3600 * 1000 ? Math.round(dureeJeu) : null,
+    releve: releveDeclare(params.releve),
+    reponse,
+  };
+  if (process.env.DATABASE_URL) db.tracerPartie(ligne).catch(dbErr('tracerPartie'));
+  else {
+    PARTIES_TRACEES_MEMOIRE.unshift(Object.assign({ id: PARTIES_TRACEES_MEMOIRE.length + 1, fin: new Date(recuA).toISOString() }, ligne));
+    if (PARTIES_TRACEES_MEMOIRE.length > 2000) PARTIES_TRACEES_MEMOIRE.length = 2000;
+  }
+}
+// L'enveloppe : le score suit son chemin (handleSaveScore) ; la réponse qu'il
+// reçoit est lue au passage pour la trace. Rien ne change pour le jeu.
+function handleSaveScoreTrace(req, res) {
+  const recuA = Date.now();
+  const envoyer = res.json.bind(res);
+  res.json = (corps) => {
+    try { tracerPartieJouee(req, corps, recuA); } catch (e) { console.error('[TRACE] partie :', e.message); }
+    return envoyer(corps);
+  };
+  return handleSaveScore(req, res);
+}
+app.post('/api/saveScore', handleSaveScoreTrace);
+app.get('/api/saveScore', handleSaveScoreTrace);
+
+// Le début d'une partie classée, annoncé par le jeu : l'heure est celle du serveur.
+app.post('/api/partie/debut', (req, res) => {
+  const b = req.body || {};
+  const sid = getSidPorteParLaRequete(req, b);
+  const username = resolveUsernameFromSid(sid);
+  if (!username || !users[username]) return res.status(401).json({ ok: false, error: 'not_authenticated' });
+  const jeu = jeuDeClassement(String(b.jeu || '').toLowerCase());
+  if (!jeuxBannissables().some((j) => j.id === jeu)) return res.json({ ok: false, error: 'jeu' });
+  noterDebutTrace(username, jeu);
+  res.json({ ok: true });
+});
+
+// L'admin : les parties tracées (filtres : jeu, joueur, période).
+app.get('/api/admin/parties-tracees', adminAuth, async (req, res) => {
+  const jours = Math.max(1, Math.min(Number(req.query.jours) || 7, 400));
+  const depuis = new Date(Date.now() - jours * 86400000);
+  const jeu = String(req.query.jeu || '');
+  const u = req.query.joueur ? normalizeUsername(req.query.joueur) : '';
+  try {
+    let parties;
+    if (process.env.DATABASE_URL) parties = await db.listerPartiesTracees({ depuis, jeu, username: u, limit: req.query.limit || 500 });
+    else parties = PARTIES_TRACEES_MEMOIRE.filter((p) => new Date(p.fin) >= depuis && (!jeu || p.jeu === jeu) && (!u || p.username === u))
+      .map((p) => ({ id: p.id, username: p.username, jeu: p.jeu, ranking_id: p.rankingId, score: p.score, data: p.data,
+        debut: p.debut, fin: p.fin, jour: p.jour, duree_serveur_ms: p.dureeServeurMs, duree_jeu_ms: p.dureeJeuMs,
+        releve: p.releve, reponse: p.reponse }));
+    res.json({ ok: true, parties, jeux: jeuxBannissables().filter((j) => !['swapou2', 'minipixiz', 'minifever'].includes(j.id)) });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 
 // Réservée à l'admin, comme toutes les routes /api/admin : elle n'avait AUCUN
 // contrôle d'accès — un simple POST suffisait à vider un classement entier,
@@ -15972,6 +16104,8 @@ async function rgpdBalayage() {
     bilan.swapou = await db.purgerPartiesSwapou(RGPD_IP_JOURS);
     // Les parties vérifiées de MiniPixiz et Mini-Fever : la même durée.
     bilan.partiesVerifiees = await db.purgerPartiesVerifiees(RGPD_IP_JOURS);
+    // Les parties tracées des autres jeux : la même durée.
+    bilan.partiesTracees = await db.purgerPartiesTracees(RGPD_IP_JOURS);
     // L'historique des sauvegardes (l'IP y figure) : la même durée.
     bilan.historiqueSlots = await db.purgerHistoriqueSlots(RGPD_IP_JOURS);
   } catch (e) {

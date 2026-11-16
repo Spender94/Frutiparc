@@ -994,19 +994,26 @@ class Panier extends Phys {
       this.game.onCombo(fig.name, fig.b, fruit);
     }
     if (this.game.type === '$classic') {
+      const tr = this.game.trace;
       if (fruit.flScoreAble && fruit.antList.length === 0) {
+        const brut = Math.round((fruit.weight - fruit.crunch) * 100);   // (le relevé)
         let point = Math.round((fruit.weight - fruit.crunch) * 100);
         if (fruit.flGold) point = this.pointsPommeOr(fruit, point);
+        if (tr) {
+          tr.panier++;
+          if (fruit.flGold) tr.ptsOr += point; else tr.ptsPommes += brut;
+        }
         if (point > 0) {
           this.addScore(point);
           const bonus = this.checkCombo(fruit);
-          if (bonus > 0) point += bonus;
+          if (bonus > 0) { point += bonus; if (tr) tr.ptsCombos += bonus; }
           this.game.mng.sfx.play('sBonus');
         }
         this.game.score += point;
       } else {
         this.game.scroller.put('beurk!', '-500');
         this.game.score -= 500;
+        if (tr) tr.ratees++;
       }
       this.game.updateScore();
     } else {
@@ -1057,6 +1064,7 @@ class Panier extends Phys {
       const bonus = Math.pow(2, Math.min(this.grappe, 11)) * 10;
       this.game.scroller.put(this.grapName[this.grappe], '+' + bonus);
       this.game.score += bonus;
+      if (this.game.trace) this.game.trace.ptsGrappes += bonus;
       this.game.stat.bestVal('Grappe maximum', this.grappe);
       this.game.updateScore();
     }
