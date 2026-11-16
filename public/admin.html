@@ -534,7 +534,7 @@
 
 <div class="content" id="tab-alertes" style="display:none">
   <div class="toolbar">
-    <button class="btn" onclick="loadAlertes()">Rafraîchir</button>
+    <button class="btn" onclick="loadAlertes();loadBansJeu()">Rafraîchir</button>
     <select id="al-statut" onchange="loadAlertes()">
       <option value="ouverte" selected>ouvertes</option>
       <option value="classee">classées sans suite</option>
@@ -574,6 +574,39 @@
     bondissent plus qu'une longue séance ne le permet). Une alerte est un indice, pas une preuve : lis la fiche.
   </p>
   <div id="al-fiche"></div>
+  <h3>Bans par jeu</h3>
+  <p class="integ-note">
+    Tant qu'un ban court, les scores du joueur à <b>ce jeu</b> ne sont plus classés : ni classement, ni médaille, ni
+    tournoi. Il peut continuer à y jouer (ses parties restent enregistrées, et vérifiées pour les jeux qui le sont).
+    <b>Barème</b> : chaque ban reçu à un jeu fait monter l'échelon du suivant — 1<sup>er</sup> : 1 mois,
+    2<sup>e</sup> : 3 mois, 3<sup>e</sup> : définitif. La durée proposée suit l'échelon ; tu restes libre d'en choisir une
+    autre. Un ban <b>levé pour erreur</b> ne compte pas dans le barème. À la fin de la durée, le ban cesse tout seul.
+  </p>
+  <div class="toolbar" style="flex-wrap:wrap;gap:6px">
+    <input id="bj-joueur" placeholder="joueur" style="width:120px" onchange="bjProposer()">
+    <select id="bj-jeu" onchange="bjProposer()"><option value="">— jeu —</option></select>
+    <select id="bj-duree" onchange="bjDureeAutre()">
+      <option value="7">7 jours</option><option value="30">1 mois</option><option value="90">3 mois</option>
+      <option value="180">6 mois</option><option value="365">1 an</option><option value="definitif">définitif</option>
+      <option value="autre">autre…</option>
+    </select>
+    <input id="bj-jours" type="number" min="1" max="3650" placeholder="jours" style="width:70px;display:none">
+    <input id="bj-motif" placeholder="motif (obligatoire)" style="width:240px">
+    <label style="font-size:12px" title="Ses scores du jour à ce jeu quittent le tableau : pas de médaille ce soir">
+      <input type="checkbox" id="bj-retirer" checked> retirer ses scores du jour</label>
+    <label style="font-size:12px" title="Le joueur reçoit la sanction (jeu, durée, motif) dans son historique">
+      <input type="checkbox" id="bj-prevenir" checked> prévenir le joueur</label>
+    <button class="btn btn-danger" onclick="bjBannir()">Bannir de ce jeu</button>
+    <span id="bj-proposition" style="font-size:12px;color:#555"></span>
+  </div>
+  <div class="toolbar">
+    <label style="font-size:12px"><input type="checkbox" id="bj-historique" onchange="loadBansJeu()"> montrer aussi les bans finis et levés</label>
+    <span id="bj-etat" style="margin-left:auto;font-size:13px"></span>
+  </div>
+  <table>
+    <thead><tr><th>Joueur</th><th>Jeu</th><th>Depuis</th><th>Jusqu'au</th><th>Échelon</th><th>Motif</th><th>Statut</th><th></th></tr></thead>
+    <tbody id="bj-liste"></tbody>
+  </table>
   <h3>Par joueur</h3>
   <p class="integ-note">Les 90 derniers jours, les actions de l'admin mises à part. Un clic sur un joueur ouvre sa fiche de suspicion.</p>
   <table>
@@ -2270,7 +2303,7 @@ function switchTab(name) {
   if (name === 'swapouverif') { loadSwapouVerif(); loadSwapouCombos(); }
   else swapouVerifSuivre(false);
   if (name === 'compteslies') loadComptesLies();
-  if (name === 'alertes') loadAlertes();
+  if (name === 'alertes') { loadAlertes(); loadBansJeu(); }
   if (name === 'portagesverif') loadPortagesVerif();
   if (name === 'quetes') loadQuetes();
 }
@@ -3163,6 +3196,102 @@ async function loadAlertes() {
   } catch (e) { toast('Erreur: ' + e.message); }
 }
 
+// ─── Les bans par jeu (/api/admin/triche/bans) ───
+let bjJeux = [];
+const BJ_STATUTS = { en_cours: ['en cours', '#b31111'], fini: ['fini', '#777'], leve: ['levé', '#2C4A0F'], annule: ['levé (erreur)', '#999'] };
+function bjDate(iso) { return iso ? new Date(iso).toLocaleDateString('fr-FR') : ''; }
+function bjDureeLisible(jours) {
+  if (jours == null) return 'définitif';
+  return { 7: '7 jours', 30: '1 mois', 90: '3 mois', 180: '6 mois', 365: '1 an' }[jours] || `${jours} jours`;
+}
+async function loadBansJeu() {
+  try {
+    const d = await (await fetch('/api/admin/triche/bans' + ($('#bj-historique').checked ? '?tous=1' : ''), { headers: hdr() })).json();
+    if (!d.ok) { toast('Erreur: ' + (d.error || 'bans')); return; }
+    if (!bjJeux.length || bjJeux.length !== d.jeux.length) {
+      bjJeux = d.jeux;
+      const choisi = $('#bj-jeu').value;
+      $('#bj-jeu').innerHTML = '<option value="">— jeu —</option>'
+        + bjJeux.map((j) => `<option value="${alAttr(j.id)}"${j.id === choisi ? ' selected' : ''}>${esc(j.nom)}</option>`).join('');
+    }
+    const enCours = d.bans.filter((b) => b.enCours).length;
+    $('#bj-etat').innerHTML = `<span class="count">${enCours}</span> ban${enCours > 1 ? 's' : ''} en cours`;
+    $('#bj-liste').innerHTML = d.bans.map((b) => {
+      const st = BJ_STATUTS[b.statut] || [b.statut, '#777'];
+      const leve = b.leveLe ? `<div style="font-size:11px;color:#777">levé le ${bjDate(b.leveLe)}${b.leveMotif ? ' — ' + esc(b.leveMotif) : ''}</div>` : '';
+      return `<tr>
+        <td><a href="#" class="uname" onclick="ouvrirFicheTriche('${alAttr(b.username)}');return false">${esc(b.username)}</a></td>
+        <td>${esc(b.nomJeu)}</td><td>${bjDate(b.debut)}</td>
+        <td>${b.fin ? bjDate(b.fin) : '<b>définitif</b>'}</td><td>${b.echelon}</td>
+        <td style="max-width:280px">${esc(b.motif)}</td>
+        <td><b style="color:${st[1]}">${st[0]}</b>${leve}</td>
+        <td>${b.enCours ? `<button class="btn btn-sm" onclick="bjLever(${b.id}, '${alAttr(b.username)}', '${alAttr(b.nomJeu)}')">Lever</button>` : ''}</td>
+      </tr>`;
+    }).join('') || `<tr><td colspan="8" style="text-align:center;color:#999;padding:14px">Aucun ban${$('#bj-historique').checked ? '' : ' en cours'}.</td></tr>`;
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+function bjDureeAutre() {
+  $('#bj-jours').style.display = $('#bj-duree').value === 'autre' ? '' : 'none';
+}
+// L'échelon du barème pour ce joueur à ce jeu : la durée proposée se pose d'elle-même.
+async function bjProposer() {
+  const joueur = $('#bj-joueur').value.trim(), jeu = $('#bj-jeu').value;
+  $('#bj-proposition').textContent = '';
+  if (!joueur || !jeu) return;
+  try {
+    const d = await (await fetch('/api/admin/triche/bans/proposition?' + new URLSearchParams({ joueur, jeu }), { headers: hdr() })).json();
+    if (!d.ok) return;
+    const val = d.jours == null ? 'definitif' : String(d.jours);
+    if ([...$('#bj-duree').options].some((o) => o.value === val)) $('#bj-duree').value = val;
+    else { $('#bj-duree').value = 'autre'; $('#bj-jours').value = d.jours; }
+    bjDureeAutre();
+    $('#bj-proposition').innerHTML = `échelon <b>${d.echelon}</b> (${d.precedents} ban${d.precedents > 1 ? 's' : ''} déjà reçu${d.precedents > 1 ? 's' : ''} à ce jeu) : `
+      + `durée proposée <b>${bjDureeLisible(d.jours)}</b>`
+      + (d.enCours ? ` · <b style="color:#b31111">un ban court déjà jusqu’au ${d.enCours.fin ? bjDate(d.enCours.fin) : '(définitif)'}</b>` : '');
+  } catch (e) { /* la proposition n'est qu'une aide */ }
+}
+// Depuis la fiche : le formulaire pré-rempli avec le joueur.
+function bjPreparer(u) {
+  $('#bj-joueur').value = u;
+  $('#bj-motif').focus();
+  $('#bj-joueur').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  bjProposer();
+}
+async function bjBannir() {
+  const joueur = $('#bj-joueur').value.trim(), jeu = $('#bj-jeu').value, motif = $('#bj-motif').value.trim();
+  if (!joueur || !jeu) { toast('Le joueur et le jeu'); return; }
+  if (!motif) { toast('Le motif est obligatoire'); return; }
+  const v = $('#bj-duree').value;
+  const jours = v === 'definitif' ? null : v === 'autre' ? Number($('#bj-jours').value) : Number(v);
+  if (jours !== null && !(jours >= 1)) { toast('La durée en jours'); return; }
+  const nomJeu = (bjJeux.find((j) => j.id === jeu) || {}).nom || jeu;
+  if (!confirm(`Bannir ${joueur} de ${nomJeu} — ${bjDureeLisible(jours)} ?\n\nMotif : ${motif}`
+    + ($('#bj-retirer').checked ? '\nSes scores du jour à ce jeu quittent le tableau.' : '')
+    + ($('#bj-prevenir').checked ? '\nIl en sera prévenu.' : '\nIl n’en sera PAS prévenu.'))) return;
+  try {
+    const d = await alPost('/api/admin/triche/bans', { joueur, jeu, jours, motif,
+      retirerDuJour: $('#bj-retirer').checked, prevenir: $('#bj-prevenir').checked });
+    if (!d.ok) { toast('Erreur: ' + (d.error || 'ban refusé')); return; }
+    toast(`${joueur} banni de ${nomJeu}` + (d.retires.length ? ` · ${d.retires.length} score(s) du jour retiré(s)` : ''));
+    $('#bj-motif').value = '';
+    $('#bj-proposition').textContent = '';
+    loadBansJeu();
+    if (alFiche) ouvrirFicheTriche(alFiche, true);
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+async function bjLever(id, u, nomJeu) {
+  const motif = prompt(`Lever le ban de ${u} à ${nomJeu} ?\nSes prochains scores seront de nouveau classés.\nUn motif :`, '');
+  if (motif === null) return;
+  const erreur = confirm('Ce ban était-il une ERREUR ?\n\nOK : il ne comptera pas dans le barème (le prochain ban repartira au même échelon).\nAnnuler : il compte (levée anticipée).');
+  try {
+    const d = await alPost('/api/admin/triche/bans/' + id + '/lever', { motif, erreur });
+    if (!d.ok) { toast('Erreur: ' + (d.error || 'levée refusée')); return; }
+    toast('Ban levé');
+    loadBansJeu();
+    if (alFiche) ouvrirFicheTriche(alFiche, true);
+  } catch (e) { toast('Erreur: ' + e.message); }
+}
+
 async function alTraiter(id, statut) {
   let note = '';
   if (statut === 'traitee') {
@@ -3250,8 +3379,10 @@ function alRenduFiche(d) {
     <h3>Fiche de suspicion — ${esc(c.affichage || u)}
       ${c.banni ? '<span class="badge" style="background:#b31111;color:#fff">banni</span>' : ''}
       ${exclu ? `<span class="badge" style="background:#7a1010;color:#fff" title="${alAttr(exclu.motif || '')}">exclu des classements</span>` : ''}
+      ${(c.bans || []).filter((b) => b.enCours).map((b) => `<span class="badge" style="background:#b35a11;color:#fff" title="${alAttr(b.motif || '')}">banni de ${esc(b.nomJeu)} ${b.fin ? 'jusqu’au ' + bjDate(b.fin) : '(définitif)'}</span>`).join(' ')}
       ${!c.existe ? '<span class="badge" style="background:#ddd;color:#555">compte introuvable</span>' : ''}
       <span class="al-actions">
+        <button class="btn btn-sm" onclick="bjPreparer('${ux}')">Bannir d’un jeu…</button>
         ${exclu ? `<button class="btn btn-sm" onclick="alExclure('${ux}', false)">Lever l’exclusion</button>`
           : `<button class="btn btn-sm" onclick="alExclure('${ux}', true)">Exclure des classements…</button>`}
         <button class="btn btn-sm" onclick="viewUser('${ux}')">Détail joueur</button>
@@ -3269,6 +3400,17 @@ function alRenduFiche(d) {
   h += alSection('Alertes', d.alertes.length, d.alertes.length
     ? `<table><thead><tr><th>Quand</th><th>Jeu</th><th>Type</th><th>Gravité</th><th>Résumé</th><th>Statut</th><th></th></tr></thead><tbody>${d.alertes.map((a) => alLigneAlerte(a, false)).join('')}</tbody></table>`
     : '<div class="al-vide">Aucune alerte.</div>', true);
+
+  // 1 bis. Ses bans par jeu, en cours et passés (le barème se lit ici).
+  const bans = c.bans || [];
+  if (bans.length) {
+    h += alSection('Bans par jeu', bans.length, `<table><thead><tr><th>Jeu</th><th>Depuis</th><th>Jusqu'au</th><th>Échelon</th><th>Motif</th><th>Statut</th><th></th></tr></thead><tbody>${bans.map((b) => {
+      const st = BJ_STATUTS[b.statut] || [b.statut, '#777'];
+      return `<tr><td>${esc(b.nomJeu)}</td><td>${bjDate(b.debut)}</td><td>${b.fin ? bjDate(b.fin) : '<b>définitif</b>'}</td>
+        <td>${b.echelon}</td><td>${esc(b.motif)}</td><td><b style="color:${st[1]}">${st[0]}</b>${b.leveMotif ? `<div style="font-size:11px;color:#777">${esc(b.leveMotif)}</div>` : ''}</td>
+        <td>${b.enCours ? `<button class="btn btn-sm" onclick="bjLever(${b.id}, '${ux}', '${alAttr(b.nomJeu)}')">Lever</button>` : ''}</td></tr>`;
+    }).join('')}</tbody></table>`, bans.some((b) => b.enCours));
+  }
 
   // 2. Les scores, contre sa distribution habituelle.
   const lignesScores = d.scores.map((x) => {

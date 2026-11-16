@@ -1327,6 +1327,26 @@ async function initSchema() {
         par       TEXT NOT NULL DEFAULT '',
         motif     TEXT NOT NULL DEFAULT ''
       );
+      -- LES BANS PAR JEU, à durée : le joueur ne se classe plus à CE jeu
+      -- (classements, médailles, tournois) jusqu'à « fin » — NULL : définitif.
+      -- Une ligne par sanction, jamais effacée : c'est l'historique qui fait
+      -- l'échelon de la suivante (barème progressif). « annule » : levé parce
+      -- que c'était une erreur — ne compte pas dans le barème.
+      CREATE TABLE IF NOT EXISTS bans_jeu (
+        id          SERIAL PRIMARY KEY,
+        username    TEXT NOT NULL,
+        jeu         TEXT NOT NULL,
+        debut       TIMESTAMPTZ NOT NULL DEFAULT now(),
+        fin         TIMESTAMPTZ,
+        echelon     INTEGER NOT NULL DEFAULT 1,
+        motif       TEXT NOT NULL DEFAULT '',
+        par         TEXT NOT NULL DEFAULT '',
+        leve_le     TIMESTAMPTZ,
+        leve_par    TEXT NOT NULL DEFAULT '',
+        leve_motif  TEXT NOT NULL DEFAULT '',
+        annule      BOOLEAN NOT NULL DEFAULT false
+      );
+      CREATE INDEX IF NOT EXISTS idx_bans_jeu_user ON bans_jeu(username, jeu);
       CREATE TABLE IF NOT EXISTS triche_pictos_retires (
         username   TEXT NOT NULL,
         item_name  TEXT NOT NULL,
@@ -1788,6 +1808,26 @@ async function exclureDesClassements(username, par, motif) {
 async function leverExclusionClassement(username) {
   const r = await pool.query('DELETE FROM triche_exclusions WHERE username = $1', [String(username || '').toLowerCase()]);
   return r.rowCount;
+}
+// Les bans par jeu : tous, relus au démarrage (l'historique fait le barème).
+async function listerBansJeu() {
+  const { rows } = await pool.query('SELECT * FROM bans_jeu ORDER BY debut');
+  return rows;
+}
+async function ajouterBanJeu(b) {
+  const { rows } = await pool.query(
+    `INSERT INTO bans_jeu (username, jeu, fin, echelon, motif, par)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+    [String(b.username || '').toLowerCase(), String(b.jeu || ''), b.fin ? new Date(b.fin) : null,
+      Math.max(1, Number(b.echelon) || 1), String(b.motif || '').slice(0, 500), String(b.par || '')]);
+  return rows[0];
+}
+async function leverBanJeu(id, par, motif, annule) {
+  const { rows } = await pool.query(
+    `UPDATE bans_jeu SET leve_le = now(), leve_par = $2, leve_motif = $3, annule = $4
+      WHERE id = $1 AND leve_le IS NULL RETURNING *`,
+    [Number(id), String(par || ''), String(motif || '').slice(0, 500), !!annule]);
+  return rows[0] || null;
 }
 // Les pictos retirés : la sauvegarde suivante ne doit pas les rendre.
 async function listerPictosRetires() {
@@ -2432,6 +2472,7 @@ async function anonymiserJoueur(username) {
       ['historique_slots', 'username', 'brut'],
       ['alertes_triche', 'username', 'brut'],
       ['triche_exclusions', 'username', 'brut'],
+      ['bans_jeu', 'username', 'brut'],
       ['triche_pictos_retires', 'username', 'brut'],
       // Ses paris : déjà payés ou bientôt sans objet. Les garder sous la
       // pierre tombale heurterait « un pari par joueur et par match » dès que
@@ -2624,6 +2665,7 @@ const RENOMMAGE_COLONNES = [
   ['historique_slots', 'username'],
   ['alertes_triche', 'username'],
   ['triche_exclusions', 'username'],
+  ['bans_jeu', 'username'],
   ['triche_pictos_retires', 'username'],
   ['tournament_paris', 'username'],
   ['tournament_paris', 'choix'],
@@ -6504,6 +6546,9 @@ module.exports = {
   listerExclusionsClassement,
   exclureDesClassements,
   leverExclusionClassement,
+  listerBansJeu,
+  ajouterBanJeu,
+  leverBanJeu,
   listerPictosRetires,
   noterPictoRetire,
   oublierPictoRetire,

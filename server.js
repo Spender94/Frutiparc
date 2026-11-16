@@ -3058,6 +3058,9 @@ function persistScore(username, rankingId, score, data, opts) {
   }
   // Un joueur exclu des classements (onglet Alertes) : la partie compte, pas le score.
   if (joueurExcluDesClassements(username)) return scoreExclu(username, rankingId, score);
+  // Banni de CE jeu pour un temps (onglet Alertes, « Bannir d'un jeu ») : idem.
+  const banJeu = banJeuEnCours(username, RANKINGS[rankingId].game);
+  if (banJeu) return scoreExclu(username, rankingId, score, banJeu);
   if (!scoresData.users[username]) scoresData.users[username] = {};
   const prev = scoresData.users[username][rankingId];
   const oldScore = (prev && Number.isFinite(Number(prev.score))) ? Number(prev.score) : 0;
@@ -3164,6 +3167,7 @@ function captureTournamentScore(username, rankingId, score, data, opts) {
   const win = tournamentWindows.get(rankingId);
   if (!win) return;
   if (joueurExcluDesClassements(username)) return;
+  if (RANKINGS[rankingId] && banJeuEnCours(username, RANKINGS[rankingId].game)) return;
   if (win.endsAt && ((opts && opts.a) || Date.now()) > win.endsAt) return;
   const key = tRoundKey(win.tid, win.round);
   let cache = tournamentRoundScores.get(key);
@@ -15048,6 +15052,8 @@ app.post('/api/admin/tournaments/:id/fenetre', tournoiScope, async (req, res) =>
       const deja = new Map((await db.getRoundScores(t.id, round)).map((r) => [String(r.username).toLowerCase(), r]));
       recuperes = [];
       for (const r of lus) {
+        // Un joueur exclu, ou banni de Swapou, ne revient pas par ce chemin.
+        if (joueurExcluDesClassements(r.username) || banJeuEnCours(r.username, 'swapou2')) continue;
         const avant = deja.get(r.username);
         const garde = !avant || isScoreBetter(t.ranking_id, Number(r.score), '', Number(avant.score), avant.data || '');
         if (garde) {
@@ -18627,13 +18633,87 @@ async function sanctionsTricheCharger() {
       if (!pictosRetires.has(r.username)) pictosRetires.set(r.username, new Set());
       pictosRetires.get(r.username).add(r.item_name);
     }
-    if (exclusionsClassement.size || pictosRetires.size) {
-      console.log(`[TRICHE] ${exclusionsClassement.size} joueur(s) exclu(s) des classements, ${pictosRetires.size} avec des pictos retirés`);
+    bansJeu.length = 0;
+    for (const r of await db.listerBansJeu()) bansJeu.push(banDepuisLigne(r));
+    if (exclusionsClassement.size || pictosRetires.size || bansJeu.length) {
+      console.log(`[TRICHE] ${exclusionsClassement.size} joueur(s) exclu(s) des classements, ${pictosRetires.size} avec des pictos retirés, `
+        + `${bansJeu.filter((b) => banEnCours(b)).length} ban(s) par jeu en cours`);
     }
   } catch (e) { console.error('[TRICHE] chargement des sanctions :', e.message); }
 }
 function joueurExcluDesClassements(username) {
   return exclusionsClassement.has(String(username || '').toLowerCase());
+}
+
+/*
+ * LE BAN PAR JEU, À DURÉE (demande de l'admin : « un système de ban
+ * temporaire pour les jeux, avec durée ajustable et progressive »).
+ *
+ * Comme l'exclusion, mais pour UN jeu et pour un TEMPS : tant qu'il court, les
+ * scores du joueur à ce jeu ne sont plus classés (persistScore), ne prennent
+ * donc ni podium ni médaille au roulement de minuit, et n'entrent pas aux
+ * tournois (captureTournamentScore). Il peut toujours jouer : la partie compte
+ * dans ses statistiques et ses quêtes, et les jeux vérifiés la rejouent et la
+ * gardent comme les autres — c'est aussi ce qui nourrit la détection.
+ *
+ * LE BARÈME. Chaque ban est une ligne gardée pour toujours (bans_jeu) :
+ * l'échelon d'un nouveau ban est le nombre de bans déjà reçus à ce jeu, plus
+ * un — sauf ceux levés pour erreur (« annule »). L'admin se voit proposer la
+ * durée de l'échelon (BAREME_BAN_JOURS : 1 mois, 3 mois, puis définitif) et
+ * reste libre d'en choisir une autre. La fin passée, rien à faire : le ban
+ * cesse de lui-même (banEnCours la compare à l'heure).
+ */
+const BAREME_BAN_JOURS = [30, 90, null];      // null : définitif
+const bansJeu = [];                          // toutes les lignes de bans_jeu, mémoire
+let bansJeuSeq = 0;                          // sans base : les numéros
+function banDepuisLigne(r) {
+  return {
+    id: Number(r.id), username: String(r.username || '').toLowerCase(), jeu: String(r.jeu || ''),
+    debut: r.debut ? new Date(r.debut).toISOString() : new Date().toISOString(),
+    fin: r.fin ? new Date(r.fin).toISOString() : null,
+    echelon: Number(r.echelon) || 1, motif: String(r.motif || ''), par: String(r.par || ''),
+    leveLe: r.leve_le ? new Date(r.leve_le).toISOString() : null,
+    levePar: String(r.leve_par || ''), leveMotif: String(r.leve_motif || ''), annule: !!r.annule,
+  };
+}
+function banEnCours(b, maintenant = Date.now()) {
+  return !b.leveLe && (!b.fin || new Date(b.fin).getTime() > maintenant);
+}
+// Le ban en cours d'un joueur à un jeu (le plus long s'il y en a plusieurs), ou null.
+function banJeuEnCours(username, jeu) {
+  const u = String(username || '').toLowerCase(), j = jeuDeClassement(jeu);
+  if (!u || !j) return null;
+  let pire = null;
+  for (const b of bansJeu) {
+    if (b.username !== u || b.jeu !== j || !banEnCours(b)) continue;
+    if (!pire || !b.fin || (pire.fin && b.fin > pire.fin)) pire = b;
+  }
+  return pire;
+}
+// L'échelon et la durée proposés pour un nouveau ban de ce joueur à ce jeu.
+function banJeuProposition(username, jeu) {
+  const u = String(username || '').toLowerCase(), j = jeuDeClassement(jeu);
+  const precedents = bansJeu.filter((b) => b.username === u && b.jeu === j && !b.annule).length;
+  const echelon = precedents + 1;
+  const jours = BAREME_BAN_JOURS[Math.min(echelon, BAREME_BAN_JOURS.length) - 1];
+  return { echelon, jours, precedents };
+}
+// Les jeux qu'on peut bannir : ceux qui ont un classement, sous leur nom court.
+function jeuxBannissables() {
+  const vus = new Map();
+  for (const r of Object.values(RANKINGS)) {
+    if (!r || !r.game || vus.has(r.game)) continue;
+    vus.set(r.game, String(r.name || r.game).split(' - ')[0]);
+  }
+  return [...vus].map(([id, nom]) => ({ id, nom })).sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
+}
+function nomDuJeu(jeu) {
+  const j = jeuxBannissables().find((x) => x.id === jeu);
+  return j ? j.nom : jeu;
+}
+function finDuBanLisible(b) {
+  if (!b.fin) return 'définitivement';
+  return 'jusqu’au ' + new Date(b.fin).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', day: 'numeric', month: 'long', year: 'numeric' });
 }
 function pictoRetire(username, nom) {
   const s = pictosRetires.get(String(username || '').toLowerCase());
@@ -18641,19 +18721,24 @@ function pictoRetire(username, nom) {
 }
 // Le score d'un joueur exclu : la partie compte (statistiques, quêtes), le
 // classement non. Même forme de retour que persistScore.
-function scoreExclu(username, rankingId, score) {
+// `ban` : le ban par jeu qui l'écarte (sinon, l'exclusion de tous les classements).
+function scoreExclu(username, rankingId, score, ban) {
   const u = String(username).toLowerCase();
   noterPartie(u, (RANKINGS[rankingId] && RANKINGS[rankingId].game) || '');
   const cle = u + '|' + rankingId, t = Date.now();
   if (t - (scoresExclusSignales.get(cle) || 0) > 60 * 60 * 1000) {
     scoresExclusSignales.set(cle, t);
     signalerTriche(u, { jeu: (RANKINGS[rankingId] && RANKINGS[rankingId].game) || '', type: 'score_exclu', gravite: 'info',
-      resume: `score non classé (joueur exclu des classements) : ${rankingId}`, details: { rankingId, score: Number(score) || 0 } });
+      resume: ban
+        ? `score non classé (banni de ${nomDuJeu(ban.jeu)} ${finDuBanLisible(ban)}) : ${rankingId}`
+        : `score non classé (joueur exclu des classements) : ${rankingId}`,
+      details: { rankingId, score: Number(score) || 0, ban: ban ? ban.id : undefined } });
   }
   const prev = scoresData.users[username] && scoresData.users[username][rankingId];
   const ancien = (prev && Number(prev.score)) || 0;
   const pos = computePosition(rankingId, username);
-  return { updated: false, newScore: ancien, oldScore: ancien, oldPos: pos, newPos: pos, exclu: true };
+  return { updated: false, newScore: ancien, oldScore: ancien, oldPos: pos, newPos: pos, exclu: true,
+    banJusquA: ban ? (ban.fin || 'definitif') : undefined };
 }
 // La trace d'une action : alertes_triche (traitée d'office) et journal de modération.
 function journaliserActionTriche(username, { jeu = '', action, resume, details = {}, note = '' }) {
@@ -18823,6 +18908,9 @@ async function ficheSuspicion(u) {
       kikooz: Number(row && row.kikooz != null ? row.kikooz : (mem && mem.kikooz)) || 0,
       banni: banInfoFromUntil((row && row.banned_until) || (mem && mem.bannedUntil)).banned,
       exclusion: exclusionsClassement.get(u) || null,
+      // Ses bans par jeu, en cours puis passés (le barème se lit là).
+      bans: bansJeu.filter((b) => b.username === u).map(banPourAdmin)
+        .sort((a, b) => (b.enCours - a.enCours) || String(b.debut).localeCompare(String(a.debut))),
     },
     alertes, historique, scores, parPartie,
     swapou: { bilan: swapouBilan, parties: partiesSwapou, ia: swapouIa },
@@ -18945,6 +19033,108 @@ app.post('/api/admin/triche/joueur/:username/exclusion', adminAuth, async (req, 
 });
 app.get('/api/admin/triche/exclusions', adminAuth, (req, res) => {
   res.json({ ok: true, exclusions: [...exclusionsClassement].map(([username, e]) => Object.assign({ username }, e)) });
+});
+
+// ── LES BANS PAR JEU (cf. « LE BAN PAR JEU, À DURÉE ») ──
+// La liste : en cours d'abord ; `tous=1` ajoute les finis et les levés.
+function banPourAdmin(b) {
+  const enCours = banEnCours(b);
+  return Object.assign({}, b, { nomJeu: nomDuJeu(b.jeu), enCours,
+    statut: enCours ? 'en_cours' : (b.annule ? 'annule' : (b.leveLe ? 'leve' : 'fini')) });
+}
+app.get('/api/admin/triche/bans', adminAuth, (req, res) => {
+  const u = req.query.joueur ? normalizeUsername(req.query.joueur) : '';
+  const tous = req.query.tous === '1';
+  const liste = bansJeu.filter((b) => (!u || b.username === u) && (tous || banEnCours(b)))
+    .map(banPourAdmin)
+    .sort((a, b) => (b.enCours - a.enCours) || String(b.debut).localeCompare(String(a.debut)));
+  res.json({ ok: true, bans: liste, jeux: jeuxBannissables(), bareme: BAREME_BAN_JOURS });
+});
+// L'échelon et la durée proposés pour un nouveau ban (le formulaire les affiche).
+app.get('/api/admin/triche/bans/proposition', adminAuth, (req, res) => {
+  const u = normalizeUsername(req.query.joueur || '');
+  const jeu = String(req.query.jeu || '');
+  if (!u || !jeuxBannissables().some((j) => j.id === jeu)) return res.status(400).json({ ok: false, error: 'joueur ou jeu' });
+  const p = banJeuProposition(u, jeu);
+  res.json(Object.assign({ ok: true, enCours: banJeuEnCours(u, jeu) ? banPourAdmin(banJeuEnCours(u, jeu)) : null }, p));
+});
+/*
+ * POSER UN BAN. Corps : { joueur, jeu, jours (null ou absent : définitif),
+ * motif, retirerDuJour (défaut oui), prevenir (défaut oui), alerte? }.
+ *   · retirerDuJour : ses scores DU JOUR à ce jeu (classements du Challenge)
+ *     quittent le tableau — sinon ils seraient médaillés ce soir. Les records
+ *     permanents restent (« Annuler un score » s'en charge, au cas par cas).
+ *   · prevenir : le joueur reçoit la sanction dans son historique, avec sa
+ *     durée — une sanction qu'on découvre en ne se voyant plus classé ne
+ *     corrige rien.
+ */
+app.post('/api/admin/triche/bans', adminAuth, async (req, res) => {
+  const b = req.body || {};
+  const u = normalizeUsername(b.joueur || '');
+  const jeu = String(b.jeu || '');
+  if (!u) return res.status(400).json({ ok: false, error: 'pseudo' });
+  if (!jeuxBannissables().some((j) => j.id === jeu)) return res.status(400).json({ ok: false, error: 'jeu inconnu' });
+  const motif = String(b.motif || '').trim();
+  if (!motif) return res.status(400).json({ ok: false, error: 'motif requis' });
+  const definitif = b.jours === null || b.jours === undefined || b.jours === '' || b.jours === 'definitif';
+  const jours = definitif ? null : Math.round(Number(b.jours));
+  if (!definitif && !(jours >= 1 && jours <= 3650)) return res.status(400).json({ ok: false, error: 'durée (1 à 3650 jours)' });
+  const { echelon } = banJeuProposition(u, jeu);
+  const fin = definitif ? null : new Date(Date.now() + jours * 86400000).toISOString();
+  try {
+    let ligne;
+    if (process.env.DATABASE_URL) ligne = banDepuisLigne(await db.ajouterBanJeu({ username: u, jeu, fin, echelon, motif, par: 'admin' }));
+    else ligne = banDepuisLigne({ id: ++bansJeuSeq, username: u, jeu, debut: new Date(), fin, echelon, motif, par: 'admin' });
+    bansJeu.push(ligne);
+    // Ses scores du jour à ce jeu quittent le tableau (pas de médaille ce soir).
+    const retires = [];
+    if (b.retirerDuJour !== false && b.retirerDuJour !== 'false') {
+      for (const [rk, r] of Object.entries(RANKINGS)) {
+        if (r.game !== jeu || !isDailyResetRanking(rk)) continue;
+        if (!(scoresData.users[u] && scoresData.users[u][rk])) continue;
+        const a = await annulerScoreTriche(u, rk);
+        if (a.ok) retires.push({ rankingId: rk, score: a.score });
+      }
+    }
+    const duree = definitif ? 'définitif' : `${jours} jour${jours > 1 ? 's' : ''}`;
+    journaliserActionTriche(u, { jeu, action: 'ban_jeu', note: motif,
+      resume: `banni de ${nomDuJeu(jeu)} (${duree}, échelon ${echelon})`
+        + (retires.length ? ` — score(s) du jour retiré(s) : ${retires.map((x) => x.rankingId + ' ' + x.score).join(', ')}` : ''),
+      details: { ban: ligne.id, jeu, jours, fin, echelon, retires } });
+    if (b.prevenir !== false && b.prevenir !== 'false' && users[u]) {
+      addAndNotifyUserLog(u, { type: USER_LOG_TYPE.BAN,
+        content: `Tes scores à ${nomDuJeu(jeu)} ne sont plus classés ${finDuBanLisible(ligne)} (classements, médailles et tournois). `
+          + `Motif : ${motif}. Tu peux continuer à y jouer.` });
+    }
+    await cloreAlerteTriche(b.alerte, motif);
+    res.json({ ok: true, ban: banPourAdmin(ligne), retires });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// LEVER UN BAN avant sa fin. `erreur` : il ne comptera pas dans le barème.
+app.post('/api/admin/triche/bans/:id/lever', adminAuth, async (req, res) => {
+  const b = req.body || {};
+  const ban = bansJeu.find((x) => x.id === Number(req.params.id));
+  if (!ban) return res.status(404).json({ ok: false, error: 'introuvable' });
+  if (!banEnCours(ban)) return res.status(400).json({ ok: false, error: 'ce ban ne court plus' });
+  const erreur = b.erreur === true || b.erreur === 'true';
+  const motif = String(b.motif || '').trim();
+  try {
+    if (process.env.DATABASE_URL) {
+      const r = await db.leverBanJeu(ban.id, 'admin', motif, erreur);
+      if (!r) return res.status(409).json({ ok: false, error: 'déjà levé' });
+      Object.assign(ban, banDepuisLigne(r));
+    } else {
+      Object.assign(ban, { leveLe: new Date().toISOString(), levePar: 'admin', leveMotif: motif, annule: erreur });
+    }
+    journaliserActionTriche(ban.username, { jeu: ban.jeu, action: 'lever_ban_jeu', note: motif,
+      resume: `ban de ${nomDuJeu(ban.jeu)} levé${erreur ? ' (erreur : ne compte pas dans le barème)' : ''}`,
+      details: { ban: ban.id } });
+    if (b.prevenir !== false && b.prevenir !== 'false' && users[ban.username]) {
+      addAndNotifyUserLog(ban.username, { type: USER_LOG_TYPE.BAN,
+        content: `Tes scores à ${nomDuJeu(ban.jeu)} sont de nouveau classés.` });
+    }
+    res.json({ ok: true, ban: banPourAdmin(ban) });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
 
