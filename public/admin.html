@@ -205,6 +205,33 @@
     align-items: center;
     border-radius: 4px;
   }
+  /* Onglet Serveur : la mémoire du site, expliquée à tous. */
+  .mem-verdict { border-radius: 10px; padding: 12px 16px; border: 2px solid #8cc152; background: #f3fbe9; font-size: 13px; }
+  .mem-verdict.orange { border-color: #f0ad4e; background: #fff6e5; }
+  .mem-verdict.rouge { border-color: #E3756A; background: #fdecea; }
+  .mem-verdict .mem-titre { font: bold 20px Arial, sans-serif; color: #2C4A0F; display: flex; align-items: center; gap: 10px; }
+  .mem-verdict.orange .mem-titre { color: #8a5a00; }
+  .mem-verdict.rouge .mem-titre { color: #a0281c; }
+  .mem-feu { width: 16px; height: 16px; border-radius: 50%; background: #2ecc40; box-shadow: 0 0 0 4px rgba(46,204,64,.2); flex: none; }
+  .mem-verdict.orange .mem-feu { background: #f0ad4e; box-shadow: 0 0 0 4px rgba(240,173,78,.25); }
+  .mem-verdict.rouge .mem-feu { background: #E3756A; box-shadow: 0 0 0 4px rgba(227,117,106,.25); }
+  .mem-verdict ul { margin: 8px 0 6px 18px; padding: 0; line-height: 1.6; }
+  .mem-conseil { margin-top: 4px; }
+  .mem-mot { background: #fff; border: 2px dashed #8cc152; border-radius: 10px; padding: 10px 14px; color: #2C4A0F; line-height: 1.55; margin: 12px 0 0; }
+  .mem-dev { margin-top: 16px; background: #fff; border-radius: 8px; padding: 8px 12px; color: #446531; line-height: 1.55; }
+  .mem-dev summary { cursor: pointer; font-weight: bold; color: #2C4A0F; }
+  .mem-dev code { background: #eef6e4; padding: 0 3px; border-radius: 3px; font-size: 11px; }
+  .mem-clair { color: #446531; margin: 4px 0 8px; line-height: 1.55; }
+  .mem-pastille { display: inline-block; padding: 1px 8px; border-radius: 10px; background: #e3efd4; color: #446531; font-size: 11px; white-space: nowrap; }
+  .mem-pastille.vert { background: #d8f2c2; color: #2e7d32; }
+  .mem-pastille.rouge { background: #fbe0dc; color: #c0392b; font-weight: bold; }
+  .mem-tech { color: #9fb37e; font-size: 10px; font-family: monospace; }
+  .mem-jauge { height: 8px; background: #e3efd4; border-radius: 4px; margin-top: 6px; overflow: hidden; }
+  .mem-jauge span { display: block; height: 100%; border-radius: 4px; }
+  .mem-lexique { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; background: #fff; padding: 10px 12px; border-radius: 8px; }
+  .mem-lexique dt { font-weight: bold; color: #2C4A0F; }
+  .mem-lexique dd { margin: 0; color: #446531; }
+  @media (max-width: 700px) { .mem-lexique { grid-template-columns: 1fr; } .mem-lexique dd { margin-bottom: 6px; } }
   /* Onglet Statistiques : des cartes à chiffre, deux colonnes, un graphe. */
   .st-cartes { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
   .st-carte { background: #fff; border: 2px solid #D6F7B5; border-radius: 8px; padding: 8px 10px; }
@@ -469,6 +496,7 @@
   <div class="tabs">
     <div class="tab-group"><span class="lbl">Pilotage</span><div class="grp">
       <button class="tab" data-tab="stats" onclick="switchTab('stats')">Statistiques</button>
+      <button class="tab" data-tab="serveur" onclick="switchTab('serveur')">Serveur</button>
       <button class="tab" data-tab="palmares" onclick="switchTab('palmares')">Palmarès</button>
     </div></div>
     <div class="tab-group"><span class="lbl">Joueurs</span><div class="grp">
@@ -867,6 +895,89 @@
   </table>
   <p style="color:#6c8f3a;margin-top:10px"><b>La communauté.</b> <i>Rétention</i> : part des inscrits revenus au moins une fois entre le 7e et le 13e jour (J+7), ou entre le 30e et le 36e (J+30), après leur inscription — le chiffre du haut porte sur les quatre dernières semaines d'inscrits dont la semaine de retour est finie. <i>Activation</i> : inscrits de la période qui ont joué une partie classée ou écrit (forum, chat). <i>Retours</i> : Frutiz revenus après 14 (ou 30) jours sans se montrer, inscrits avant leur absence. <i>Temps actif</i> : minutes où le Frutiz a interagi (message, partie, multi) dans les cinq minutes, ou avait un jeu ouvert à l'écran ; plus d'un quart d'heure sans rien ouvre une nouvelle session. <i>Joueurs différents</i> : relevés par joueur, et, pour les jours d'avant, lus dans l'archive du Challenge et les records améliorés. Ce qui dépend d'un relevé neuf (temps actif, chat par joueur) part de sa mise en place ; une case « – » est une mesure qu'on n'a pas, pas un zéro.</p>
   <p style="color:#6c8f3a;margin-top:6px">Les connectés distincts, le pic et les parties sont relevés depuis la mise en place de cet onglet : les jours d'avant restent vides. « Actifs » compte les comptes dont la dernière connexion tombe dans la période ; « Parties » compte les parties terminées avec un score (le tour et la course d'une même partie de Burning Kiwi ne comptent qu'une fois).</p>
+</div>
+
+<div class="content" id="tab-serveur" style="display:none">
+  <p class="mem-mot">Salut ! J'ai fait cette page pour qu'on puisse garder un œil sur la mémoire du serveur. Pas besoin de s'y connaître :
+    le cadre juste en dessous dit si tout va bien. S'il passe en orange ou en rouge, prévenez Kasparov ou Kobbs.</p>
+
+  <div id="mem-verdict" style="margin-top:14px"><div class="mem-verdict">Chargement…</div></div>
+
+  <div class="toolbar" style="margin-top:10px">
+    <button class="btn" onclick="loadMemoire()">Rafraîchir</button>
+    <label style="margin-left:8px"><input type="checkbox" id="memoire-auto" onchange="memoireAuto()"> rafraîchir tout seul (toutes les 30 s)</label>
+    <span id="memoire-base" style="margin-left:auto;color:#6c8f3a"></span>
+  </div>
+
+  <h3>Combien de mémoire en ce moment</h3>
+  <p class="mem-clair">Le serveur du Frutiparc tourne chez Render avec 512 Mo de mémoire. Si on arrive au bout, le site rame, puis plante,
+    et tout le monde est déconnecté. C'est pour ça qu'on la surveille.</p>
+  <div class="st-cartes" id="stats-memoire"></div>
+
+  <h3>Comment ça évolue</h3>
+  <p class="mem-clair">Une ligne bien plate, c'est ce qu'on veut. Si elle grimpe sans jamais redescendre, quelque chose fuit et ça finira
+    par planter. Les pointillés gris, ce sont les redémarrages du serveur (à chaque mise à jour du site, par exemple) : la mémoire repart
+    alors du bas. Passez la souris sur la courbe pour voir les valeurs.</p>
+  <div class="toolbar">
+    <label>Période :
+      <select id="memoire-heures" onchange="loadMemoire()">
+        <option value="6">6 dernières heures</option>
+        <option value="24" selected>24 dernières heures</option>
+        <option value="72">3 derniers jours</option>
+        <option value="168">7 derniers jours</option>
+        <option value="720">30 derniers jours</option>
+      </select></label>
+  </div>
+  <div class="section-content" id="stats-memoire-courbe"></div>
+
+  <h3>Les images en réserve</h3>
+  <p class="mem-clair">Pour afficher plus vite les images (forum, fonds d'écran…), le serveur garde les dernières en mémoire. Chaque réserve
+    a une taille max, et quand elle est pleine, les plus vieilles sortent. Rien n'est perdu, tout reste dans la base. Tant que tout est
+    sur « OK », c'est bon.</p>
+  <table>
+    <thead><tr><th>Réserve</th><th>Images</th><th>Taille</th><th>Taille max</th>
+      <th title="Images envoyées directement depuis la réserve">Servies depuis la réserve</th>
+      <th title="Images qui n'étaient pas dans la réserve, relues dans la base">Relues dans la base</th>
+      <th title="Images trop lourdes pour la réserve : elles sont toujours relues dans la base">Trop lourdes</th>
+      <th title="Images sorties de la réserve pour faire de la place">Sorties pour faire de la place</th><th>État</th></tr></thead>
+    <tbody id="stats-caches"></tbody>
+  </table>
+
+  <h3>Le détail de ce que garde le serveur</h3>
+  <p class="mem-clair">Tout ce que le serveur garde en tête (joueurs connectés, salons, parties en cours…), relevé toutes les heures. Si la
+    mémoire monte, c'est ici qu'on voit ce qui gonfle : ça remonte en haut avec la mention <span class="mem-pastille rouge">grossit</span>.
+    Les listes « fixes » (catalogues, réglages) ne bougent pas, c'est normal. Il faut une heure de relevés avant de pouvoir comparer.
+    Le petit nom en gris, c'est le nom dans le code, pour les devs.</p>
+  <table>
+    <thead><tr><th>Quoi</th><th>Combien</th><th id="memoire-d1">Sur 1 h</th><th id="memoire-d24">Sur 24 h</th><th>Avis</th></tr></thead>
+    <tbody id="memoire-inventaire"></tbody>
+  </table>
+  <div style="margin-top:4px"><button class="btn" id="memoire-tout" onclick="memoireToutVoir = !memoireToutVoir; loadMemoire()">Tout voir</button>
+    <span id="memoire-inventaire-note" style="margin-left:8px;color:#6c8f3a"></span></div>
+
+  <h3>Les mots de la page</h3>
+  <dl class="mem-lexique">
+    <dt>Mo</dt><dd>Mégaoctet, l'unité de la mémoire. Une photo prise au téléphone, c'est environ 3 Mo. Le serveur en a 512.</dd>
+    <dt>Le programme</dt><dd>La mémoire prise par le site lui-même : les joueurs, les salons, les parties…</dd>
+    <dt>Redémarrage</dt><dd>Le serveur s'arrête et repart, ce qui vide sa mémoire. Ça arrive à chaque mise à jour du site, ou après une panne.</dd>
+    <dt>La base</dt><dd>Là où tout est rangé pour de bon (comptes, messages, images). Elle, elle ne se vide jamais.</dd>
+    <dt>Une fuite</dt><dd>Le serveur garde des choses dont il n'a plus besoin, et sa mémoire monte petit à petit jusqu'à planter.</dd>
+  </dl>
+
+  <details class="mem-dev">
+    <summary>Pour les devs</summary>
+    <div class="st-cartes" id="memoire-brut" style="margin-top:8px"></div>
+    <p>Un relevé toutes les 5 minutes (<code>process.memoryUsage()</code>), gardé 30 jours dans la table <code>memoire_releves</code>.
+      Elle est créée au premier relevé, pas dans <code>initSchema</code>, et toutes les erreurs de base sont attrapées : si la base coince,
+      on garde juste les 24 dernières heures en mémoire et on réessaie une heure plus tard. L'inventaire est relevé une fois par heure : les
+      <code>Map</code>, <code>Set</code>, tableaux et objets globaux de <code>server.js</code>, plus un niveau en dessous (« à l'intérieur »).
+      Le code est dans <code>memoireServeur.js</code>.</p>
+    <p>Les réserves d'images sont des caches bornés en octets (<code>cacheBorne.js</code>) : les moins récemment servies sortent en premier.
+      Avant, c'étaient des <code>Map</code> sans limite, et le forum seul (330 Mo d'images en base) suffisait à remplir l'instance.</p>
+    <p>Réglages (variables d'environnement, en Mo) : <code>CACHE_FORUM_MO</code> (24), <code>CACHE_FONDS_MO</code> (8),
+      <code>CACHE_QUIZ_MO</code>, <code>CACHE_PICTOS_MO</code>, <code>CACHE_BOUTIQUE_MO</code> (4), <code>MEMOIRE_LIMITE_MO</code> (512),
+      et <code>MEMOIRE_PERIODE_S</code> pour relever plus souvent en local. Les données brutes : <code>GET /api/admin/memoire?heures=24</code>.</p>
+  </details>
 </div>
 
 <div class="content" id="tab-palmares" style="display:none">
@@ -2131,7 +2242,7 @@ function toast(msg) {
 
 function switchTab(name) {
   $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
-  ['stats','palmares','users','scores','detail','referrals','tournoi','shop','purchases','wallpapers','custompictos','challenge','events','channels','gaspard','banwords','forumcensor','kiloute','trombinoscope','dons','alertes','swapouverif','portagesverif','compteslies','quetes'].forEach(t => {
+  ['stats','serveur','palmares','users','scores','detail','referrals','tournoi','shop','purchases','wallpapers','custompictos','challenge','events','channels','gaspard','banwords','forumcensor','kiloute','trombinoscope','dons','alertes','swapouverif','portagesverif','compteslies','quetes'].forEach(t => {
     const el = $(`#tab-${t}`);
     if (el) el.style.display = t === name ? '' : 'none';
   });
@@ -2153,6 +2264,8 @@ function switchTab(name) {
   if (name === 'dons') loadDons();
   if (name === 'stats') loadStats();
   else statsAuto(false);
+  if (name === 'serveur') loadMemoire();
+  else memoireAuto(false);
   if (name === 'palmares') loadPalmares();
   if (name === 'swapouverif') { loadSwapouVerif(); loadSwapouCombos(); }
   else swapouVerifSuivre(false);
@@ -3555,6 +3668,289 @@ function statsAuto(forcer) {
   const voulu = forcer === false ? false : !!($('#stats-auto') && $('#stats-auto').checked);
   if (voulu && !statsMinuterie) statsMinuterie = setInterval(loadStats, 60000);
   if (!voulu && statsMinuterie) { clearInterval(statsMinuterie); statsMinuterie = null; }
+}
+// ─── Onglet Serveur : la mémoire du site, expliquée à tous (/api/admin/memoire) ───
+//
+// Pensé pour un admin qui ne connaît rien à l'informatique : un verdict en
+// mots simples en tête (tout va bien / à surveiller / danger, et quoi faire),
+// des libellés en français courant, une courbe à zones de couleur, et chaque
+// structure interne traduite. Les seuils : 70 % de la limite, à surveiller ;
+// 85 %, danger ; une montée qui atteindrait la limite en moins de 3 jours,
+// à surveiller, en moins de 24 h, danger.
+function memoMo(o) { return (Math.round((Number(o) || 0) / 104857.6) / 10).toLocaleString('fr-FR') + ' Mo'; }
+function memoDuree(ms) {
+  const min = Math.max(0, Math.round(ms / 60000));
+  if (min < 60) return min + ' min';
+  const h = Math.floor(min / 60);
+  if (h < 48) return h + ' h' + (min % 60 ? ' ' + String(min % 60).padStart(2, '0') : '');
+  return Math.round(h / 24) + ' jours';
+}
+const MEMO_ZONES = { orange: 0.70, rouge: 0.85 };
+
+// Les structures internes, en mots simples. `fixe` : un catalogue ou des
+// réglages, qui ne bougent normalement pas. Une structure absente d'ici
+// s'affiche « Donnée interne » avec son nom technique.
+const MEMO_NOMS = {
+  users: ['Comptes de joueurs chargés en mémoire'],
+  sessions: ['Connexions ouvertes (joueurs connectés)'],
+  sessionsDormantes: ['Connexions en veille (joueurs qui reviendront sans se reconnecter)'],
+  reveilsEnCours: ['Connexions en train de se réveiller'],
+  recentSidByIp: ['Dernières connexions, par adresse internet'],
+  xmlSocketClients: ['Joueurs branchés au chat en direct'],
+  channels: ['Salons de chat'],
+  scoresData: ['Scores de tous les classements'],
+  partiesEnCours: ['Parties en cours (voyant « en partie »)'],
+  debutsDePartie: ['Débuts de partie annoncés'],
+  partiesRecentes: ['Parties jouées récemment'],
+  activiteMem: ['Activité récente des joueurs'],
+  dailyXpActions: ['Points d\'expérience gagnés aujourd\'hui, par joueur'],
+  fdDernierSave: ['Dernières parties enregistrées (Fruit Défendu)'],
+  pushAbonnements: ['Abonnements aux notifications sur téléphone'],
+  pushJournal: ['Journal des notifications envoyées'],
+  pushedEvents: ['Annonces envoyées aux joueurs'],
+  mentionTousDernier: ['Derniers « @all » de chaque salon'],
+  pendingChannelCleanup: ['Départs de salon en attente'],
+  npcChannel: ['Salon où se trouve chaque personnage du site (PNJ)'],
+  recentlyEjected: ['Joueurs éjectés récemment'],
+  chuchoCadence: ['Chuchotements récents (protection anti-spam)'],
+  finsDeTotoche: ['Fins de sanction « totoche » programmées'],
+  traceSubscriptions: ['Joueurs suivis à la trace par l\'admin'],
+  blueModeUsers: ['Animateurs en mode bleu'],
+  animatorKikoozGiven: ['Kikooz donnés par les animateurs cette semaine'],
+  reconstitutionsKikooz: ['Kikooz en cours de recalcul'],
+  registerAttempts: ['Inscriptions récentes, par adresse internet (anti-abus)'],
+  connexionsNotees: ['Connexions déjà notées (repérage des multi-comptes)'],
+  adminTokens: ['Connexions ouvertes à l\'admin'],
+  adminAuthFails: ['Essais ratés de connexion à l\'admin'],
+  exportsRecents: ['Exports de données récents'],
+  bouilleCache: ['Bouilles gardées sous la main'],
+  tournamentWindows: ['Tournois : horaires des manches'],
+  tournamentRoundScores: ['Tournois : scores des manches'],
+  cotesTournoiCache: ['Tournois : cotes déjà calculées'],
+  parisFiles: ['Paris : calculs en cours'],
+  parisVerrous: ['Paris : joueurs en train de miser'],
+  NOTES_CHAMPIONNAT: ['Notes de championnat des joueurs'],
+  medaillesMoisCache: ['Médailles du mois déjà calculées'],
+  HISTORIQUE_SLOTS_MEMOIRE: ['Historique des fiches de jeu'],
+  bkiwiFantomesMemoire: ['Burning Kiwi : fantômes des courses'],
+  jamaNiveaux: ['JamaJama : niveaux créés par les joueurs'],
+  swapouAccordsEnCours: ['Swapou : analyses en cours'],
+  swapouPartiesDonnees: ['Swapou : parties commencées'],
+  swapouPartiesRendues: ['Swapou : parties terminées (anti-doublon)'],
+  swapouDemandesRecentes: ['Swapou : demandes récentes (anti-abus)'],
+  swapouCombosCache: ['Swapou : combos des joueurs déjà calculés'],
+  quetesProgres: ['Quêtes : avancement de chaque joueur'],
+  quetesVisites: ['Quêtes : dernières visites'],
+  quetesContrats: ['Quêtes : contrats de la semaine'],
+  quetesContratsEnCours: ['Quêtes : contrats en préparation'],
+  quetesIndiv: ['Quêtes : quêtes personnelles'],
+  quetesIndivEnCours: ['Quêtes : quêtes personnelles en préparation'],
+  quetesIndivAttente: ['Quêtes : quêtes personnelles en attente'],
+  quetesRecordsParc: ['Quêtes : records du parc'],
+  quetesPrimesPrises: ['Quêtes : primes gagnées cette semaine'],
+  quetesPrimesEtat: ['Quêtes : état des primes'],
+  quetesPrimesJournal: ['Quêtes : journal des primes'],
+  quetesDernierMode: ['Quêtes : dernier mode de jeu de chacun'],
+  antitricheDemandes: ['Anti-triche : demandes récentes (anti-abus)'],
+  entreesSignalees: ['Anti-triche : touches simulées déjà signalées'],
+  antitricheConformesMemoire: ['Anti-triche : dernières parties vérifiées'],
+  ALERTES_TRICHE_MEMOIRE: ['Anti-triche : alertes'],
+  alertesTricheRecentes: ['Anti-triche : alertes récentes (anti-doublon)'],
+  exclusionsClassement: ['Anti-triche : joueurs exclus des classements'],
+  pictosRetires: ['Anti-triche : pictos retirés'],
+  scoresExclusSignales: ['Anti-triche : scores écartés déjà signalés'],
+  lgParties: ['Loup-garou : parties en cours'],
+  lgMinuteurs: ['Loup-garou : chronos en cours'],
+  lgFermetures: ['Loup-garou : parties finies à ranger'],
+  blindtestState: ['Blindtest : parties en cours'],
+  blindtestParJeton: ['Blindtest : liens des vidéos en cours'],
+  quizState: ['Quiz : parties en cours'],
+  pollState: ['Sondages en cours'],
+  chatBannedWords: ['Mots interdits du chat', true],
+  forumReplacements: ['Remplacements de la censure du forum', true],
+  CHAT_EMOTES: ['Émotes du chat', true],
+  CHAT_EMOTES_MOTS: ['Émotes du chat (mots déclencheurs)', true],
+  CMD_REV: ['Commandes du chat', true],
+  PRUNELLES: ['Catalogue des yeux de bouille', true],
+  MAQUILLAGES: ['Catalogue des maquillages', true],
+  accessoiresMaison: ['Catalogue des accessoires maison', true],
+  variantesAcc: ['Catalogue des variantes d\'accessoires', true],
+  accMaisonEquip: ['Accessoires maison portés par les joueurs'],
+  CUSTOM_PICTOS: ['Catalogue des pictos inédits', true],
+  CUSTOM_WALLPAPER_IDS: ['Catalogue des fonds d\'écran personnalisés', true],
+  QUIZ_IMAGES: ['Catalogue des images de quiz', true],
+  shopAssetKeys: ['Catalogue des images de la boutique', true],
+  TROMBINOSCOPE: ['Trombinoscope', true],
+  _kpickLast: ['Quiz : dernières phrases de l\'animateur (pour varier)', true],
+  quizScheduleLastDay: ['Quiz programmés : dernier jour de lancement'],
+};
+function memoNom(nom) {
+  const n = MEMO_NOMS[nom];
+  return { libelle: n ? n[0] : 'Donnée interne', fixe: !!(n && n[1]), connu: !!n };
+}
+
+// La pente de la mémoire depuis le dernier redémarrage, sur les six
+// dernières heures : en Mo par heure, ou null s'il y a moins de 30 minutes
+// de relevés.
+function memoPente(points, demarre) {
+  const fin = points.length ? points[points.length - 1].t : 0;
+  const pts = points.filter((p) => p.t >= fin - 6 * 3600000 && (!p.demarre || Math.abs(p.demarre - demarre) < 5000));
+  if (pts.length < 4 || pts[pts.length - 1].t - pts[0].t < 30 * 60000) return null;
+  const n = pts.length;
+  const mx = pts.reduce((a, p) => a + p.t, 0) / n, my = pts.reduce((a, p) => a + p.rss, 0) / n;
+  let num = 0, den = 0;
+  for (const p of pts) { num += (p.t - mx) * (p.rss - my); den += (p.t - mx) * (p.t - mx); }
+  return den ? (num / den) * 3600000 / 1048576 : 0;
+}
+
+// Le VERDICT, en mots simples, avec ce qu'il faut faire.
+function memoVerdict(d, pente, coupable) {
+  const part = d.rss / d.limite;
+  const raisons = [];
+  let niveau = 'vert';
+  const monter = (n) => { if (n === 'rouge' || (n === 'orange' && niveau === 'vert')) niveau = n; };
+  raisons.push(`Le serveur utilise ${memoMo(d.rss)} sur ses ${memoMo(d.limite)} (${Math.round(part * 100)} %).`);
+  if (part >= MEMO_ZONES.rouge) { monter('rouge'); raisons.push('C\'est presque plein.'); }
+  else if (part >= MEMO_ZONES.orange) { monter('orange'); raisons.push('Ça commence à être bien rempli.'); }
+  if (pente === null) raisons.push('Le serveur a redémarré il y a peu : il faut une demi-heure de relevés pour savoir si ça monte.');
+  else if (pente > 2) {
+    const heures = (d.limite - d.rss) / 1048576 / pente;
+    raisons.push(`Ça monte d'environ ${Math.round(pente)} Mo par heure. À ce rythme, ce sera plein dans ${memoDuree(heures * 3600000)}.`);
+    if (heures < 24) monter('rouge'); else if (heures < 72) monter('orange');
+  } else raisons.push('Ça ne monte pas, c\'est stable.');
+  if (coupable && niveau !== 'vert') raisons.push(`Ce qui grossit le plus en ce moment : ${esc(coupable)}.`);
+  const titres = { vert: 'Tout va bien', orange: 'À surveiller', rouge: 'Attention, ce sera bientôt plein' };
+  const conseils = {
+    vert: 'Rien à faire, merci d\'avoir jeté un œil.',
+    orange: 'Pas d\'urgence. Repassez dans quelques heures, et si ça monte encore, prévenez Kasparov ou Kobbs.',
+    rouge: 'Prévenez vite Kasparov ou Kobbs. Si c\'est vraiment plein, Kasparov peut redémarrer le serveur depuis Render : ça vide la mémoire, mais les joueurs sont déconnectés quelques secondes.',
+  };
+  return `<div class="mem-verdict ${niveau}"><div class="mem-titre"><span class="mem-feu"></span>${titres[niveau]}</div>`
+    + `<ul>${raisons.map((r) => '<li>' + r + '</li>').join('')}</ul><div class="mem-conseil"><b>Que faire ?</b> ${conseils[niveau]}</div></div>`;
+}
+
+function memoireCourbe(points, limite, heures) {
+  if (!points || points.length < 2) return '<span style="color:#6c8f3a">Pas encore assez de relevés pour tracer la courbe (un toutes les 5 minutes), repassez un peu plus tard.</span>';
+  const L = 900, H = 200, G = 96, B = 20;
+  const t0 = points[0].t, t1 = points[points.length - 1].t || t0 + 1;
+  const x = (t) => G + (L - G) * (t - t0) / Math.max(1, t1 - t0);
+  const y = (v) => H - B - (H - B - 8) * v / limite;
+  const date = (t) => new Date(t).toLocaleString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  const out = [`<svg viewBox="0 0 ${L} ${H}" xmlns="http://www.w3.org/2000/svg" font-family="Verdana" font-size="10">`];
+  // Les zones : vert (confortable), orange (à surveiller), rouge (danger).
+  out.push(`<rect x="${G}" width="${L - G}" y="${y(MEMO_ZONES.orange * limite)}" height="${y(0) - y(MEMO_ZONES.orange * limite)}" fill="#eef9e2"/>`
+    + `<rect x="${G}" width="${L - G}" y="${y(MEMO_ZONES.rouge * limite)}" height="${y(MEMO_ZONES.orange * limite) - y(MEMO_ZONES.rouge * limite)}" fill="#fdf0d5"/>`
+    + `<rect x="${G}" width="${L - G}" y="${y(limite)}" height="${y(MEMO_ZONES.rouge * limite) - y(limite)}" fill="#fbe0dc"/>`);
+  for (const [v, txt, coul] of [[0, '0 Mo', '#6c8f3a'], [limite / 2, Math.round(limite / 2097152) + ' Mo', '#6c8f3a'], [limite, 'limite ' + Math.round(limite / 1048576) + ' Mo', '#c0392b']]) {
+    out.push(`<line x1="${G}" x2="${L}" y1="${y(v)}" y2="${y(v)}" stroke="${v === limite ? '#E3756A' : '#d5e8bf'}"${v === limite ? ' stroke-dasharray="4 3"' : ''}/>`
+      + `<text x="${G - 4}" y="${y(v) + 3}" text-anchor="end" fill="${coul}">${txt}</text>`);
+  }
+  // Les redémarrages coupent la courbe : deux sites successifs ne se relient pas.
+  const morceaux = [];
+  let courant = [];
+  points.forEach((p, i) => {
+    if (i && p.demarre && points[i - 1].demarre && Math.abs(p.demarre - points[i - 1].demarre) > 5000) {
+      morceaux.push(courant); courant = [];
+      out.push(`<line x1="${x(p.t).toFixed(1)}" x2="${x(p.t).toFixed(1)}" y1="8" y2="${H - B}" stroke="#8a9a77" stroke-dasharray="3 3" stroke-width="1.5"><title>Redémarrage du serveur (${date(p.demarre)})</title></line>`);
+    }
+    courant.push(p);
+  });
+  morceaux.push(courant);
+  const ligne = (pts, champ, couleur, epais) => pts.length > 1
+    ? `<polyline fill="none" stroke="${couleur}" stroke-width="${epais}" points="${pts.map((p) => x(p.t).toFixed(1) + ',' + y(Math.min(limite, p[champ])).toFixed(1)).join(' ')}"/>` : '';
+  for (const m of morceaux) out.push(ligne(m, 'tas', '#8cc152', 1.5), ligne(m, 'rss', '#2C4A0F', 2.5));
+  // Une info-bulle sur chaque point.
+  for (const p of points) {
+    out.push(`<circle cx="${x(p.t).toFixed(1)}" cy="${y(Math.min(limite, p.rss)).toFixed(1)}" r="5" fill="#2C4A0F" fill-opacity="0.001">`
+      + `<title>${date(p.t)} : ${memoMo(p.rss)} (${Math.round(100 * p.rss / limite)} %)</title></circle>`);
+  }
+  const h = (t) => (heures > 24 ? date(t) : new Date(t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }));
+  out.push(`<text x="${G}" y="${H - 4}" fill="#6c8f3a">${h(t0)}</text><text x="${L}" y="${H - 4}" text-anchor="end" fill="#6c8f3a">${h(t1)} (maintenant)</text></svg>`);
+  return '<div class="st-legende"><span><i style="background:#2C4A0F"></i>mémoire utilisée</span>'
+    + '<span><i style="background:#8cc152"></i>dont le programme</span>'
+    + '<span><i style="background:#8a9a77;height:2px"></i>redémarrage</span>'
+    + '<span><i style="background:#eef9e2;border:1px solid #cfe5b5"></i>tranquille</span>'
+    + '<span><i style="background:#fdf0d5;border:1px solid #f1d9a3"></i>à surveiller (plus de 70 %)</span>'
+    + '<span><i style="background:#fbe0dc;border:1px solid #efb9b1"></i>presque plein (plus de 85 %)</span></div>' + out.join('');
+}
+let memoireToutVoir = false;
+let memoireMinuterie = null;
+function memoireAuto(forcer) {
+  const voulu = forcer === false ? false : !!($('#memoire-auto') && $('#memoire-auto').checked);
+  if (voulu && !memoireMinuterie) memoireMinuterie = setInterval(loadMemoire, 30000);
+  if (!voulu && memoireMinuterie) { clearInterval(memoireMinuterie); memoireMinuterie = null; }
+  if (forcer === false && $('#memoire-auto')) $('#memoire-auto').checked = false;
+}
+function memoEvolution(v) {
+  if (v == null) return '<span style="color:#9fb37e" title="Pas encore de relevé assez ancien pour comparer">–</span>';
+  if (v === 0) return '<span style="color:#9fb37e">pareil</span>';
+  return v > 0 ? `<b style="color:#c0392b">+${statsNb(v)}</b>` : `<span style="color:#2e7d32">${statsNb(v)}</span>`;
+}
+// L'avis sur une structure : « grossit » quand elle a nettement grossi sur
+// 24 h ET encore sur la dernière heure ; une liste fixe ne doit pas bouger.
+function memoAvis(x, nom) {
+  const g1 = x.d1 == null ? null : x.d1 + (x.d1Contenu || 0);
+  const g24 = x.d24 == null ? null : x.d24 + (x.d24Contenu || 0);
+  if (nom.fixe) return '<span class="mem-pastille">fixe</span>';
+  if (g24 == null && g1 == null) return '<span style="color:#9fb37e" title="Il faut une heure de relevés pour comparer">trop tôt</span>';
+  const total = x.elements + (x.contenu || 0);
+  const avant = Math.max(1, total - (g24 || 0));
+  if (g24 != null && g24 >= 100 && g24 / avant >= 0.25 && (g1 == null || g1 > 0)) return '<span class="mem-pastille rouge">grossit</span>';
+  return '<span class="mem-pastille vert">normal</span>';
+}
+async function loadMemoire() {
+  try {
+    const heures = Number(($('#memoire-heures') || {}).value) || 24;
+    const r = await fetch('/api/admin/memoire?heures=' + heures, { headers: hdr() });
+    const d = await r.json();
+    if (!d.ok) { $('#mem-verdict').innerHTML = '<div class="mem-verdict orange">Impossible de lire la mémoire du serveur' + (d.error ? ' : ' + esc(d.error) : '') + '.</div>'; return; }
+    const part = d.rss / d.limite;
+    const demarre = Date.parse(d.depuis);
+    const points = (d.historique && d.historique.points) || [];
+    const pente = memoPente(points, demarre);
+    const inv = d.inventaire || { lignes: [] };
+    const lignes = inv.lignes.map((x) => ({ x, nom: memoNom(x.nom) }));
+    const grossit = lignes.filter((l) => /rouge/.test(memoAvis(l.x, l.nom)));
+    const coupable = grossit.length ? grossit[0].nom.libelle + (grossit[0].nom.connu ? '' : ' (' + grossit[0].x.nom + ')') : null;
+    $('#mem-verdict').innerHTML = memoVerdict(d, pente, coupable);
+    const jauge = `<div class="mem-jauge"><span style="width:${Math.min(100, Math.round(part * 100))}%;background:${part >= MEMO_ZONES.rouge ? '#E3756A' : part >= MEMO_ZONES.orange ? '#f0ad4e' : '#8cc152'}"></span></div>`;
+    $('#stats-memoire').innerHTML = statsCarte(`${memoMo(d.rss)} <small>sur ${memoMo(d.limite)}</small>${jauge}`, `utilisés (${Math.round(part * 100)} %)`)
+      + statsCarte(pente === null ? '<small>pas encore</small>' : Math.abs(pente) <= 2 ? 'stable' : (pente > 0 ? '+' : '') + Math.round(pente) + ' <small>Mo par heure</small>',
+        pente === null ? 'évolution (il faut 30 min de relevés)' : 'évolution ces dernières heures')
+      + statsCarte('il y a ' + memoDuree(Date.now() - demarre), 'dernier redémarrage, le ' + new Date(demarre).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }))
+      + statsCarte(memoMo(d.tas), 'le programme')
+      + statsCarte(memoMo(d.externe), 'images et fichiers en cours')
+      + statsCarte(memoMo(d.caches.reduce((a, c) => a + c.octets, 0)), 'réserves d\'images');
+    $('#memoire-brut').innerHTML = statsCarte(memoMo(d.rss), '<code>rss</code>')
+      + statsCarte(`${memoMo(d.tas)} <small>/ ${memoMo(d.tasTotal)}</small>`, '<code>heapUsed</code> / <code>heapTotal</code>')
+      + statsCarte(memoMo(d.externe), '<code>external</code>')
+      + statsCarte(memoMo(d.tampons), '<code>arrayBuffers</code>')
+      + statsCarte(`${statsNb((d.base || {}).ecrits || 0)} <small>/ ${statsNb((d.base || {}).echecs || 0)} échec(s)</small>`, 'relevés écrits en base' + ((d.base || {}).erreur ? ' : ' + esc(d.base.erreur) : ''))
+      + statsCarte(`${(d.inventaire || {}).dureeMs} ms`, 'durée de l\'inventaire')
+      + statsCarte(`<small>${esc(d.instance || '–')}</small>`, 'instance, démarrée le ' + esc(d.depuis));
+    const b = d.base || {};
+    $('#memoire-base').innerHTML = b.etat === 'ok' ? 'L\'historique est gardé 30 jours.'
+      : b.etat === 'sans base' ? 'Pas de base ici, on ne garde que les dernières 24 h.'
+      : b.etat === 'indisponible' ? `<span style="color:#c0392b" title="${esc(b.erreur || '')}">L'historique ne s'enregistre pas en ce moment (le site marche quand même), on ne voit que les dernières 24 h.</span>`
+      : 'Premier relevé en cours…';
+    $('#stats-memoire-courbe').innerHTML = memoireCourbe(points, d.limite, d.heures);
+    const NOMS_CACHES = { forum: 'Images du forum', fonds: 'Fonds d\'écran', quiz: 'Images de quiz', 'pictos maison': 'Pictos inédits', boutique: 'Images de la boutique' };
+    $('#stats-caches').innerHTML = d.caches.map((c) => `<tr><td>${esc(NOMS_CACHES[c.nom] || c.nom)}</td><td>${statsNb(c.elements)}</td><td>${memoMo(c.octets)}</td>`
+      + `<td>${memoMo(c.maxOctets)} <span style="color:#6c8f3a">(${memoMo(c.maxElement)} max par image)</span></td>`
+      + `<td>${statsNb(c.lus)}</td><td>${statsNb(c.ratés)}</td><td>${statsNb(c.refusés)}</td><td>${statsNb(c.sortis)}</td>`
+      + `<td>${c.octets <= c.maxOctets ? '<span class="mem-pastille vert">OK</span>' : '<span class="mem-pastille rouge">déborde</span>'}</td></tr>`).join('');
+    const vues = memoireToutVoir ? lignes : lignes.slice(0, 20);
+    const ref = (t) => (t ? ' (depuis ' + new Date(t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) + ')' : '');
+    $('#memoire-d1').textContent = 'Sur 1 h' + ref(inv.depuis1h);
+    $('#memoire-d24').textContent = 'Sur 24 h' + ref(inv.depuis24h);
+    $('#memoire-inventaire').innerHTML = vues.map(({ x, nom }) => `<tr><td>${esc(nom.libelle)} <span class="mem-tech" title="Nom technique, pour le développeur">${esc(x.nom)}</span></td>`
+      + `<td>${statsNb(x.elements)}${x.contenu ? ` <span class="mem-tech" title="Éléments rangés à l'intérieur">(+ ${statsNb(x.contenu)}${x.tronque ? ' et plus' : ''} à l'intérieur)</span>` : ''}</td>`
+      + `<td>${memoEvolution(x.d1 == null ? null : x.d1 + (x.d1Contenu || 0))}</td><td>${memoEvolution(x.d24 == null ? null : x.d24 + (x.d24Contenu || 0))}</td>`
+      + `<td>${memoAvis(x, nom)}</td></tr>`).join('')
+      || '<tr><td colspan="5">Rien à montrer pour l\'instant.</td></tr>';
+    $('#memoire-tout').textContent = memoireToutVoir ? 'Voir moins' : `Tout voir (${lignes.length})`;
+    $('#memoire-inventaire-note').textContent = !inv.depuis1h ? 'Les comparaisons arrivent après une heure de relevés.' : '';
+  } catch (e) { $('#mem-verdict').innerHTML = '<div class="mem-verdict orange">Impossible de lire la mémoire du serveur : ' + esc(e.message) + '</div>'; }
 }
 async function loadStats() {
   try {

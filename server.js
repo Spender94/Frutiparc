@@ -19,6 +19,7 @@ const path = require('path');
 const fs = require('fs');
 const zlib = require('zlib');
 const db = require('./db');
+const { CacheBorne, moEnv } = require('./cacheBorne');
 const { faerieIsRich, parseFaerieField, mergeFaerieByIdentity, synthesizeFaerieDefaults,
   listeAutoritaire, dedoublonnerFees, recalerCurrent, reglerBocaux,
   chasserFantomeDuBassin, identiteFee } = require('./minipixizFaerie');
@@ -1223,13 +1224,15 @@ function resolveGameItemGif(itemName) {
 // rôle du nom de jeu à l'affichage — et comme elle ne correspond à aucun
 // matchGame du GAME_PROGRESS_REGISTRY, la consécration n'est pas affectée.
 const CUSTOM_PICTOS = {};                 // name ($xxx) -> { displayName, category, mime }
-const customPictoImageCache = new Map();  // name -> { mime, buf }
+// Bornés (cacheBorne.js) : la base reste la source, le cache ne garde que les
+// images servies récemment.
+const customPictoImageCache = new CacheBorne({ nom: 'pictos maison', maxOctets: moEnv('CACHE_PICTOS_MO', 4), maxElement: 1024 * 1024 });  // name -> { mime, buf }
 // Images de boutique éditables (aperçu produit, ex. feutre spécial). On garde en
 // mémoire les clés présentes en base ET leur extension (le chargeur d'images du
 // SWF exige une URL avec extension, comme les fonds : « wal-custom/id.jpg »),
 // plus un cache d'octets pour éviter un aller-retour DB par affichage.
 const shopAssetKeys = new Map();          // key -> ext ('png'|'jpg'|'gif'|'webp')
-const shopAssetImageCache = new Map();    // key -> { mime, buf }
+const shopAssetImageCache = new CacheBorne({ nom: 'boutique', maxOctets: moEnv('CACHE_BOUTIQUE_MO', 4), maxElement: 1024 * 1024 });    // key -> { mime, buf }
 function mimeToExt(mime) {
   const m = String(mime || '').toLowerCase();
   if (m.includes('png')) return 'png';
@@ -6459,7 +6462,7 @@ const WALLPAPER_BY_ID = Object.fromEntries(DEFAULT_WALLPAPERS.map(w => [w.u, w])
 // keep only the resolved {url,color,name} so shop packs + inventory work like
 // the built-ins. CUSTOM_WALLPAPER_IDS marks which entries are admin-managed.
 const CUSTOM_WALLPAPER_IDS = new Set();
-const wallpaperImageCache = new Map(); // id -> { mime, buf } (avoid a DB hit per load)
+const wallpaperImageCache = new CacheBorne({ nom: 'fonds', maxOctets: moEnv('CACHE_FONDS_MO', 8), maxElement: 2 * 1024 * 1024 }); // id -> { mime, buf } (avoid a DB hit per load)
 function registerCustomWallpaper(wp) {
   const ext = wp.ext || 'jpg';
   WALLPAPER_BY_ID[wp.id] = { u: wp.id, n: wp.name, url: `wal-custom/${wp.id}.${ext}`, color: wp.color };
@@ -6635,7 +6638,7 @@ function cadragesDuFond(url) {
 // Light/mobile client (renders inline) can load them. QUIZ_IMAGES holds the
 // resolved metadata; quizImageCache avoids a DB round-trip on each fetch.
 const QUIZ_IMAGES = {};            // id -> { id, title, ext, mime, w, h }
-const quizImageCache = new Map();  // id -> { mime, buf }
+const quizImageCache = new CacheBorne({ nom: 'quiz', maxOctets: moEnv('CACHE_QUIZ_MO', 4), maxElement: 1024 * 1024 });  // id -> { mime, buf }
 function registerQuizImage(meta) {
   QUIZ_IMAGES[meta.id] = {
     id: meta.id, title: meta.title || '', ext: meta.ext || 'jpg',
@@ -30680,7 +30683,86 @@ app.post('/api/forum/upload-image',
   }
 );
 // Cache mémoire des images de forum (évite un aller-retour base par affichage).
-const forumImageCache = new Map(); // fname -> { mime, buf }
+//
+// BORNÉ (cacheBorne.js). C'était une Map qui gardait toute image affichée une
+// fois jusqu'au redémarrage : 707 images et 330 Mo en base en novembre 2026,
+// pour une instance de 512 Mo — la mémoire montait d'environ 100 Mo par jour.
+// On garde les images vues récemment, dans un budget ; une image de plus de
+// 512 Ko n'y entre pas. Les navigateurs gardent déjà chaque image un an
+// (Cache-Control immutable) : seule la première vue de chaque joueur arrive ici.
+const forumImageCache = new CacheBorne({ nom: 'forum', maxOctets: moEnv('CACHE_FORUM_MO', 24), maxElement: 512 * 1024 }); // fname -> { mime, buf }
+
+/*
+ * LA MÉMOIRE DU SERVEUR, pour l'admin (onglet Statistiques, « Le serveur ») —
+ * cf. memoireServeur.js. Un relevé toutes les cinq minutes (gardé en base
+ * trente jours, dans une table créée À PART du démarrage : une base en panne
+ * ne fait que couper l'historique), et l'inventaire des grandes structures
+ * gardées en mémoire, une fois par heure, pour voir laquelle grossit.
+ */
+const { MemoireServeur } = require('./memoireServeur');
+const imageCaches = () => [forumImageCache, wallpaperImageCache, quizImageCache, customPictoImageCache, shopAssetImageCache];
+const memoireServeur = new MemoireServeur({
+  pool: process.env.DATABASE_URL ? db.pool : null,
+  limite: moEnv('MEMOIRE_LIMITE_MO', 512),
+  caches: () => imageCaches().map((c) => c.stats()),
+  // Cinq minutes par défaut ; plus court pour un essai en local.
+  periodeMs: Number(process.env.MEMOIRE_PERIODE_S) > 0 ? Number(process.env.MEMOIRE_PERIODE_S) * 1000 : undefined,
+});
+// Toutes les collections globales de ce fichier (Map, Set, tableaux, objets
+// tenus au niveau du module), plus les salons et les scores. Les lectures sont
+// paresseuses : rien n'est lu avant le premier relevé, après le démarrage.
+for (const [nom, lire] of [
+  ['partiesEnCours', () => partiesEnCours], ['chatBannedWords', () => chatBannedWords], ['forumReplacements', () => forumReplacements],
+  ['CUSTOM_PICTOS', () => CUSTOM_PICTOS], ['shopAssetKeys', () => shopAssetKeys], ['bouilleCache', () => bouilleCache],
+  ['sessions', () => sessions], ['users', () => users], ['recentSidByIp', () => recentSidByIp],
+  ['sessionsDormantes', () => sessionsDormantes], ['reveilsEnCours', () => reveilsEnCours], ['debutsDePartie', () => debutsDePartie],
+  ['tournamentWindows', () => tournamentWindows], ['tournamentRoundScores', () => tournamentRoundScores], ['dailyXpActions', () => dailyXpActions],
+  ['animatorKikoozGiven', () => animatorKikoozGiven], ['reconstitutionsKikooz', () => reconstitutionsKikooz], ['fdDernierSave', () => fdDernierSave],
+  ['registerAttempts', () => registerAttempts], ['CUSTOM_WALLPAPER_IDS', () => CUSTOM_WALLPAPER_IDS], ['QUIZ_IMAGES', () => QUIZ_IMAGES],
+  ['PRUNELLES', () => PRUNELLES], ['MAQUILLAGES', () => MAQUILLAGES], ['accessoiresMaison', () => accessoiresMaison],
+  ['variantesAcc', () => variantesAcc], ['accMaisonEquip', () => accMaisonEquip], ['pushAbonnements', () => pushAbonnements],
+  ['pushJournal', () => pushJournal], ['mentionTousDernier', () => mentionTousDernier], ['partiesRecentes', () => partiesRecentes],
+  ['activiteMem', () => activiteMem], ['swapouAccordsEnCours', () => swapouAccordsEnCours], ['swapouPartiesDonnees', () => swapouPartiesDonnees],
+  ['swapouPartiesRendues', () => swapouPartiesRendues], ['swapouDemandesRecentes', () => swapouDemandesRecentes], ['swapouCombosCache', () => swapouCombosCache],
+  ['connexionsNotees', () => connexionsNotees], ['adminAuthFails', () => adminAuthFails], ['adminTokens', () => adminTokens],
+  ['cotesTournoiCache', () => cotesTournoiCache], ['parisFiles', () => parisFiles], ['parisVerrous', () => parisVerrous],
+  ['quetesProgres', () => quetesProgres], ['quetesVisites', () => quetesVisites], ['quetesContrats', () => quetesContrats],
+  ['quetesContratsEnCours', () => quetesContratsEnCours], ['quetesIndiv', () => quetesIndiv], ['quetesIndivEnCours', () => quetesIndivEnCours],
+  ['quetesIndivAttente', () => quetesIndivAttente], ['quetesRecordsParc', () => quetesRecordsParc], ['quetesPrimesPrises', () => quetesPrimesPrises],
+  ['quetesPrimesEtat', () => quetesPrimesEtat], ['quetesPrimesJournal', () => quetesPrimesJournal], ['quetesDernierMode', () => quetesDernierMode],
+  ['exportsRecents', () => exportsRecents], ['antitricheDemandes', () => antitricheDemandes], ['entreesSignalees', () => entreesSignalees],
+  ['antitricheConformesMemoire', () => antitricheConformesMemoire], ['ALERTES_TRICHE_MEMOIRE', () => ALERTES_TRICHE_MEMOIRE], ['alertesTricheRecentes', () => alertesTricheRecentes],
+  ['HISTORIQUE_SLOTS_MEMOIRE', () => HISTORIQUE_SLOTS_MEMOIRE], ['exclusionsClassement', () => exclusionsClassement], ['pictosRetires', () => pictosRetires],
+  ['scoresExclusSignales', () => scoresExclusSignales], ['jamaNiveaux', () => jamaNiveaux], ['pushedEvents', () => pushedEvents],
+  ['bkiwiFantomesMemoire', () => bkiwiFantomesMemoire], ['recentlyEjected', () => recentlyEjected], ['medaillesMoisCache', () => medaillesMoisCache],
+  ['CMD_REV', () => CMD_REV], ['pendingChannelCleanup', () => pendingChannelCleanup], ['npcChannel', () => npcChannel],
+  ['TROMBINOSCOPE', () => TROMBINOSCOPE], ['_kpickLast', () => _kpickLast], ['quizScheduleLastDay', () => quizScheduleLastDay],
+  ['xmlSocketClients', () => xmlSocketClients], ['chuchoCadence', () => chuchoCadence], ['finsDeTotoche', () => finsDeTotoche],
+  ['lgParties', () => lgParties], ['lgMinuteurs', () => lgMinuteurs], ['lgFermetures', () => lgFermetures],
+  ['NOTES_CHAMPIONNAT', () => NOTES_CHAMPIONNAT], ['traceSubscriptions', () => traceSubscriptions], ['quizState', () => quizState],
+  ['pollState', () => pollState], ['blueModeUsers', () => blueModeUsers], ['blindtestState', () => blindtestState],
+  ['blindtestParJeton', () => blindtestParJeton], ['CHAT_EMOTES', () => CHAT_EMOTES], ['CHAT_EMOTES_MOTS', () => CHAT_EMOTES_MOTS],
+  ['scoresData', () => scoresData], ['channels', () => channels],
+]) memoireServeur.surveiller(nom, lire);
+app.get('/api/admin/memoire', adminAuth, async (req, res) => {
+  try {
+    const m = process.memoryUsage();
+    const heures = Math.max(1, Math.min(24 * 30, Number(req.query.heures) || 24));
+    const [historique, inventaire] = await Promise.all([memoireServeur.historique(heures), memoireServeur.inventaireCompare()]);
+    res.json({
+      ok: true,
+      limite: memoireServeur.limite,
+      depuis: memoireServeur.demarre.toISOString(),
+      instance: memoireServeur.instance,
+      rss: m.rss, tas: m.heapUsed, tasTotal: m.heapTotal, externe: m.external, tampons: m.arrayBuffers,
+      caches: imageCaches().map((c) => c.stats()),
+      base: memoireServeur.etat(),
+      heures, historique, inventaire,
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
 
 // Serve uploaded forum images. Names are content hashes we minted above, so
 // the strict pattern both validates the request and blocks path traversal.
@@ -34607,7 +34689,9 @@ async function boot() {
   catch (e) { console.error('[MINIWAVE] Map setup error:', e.message); }
 }
 
-boot();
+// Les relevés de mémoire commencent une fois le démarrage fini (base prête ou
+// non : sans elle, ils restent en mémoire — cf. memoireServeur.js).
+boot().finally(() => memoireServeur.demarrer());
 
 setInterval(async () => {
   try { await rollDailyChallengeIfNeeded(); } catch (e) {
