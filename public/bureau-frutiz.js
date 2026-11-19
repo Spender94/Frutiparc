@@ -1894,6 +1894,10 @@ window.BureauFrutiz = (function () {
     snake3: 'snake', snake: 'snake', snake2vk: 'snake2vk', jama: 'jama', mb2: 'mb2',
     mele: 'mele', tower: 'tower', tuberculoz: 'tuberculoz',
   };
+  // Jaquettes REDESSINÉES : /frutiz/sprites est servi « immutable » (sept jours,
+  // rechargement compris), seule une nouvelle adresse fait arriver le nouveau
+  // dessin. On incrémente le numéro à chaque remplacement.
+  var VERSIONS_JAQUETTE = { snake2vk: 3 };
   function dessinDisque(type, jeu) {
     var d = document.createElement('span');
     d.className = 'ex-disque';
@@ -1906,7 +1910,7 @@ window.BureauFrutiz = (function () {
       var jaq = document.createElement('img');
       jaq.alt = '';
       jaq.className = 'jaquette';
-      jaq.src = '/frutiz/sprites/disc_jaquette_' + nom + '.svg';
+      jaq.src = '/frutiz/sprites/disc_jaquette_' + nom + '.svg' + (VERSIONS_JAQUETTE[nom] ? '?v=' + VERSIONS_JAQUETTE[nom] : '');
       d.appendChild(jaq);
     }
     return d;

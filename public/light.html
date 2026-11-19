@@ -5719,7 +5719,7 @@
     { tab: "minifever", img: "/fb/fd_minifever.svg", name: "Mini-Fever" },
     { tab: "jamajama", jaquette: "jama", name: "JamaJama" },
     { tab: "bkiwi", jaquette: "bkiwi", anneau: "3", name: "Burning Kiwi" },
-    { tab: "snake2vk", jaquette: "snake2vk", anneau: "3", name: "Frutisnake 2 VK" },
+    { tab: "snake2vk", jaquette: "snake2vk", v: "3", anneau: "3", name: "Frutisnake 2 VK" },
     /*
      * PLUS AUCUN DISQUE EN FLASH.
      *
@@ -5966,7 +5966,9 @@
       // exprimées en pourcentage puisque la vignette suit la cellule.
       var dessin = d.jaquette
         ? '<img src="/frutiz/sprites/disc_anneau_' + (d.anneau || "0") + '.svg" alt="">'
-          + '<img class="jaq" src="/frutiz/sprites/disc_jaquette_' + d.jaquette + '.svg"'
+          // `v` : jaquette redessinée — /frutiz/sprites est servi « immutable », seule une
+          // nouvelle adresse la fait arriver chez qui tient l'ancienne.
+          + '<img class="jaq" src="/frutiz/sprites/disc_jaquette_' + d.jaquette + '.svg' + (d.v ? '?v=' + d.v : '') + '"'
           + ' alt="' + xmlEscape(d.name) + '">'
         : '<img src="' + d.img + '" alt="' + xmlEscape(d.name)
           + '" onerror="this.replaceWith(document.createTextNode(\'💿\'))">';

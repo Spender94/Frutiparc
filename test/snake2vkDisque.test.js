@@ -50,7 +50,9 @@ test('le mode /light a son panneau, son cadre, son adresse et son disque', () =>
   assert.match(h, /snake2vk: "#snake2vk-frame"/);
   assert.match(h, /snake2vk: "\/snake2vk\/"/);
   assert.match(h, /\$\("#snake2vk-panel"\)\.classList\.toggle\("active", tab === "snake2vk"\)/);
-  assert.match(h, /\{ tab: "snake2vk", jaquette: "snake2vk", anneau: "3", name: "Frutisnake 2 VK" \}/);
+  assert.match(h, /\{ tab: "snake2vk", jaquette: "snake2vk", v: "\d+", anneau: "3", name: "Frutisnake 2 VK" \}/);
+  // Les jaquettes sont servies « immutable » : un dessin remplacé n'arrive qu'en changeant l'adresse.
+  assert.match(h, /disc_jaquette_' \+ d\.jaquette \+ '\.svg' \+ \(d\.v \? '\?v=' \+ d\.v : ''\)/);
 });
 
 test('le bureau Frutiz a sa fenêtre, son nom, sa jaquette et son lancement', () => {
@@ -58,6 +60,8 @@ test('le bureau Frutiz a sa fenêtre, son nom, sa jaquette et son lancement', ()
   assert.match(b, /snake2vk:\s+\{ panneau: '#snake2vk-panel',\s+titre: 'Frutisnake 2 VK'/);
   assert.match(b, /snake2vk: 'Frutisnake 2 VK'/);
   assert.match(b, /snake2vk: 'snake2vk', jama/, 'JAQUETTES : sa propre jaquette');
+  assert.match(b, /VERSIONS_JAQUETTE = \{ snake2vk: \d+ \}/, 'sa jaquette a un numéro de version (servie immutable)');
+  assert.match(b, /disc_jaquette_' \+ nom \+ '\.svg' \+ \(VERSIONS_JAQUETTE\[nom\] \? '\?v=' \+ VERSIONS_JAQUETTE\[nom\] : ''\)/);
   assert.match(b, /\n\s+snake2vk: 'snake2vk',\n/, 'JEUX_LIGHT : le libellé du disque lance SON jeu');
   assert.ok(fs.existsSync(path.join(ROOT, 'public/frutiz/sprites/disc_jaquette_snake2vk.svg')), 'la jaquette existe');
 });
