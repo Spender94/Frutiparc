@@ -9,6 +9,7 @@ if (process.stderr._handle && process.stderr._handle.setBlocking) {
 
 const express = require('express');
 let compression;
+const precompresse = require('./precompresse');
 try { compression = require('compression'); }
 catch { /* dependency optional — falls back to no compression */ }
 const { WebSocketServer } = require('ws');
@@ -122,9 +123,20 @@ if (compression) {
   // by Render's free-tier worker recycling. Exclude application/x-shockwave-flash
   // so SWFs go out raw, with a real Content-Length and no intermediate
   // re-encoding to break.
+  //
+  // MÉMOIRE : chaque réponse compressée à la volée ouvre un compresseur zlib.
+  // Aux réglages par défaut (fenêtre 2^15, memLevel 8), il prend ~256 Ko de
+  // mémoire native, que l'allocateur garde ensuite pour lui : au pic du soir,
+  // c'était l'essentiel des ~300 Mo hors tas du serveur. Fenêtre 2^13 et
+  // memLevel 7 : ~96 Ko par réponse, des réponses ~12 % plus lourdes. Banc
+  // Docker à 512 Mo : 222 → 167 Mo au calme. Les fichiers de public/ et de
+  // Ruffle ne passent plus par ici (precompresse.js) : seules les réponses
+  // dynamiques — JSON de l'API, XML — paient ces 12 %.
   const defaultFilter = compression.filter;
   app.use(compression({
     threshold: 1024,
+    windowBits: 13,
+    memLevel: 7,
     filter: (req, res) => {
       const type = res.getHeader('Content-Type');
       if (typeof type === 'string' && type.indexOf('application/x-shockwave-flash') !== -1) {
@@ -30075,6 +30087,7 @@ app.use('/games', (req, res, next) => {
 });
 const ruffleDir = path.join(__dirname, 'node_modules', '@ruffle-rs', 'ruffle');
 if (fs.existsSync(ruffleDir)) {
+  app.use('/ruffle', precompresse(ruffleDir, { maxAge: 7 * 24 * 3600, immutable: true }));
   app.use('/ruffle', express.static(ruffleDir, { maxAge: '7d', immutable: true }));
   console.log('[STARTUP] Ruffle served from local npm package');
 } else {
@@ -34336,6 +34349,8 @@ app.use((req, res, next) => {
   }
   res.sendFile(path.join(__dirname, 'public', 'swapou', fichier));
 });
+// Les fichiers texte de public/, compressés une fois pour toutes (precompresse.js).
+app.use(precompresse(path.join(__dirname, 'public')));
 app.use(express.static(path.join(__dirname, 'public'), { setHeaders: tailleReelle }));
 // Fallback: swf.frutiparc.com URLs resolve to root paths (/wheel/wheel1.swf)
 // but files live under public/swf/. This second mount acts as fallback.
