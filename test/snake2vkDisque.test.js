@@ -30,8 +30,13 @@ test('le catalogue serveur a un disque light snake2vklight', () => {
   assert.match(m[1], /files: \[\]/);
 });
 
-test('le serveur n’a aucun classement snake2vk', () => {
-  assert.doesNotMatch(lire('server.js'), /snake2vk_\w+\s*:/);
+test('le serveur n’a aucun classement snake2vk, ni snakev2 (le nom que le jeu envoie)', () => {
+  // Le jeu s'annonce `game=snakev2` (FRUTIPARC_GAME_ID côté Frutiback) : c'est CE nom
+  // qui doit rester sans classement, pour qu'un build qui enverrait quand même un
+  // score ne trouve aucune cuve.
+  const src = lire('server.js');
+  assert.doesNotMatch(src, /snake2vk_\w+\s*:/);
+  assert.doesNotMatch(src, /snakev2\w*\s*:/);
 });
 
 test('la fenêtre Ruffle détourne le disque vers /snake2vk/', () => {
