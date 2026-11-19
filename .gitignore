@@ -21,3 +21,4 @@ Games/motionBall2/mb2data.dat
 # bogue, on mesure avant et après — mais rien n'y survit à la machine, et rien
 # n'y a sa place dans le dépôt. Ce qui mérite de rester devient un test.
 scratchpad/
+.gstack/
