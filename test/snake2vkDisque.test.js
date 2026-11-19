@@ -66,6 +66,9 @@ test('le jeu compilé est servi sous /snake2vk/, sans scores', () => {
   assert.strictEqual(js.length, 1, 'un seul point d’entrée');
   const bundle = fs.readFileSync(path.join(dir, 'assets', js[0]), 'utf8');
   assert.match(bundle, /desactive/, 'la garde « scores désactivés » est compilée');
+  // La session du compte s'ouvre scores COUPÉS : `open(sid, fetch, apiBase, false)`,
+  // que la minification écrit `!1`. Un build sans VITE_NO_SCORES y met `!0`.
+  assert.match(bundle, /location\.search\)[^;]*?\.open\([^)]*,!1\)/, 'session ouverte sans scores');
   assert.doesNotMatch(bundle, /wss?:\/\/localhost/, 'aucun serveur d’Arène : bots seulement');
 });
 
