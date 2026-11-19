@@ -175,6 +175,7 @@
   }
   #message.on { opacity: 1; }
 </style>
+<script src="/js/sid-discret.js"></script>
 </head>
 <body>
 
@@ -217,7 +218,7 @@
 <script>
 (function () {
   var $ = function (s) { return document.querySelector(s); };
-  var sid = new URLSearchParams(location.search).get('sid') || '';
+  var sid = (window.FPSid && FPSid.sid) || new URLSearchParams(location.search).get('sid') || '';
   var sons = new window.MiniwaveSons.Sons();
   var P = window.MiniwavePlateforme;
   var Menu = window.MiniwaveMenu;

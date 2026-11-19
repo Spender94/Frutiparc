@@ -3891,6 +3891,33 @@
   function clearSession() {
     try { localStorage.removeItem(SESS_KEY); } catch (e) {}
   }
+  /*
+   * LE SID NE RESTE PAS DANS LA BARRE D'ADRESSE.
+   *
+   * La connexion mène à `/light?sid=…`. Laissé là, il s'affichait tant que
+   * l'onglet restait ouvert : une capture d'écran partagée suffisait à prendre
+   * la session — le compte — de celui qui la montrait. Une fois le sid rangé
+   * dans le `localStorage`, on le retire de l'adresse (sans recharger ; les
+   * autres paramètres, `ouvre`, `vue`…, restent) : un F5 reprend la session par
+   * le stockage, comme avant.
+   *
+   * Seulement si le stockage l'a bien gardé : sans lui (stockage bloqué),
+   * l'adresse est le seul moyen de survivre à un rechargement.
+   *
+   * Rien d'autre ne lit le sid dans l'adresse du Light : les jeux, le forum,
+   * l'historique reçoivent le leur, tiré de `state.sid`, dans LEUR adresse — et
+   * c'est elle que le serveur lit comme Referer pour leurs scores.
+   */
+  function retirerSidDeLAdresse(sid) {
+    try {
+      var garde = JSON.parse(localStorage.getItem(SESS_KEY) || "null");
+      if (!garde || garde.sid !== sid) return;
+      var p = new URLSearchParams(window.location.search);
+      p.delete("sid");
+      var q = p.toString();
+      history.replaceState(history.state, "", window.location.pathname + (q ? "?" + q : "") + window.location.hash);
+    } catch (e) { /* adresse laissée telle quelle */ }
+  }
   function tryResumeSession(cb) {
     // Prefer a sid already on state (set from ?sid= in the URL), else the one
     // saved in localStorage.
@@ -14582,6 +14609,7 @@
     var urlSid = new URLSearchParams(window.location.search).get("sid");
     if (urlSid) {
       state.sid = urlSid; saveSession();
+      retirerSidDeLAdresse(urlSid);
     }
     tryResumeSession(function (resumed) {
       if (!resumed) {

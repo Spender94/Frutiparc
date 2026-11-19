@@ -16,7 +16,7 @@
   function isMe(p) { return !!p && (sameUser(p.u, state.user) || sameUser(p.n, state.user)); }
 
   var DEFAULT_BOUILLE = "000000010000000000000000";
-  var sid = new URLSearchParams(location.search).get("sid") || "";
+  var sid = (window.FPSid && FPSid.sid) || new URLSearchParams(location.search).get("sid") || "";
   if (!sid) { try { sid = (JSON.parse(localStorage.getItem("fp_light_session") || "{}") || {}).sid || ""; } catch (e) {} }
 
   // Les trois salles du jeu d'origine (frutibandas/Main.as : FREE_MODE 0,

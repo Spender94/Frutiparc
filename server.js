@@ -33394,6 +33394,15 @@ function nomsPaysRegion(ud) {
 // leur salon.
 app.get('/api/chat/histo', (req, res) => {
   const demandeur = resolveUsernameFromSid(req.query.sid || '');
+  if (!demandeur && !req.query.sid) {
+    // Rechargée (F5) après que sid-discret.js a retiré le sid de l'adresse :
+    // l'onglet l'a gardé, la page se rouvre avec — et le retire de nouveau.
+    return res.status(401).type('html').send('<!DOCTYPE html><meta charset="utf-8"><script>'
+      + 'try{var s=sessionStorage.getItem("fp_sid_page:"+location.pathname);'
+      + 'if(s){var p=new URLSearchParams(location.search);p.set("sid",s);'
+      + 'location.replace(location.pathname+"?"+p.toString()+location.hash);}}catch(e){}'
+      + '</script>Session inconnue.');
+  }
   if (!demandeur) return res.status(401).send('Session inconnue.');
   const g = String(req.query.g || '').trim();
   if (!g || !channels[g]) return res.status(404).send('Salon inconnu.');
@@ -33472,6 +33481,7 @@ app.get('/api/chat/histo', (req, res) => {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<script src="/js/sid-discret.js"></script>
 <title>Salon ${esc(g)} — messages précédents</title>
 <style>
   body { margin: 0; background: #8A9F60; font: 12px Verdana, Arial, sans-serif; color: #2c3a10; }

@@ -1426,7 +1426,7 @@ window.SnakeJeu = { Jeu, Ecran, VuePartie, VueBataille, dessinerFondArene, dessi
 window.demarrerFrutisnake = function (options) {
   const opts = options || {};
   const canvas = document.getElementById(opts.canvas || 'scene');
-  const sid = new URLSearchParams(window.location.search).get('sid') || '';
+  const sid = (window.FPSid && FPSid.sid) || new URLSearchParams(window.location.search).get('sid') || '';
   const plateforme = new window.SnakePlateforme.Plateforme(sid);
   const sons = new window.SnakeSons.Sons();
 

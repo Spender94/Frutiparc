@@ -78,6 +78,7 @@
   }
   #rotate-hint .ph { display: inline-block; transform: rotate(90deg); }
 </style>
+<script src="/js/sid-discret.js"></script>
 </head>
 <body>
 <canvas id="stage" width="700" height="480"></canvas>
@@ -96,7 +97,7 @@
   var rotateHint = document.getElementById('rotate-hint');
 
   // sid : ?sid=… puis session /light en secours (même logique que Grapiz)
-  var sid = new URLSearchParams(location.search).get('sid') || '';
+  var sid = (window.FPSid && FPSid.sid) || new URLSearchParams(location.search).get('sid') || '';
   if (!sid) {
     try { sid = (JSON.parse(localStorage.getItem('fp_light_session') || '{}') || {}).sid || ''; } catch (e) {}
   }

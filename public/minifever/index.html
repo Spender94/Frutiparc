@@ -81,6 +81,7 @@
   #etat { color: #3f6620; }
   #bareme { color: #5d8f33; font-size: 10px; line-height: 1.5; margin-top: 2px; }
 </style>
+<script src="/js/sid-discret.js"></script>
 </head>
 <body>
 <div id="tout">
@@ -111,7 +112,7 @@ const J = window.JournalPartie || {};
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
-const sid = params.get('sid') || '';
+const sid = (window.FPSid && FPSid.sid) || params.get('sid') || '';
 
 // Les appuis simulés par un script sont refusés et signalés (garde-entrees.js).
 if (window.GardeEntrees) window.GardeEntrees.surveiller({ jeu: 'minifever', sid });

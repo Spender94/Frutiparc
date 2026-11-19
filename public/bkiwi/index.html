@@ -119,6 +119,7 @@
   #bk-multi .bkm-btn[disabled] { opacity: .45; cursor: default; }
   #bk-multi .bkm-btn:not([disabled]):active { background: #f0813d; }
 </style>
+<script src="/js/sid-discret.js"></script>
 </head>
 <body>
 <div id="tout">
@@ -469,7 +470,7 @@
   });
 
   adapter();
-  window.demarrerBurningKiwi({ canvas, sid: params.get('sid') || '' }).then(function (r) {
+  window.demarrerBurningKiwi({ canvas, sid: (window.FPSid && FPSid.sid) || params.get('sid') || '' }).then(function (r) {
     window.__bkiwi = r;
     brancherPilotage(r.scene);
     document.getElementById('chargement').remove();

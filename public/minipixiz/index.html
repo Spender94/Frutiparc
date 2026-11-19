@@ -248,6 +248,7 @@
     background: #453177; color: #e9dcff; font: bold 15px inherit; cursor: pointer;
   }
 </style>
+<script src="/js/sid-discret.js"></script>
 </head>
 <body>
 
@@ -353,7 +354,7 @@
 (function () {
   var $ = function (s) { return document.querySelector(s); };
   var P = window.MinipixizPlateforme;
-  var sid = new URLSearchParams(location.search).get('sid') || '';
+  var sid = (window.FPSid && FPSid.sid) || new URLSearchParams(location.search).get('sid') || '';
   /*
    * L'ÉTAT DU JEU NE SE LIT PLUS DEPUIS LA PAGE. Le client, la plateforme,
    * l'inventaire… étaient posés sur `window` pour les vérifications

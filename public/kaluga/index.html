@@ -77,6 +77,7 @@
     pointer-events: none;
   }
 </style>
+<script src="/js/sid-discret.js"></script>
 </head>
 <body>
 <div id="tout">
@@ -201,7 +202,7 @@
   }
 
   adapter();
-  window.demarrerKaluga({ canvas, sid: params.get('sid') || '' }).then(function () {
+  window.demarrerKaluga({ canvas, sid: (window.FPSid && FPSid.sid) || params.get('sid') || '' }).then(function () {
     document.getElementById('chargement').remove();
     adapter();
     canvas.focus();

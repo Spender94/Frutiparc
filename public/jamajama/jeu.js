@@ -22,7 +22,7 @@
 
   const canvas = document.getElementById('jama');
   const ctx = canvas.getContext('2d');
-  const sid = new URLSearchParams(location.search).get('sid') || '';
+  const sid = (window.FPSid && FPSid.sid) || new URLSearchParams(location.search).get('sid') || '';
   const plateforme = new window.JamaPlateforme.Plateforme(sid);
 
   // ── l'échelle : 384 logique, net sur tout écran ──

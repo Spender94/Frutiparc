@@ -1549,6 +1549,7 @@
   .sig-apercu { margin: 0; border-top: 1px solid #cfe0a8; }
   .sig-vide { color: #aaa; font-style: italic; }
 </style>
+<script src="/js/sid-discret.js"></script>
 <script>
 /*
  * LE MODE NUIT — le forum s'éteint avec le reste du parc.
@@ -1664,7 +1665,7 @@
 
 <script>
 const params = new URLSearchParams(window.location.search);
-const SID = params.get('sid') || '';
+const SID = (window.FPSid && FPSid.sid) || params.get('sid') || '';
 let currentUser = null;
 let myBouille = null;
 let mySignature = '';   // signature de forum (BBCode), éditable via le bouton « Ma signature »
@@ -2075,7 +2076,7 @@ function bouilleSelHtml(formId, depart) {
 // resumes without a new login. Used by the "‹ Salons" link shown when the
 // forum was opened from /light.
 function backToChat() {
-  var sid = new URLSearchParams(window.location.search).get('sid') || '';
+  var sid = SID;
   window.location.href = '/light' + (sid ? ('?sid=' + encodeURIComponent(sid)) : '');
 }
 

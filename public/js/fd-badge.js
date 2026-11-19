@@ -29,7 +29,7 @@
   var script = document.currentScript;
   var params;
   try { params = new URLSearchParams(window.location.search); } catch (e) { return; }
-  var sid = params.get('sid') || '';
+  var sid = (window.FPSid && FPSid.sid) || params.get('sid') || '';
   var jeu = ((script && script.getAttribute('data-jeu')) || params.get('game') || '').toLowerCase();
   if (!sid || !jeu) return;
 

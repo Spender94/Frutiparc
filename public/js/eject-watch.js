@@ -31,7 +31,7 @@
   var script = document.currentScript;
   var jeu = (script && script.getAttribute('data-jeu')) || '';
   var sid = '';
-  try { sid = new URLSearchParams(window.location.search).get('sid') || ''; } catch (e) { return; }
+  try { sid = (window.FPSid && FPSid.sid) || new URLSearchParams(window.location.search).get('sid') || ''; } catch (e) { return; }
   // Hors du bureau (jeu ouvert à la main, sans session), il n'y a pas de disque
   // à surveiller : on ne réveille pas le serveur pour rien.
   if (!jeu || !sid) return;
