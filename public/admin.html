@@ -4194,7 +4194,7 @@ async function loadMemoire() {
       : b.etat === 'indisponible' ? `<span style="color:#c0392b" title="${esc(b.erreur || '')}">L'historique ne s'enregistre pas en ce moment (le site marche quand même), on ne voit que les dernières 24 h.</span>`
       : 'Premier relevé en cours…';
     $('#stats-memoire-courbe').innerHTML = memoireCourbe(points, d.limite, d.heures);
-    const NOMS_CACHES = { forum: 'Images du forum', fonds: 'Fonds d\'écran', quiz: 'Images de quiz', 'pictos maison': 'Pictos inédits', boutique: 'Images de la boutique' };
+    const NOMS_CACHES = { forum: 'Images du forum', fonds: 'Fonds d\'écran', quiz: 'Images de quiz', 'pictos maison': 'Pictos inédits', boutique: 'Images de la boutique', 'images du chat': 'Images partagées dans les salons (/img)' };
     $('#stats-caches').innerHTML = d.caches.map((c) => `<tr><td>${esc(NOMS_CACHES[c.nom] || c.nom)}</td><td>${statsNb(c.elements)}</td><td>${memoMo(c.octets)}</td>`
       + `<td>${memoMo(c.maxOctets)} <span style="color:#6c8f3a">(${memoMo(c.maxElement)} max par image)</span></td>`
       + `<td>${statsNb(c.lus)}</td><td>${statsNb(c.ratés)}</td><td>${statsNb(c.refusés)}</td><td>${statsNb(c.sortis)}</td>`

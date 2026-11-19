@@ -10474,7 +10474,19 @@
     img.alt = o.title || "image";
     img.loading = "lazy";
     if (o.w) img.style.maxWidth = Math.min(o.w, 320) + "px";
-    img.onerror = function () { var f = el("span", "img-fail"); f.textContent = "[image indisponible]"; wrap.innerHTML = ""; wrap.appendChild(f); };
+    // Un raté passager (hébergeur qui limite, réseau du téléphone) ne doit pas
+    // priver ce joueur-là d'une image que les autres voient : une seconde
+    // tentative, un peu plus tard et à une autre adresse (le navigateur ne
+    // ressert pas son échec), avant de conclure.
+    var reessayee = false;
+    img.onerror = function () {
+      if (!reessayee && /^\/api\/imgproxy\?/.test(o.url)) {
+        reessayee = true;
+        setTimeout(function () { img.src = o.url + "&r=2"; }, 2500);
+        return;
+      }
+      var f = el("span", "img-fail"); f.textContent = "[image indisponible]"; wrap.innerHTML = ""; wrap.appendChild(f);
+    };
     img.addEventListener("load", function () { if (stick) scrollDown(fil); });
     img.src = o.url;
     wrap.appendChild(img);

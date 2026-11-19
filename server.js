@@ -21,6 +21,7 @@ const fs = require('fs');
 const zlib = require('zlib');
 const db = require('./db');
 const { CacheBorne, moEnv } = require('./cacheBorne');
+const { creerRelaisImages } = require('./relaisImages');
 const { faerieIsRich, parseFaerieField, mergeFaerieByIdentity, synthesizeFaerieDefaults,
   listeAutoritaire, dedoublonnerFees, recalerCurrent, reglerBocaux,
   chasserFantomeDuBassin, identiteFee } = require('./minipixizFaerie');
@@ -9650,6 +9651,11 @@ function isPrivateHost(hostname) {
   return false;
 }
 
+// Le relais garde ses images (un téléchargement par image, quel que soit le
+// nombre de joueurs du salon) : cf. relaisImages.js.
+const chatImageCache = new CacheBorne({ nom: 'images du chat', maxOctets: moEnv('CACHE_CHAT_IMG_MO', 16), maxElement: 2 * 1024 * 1024 }); // url -> { mime, buf }
+const relaisImages = creerRelaisImages({ cache: chatImageCache });
+
 app.get('/api/imgproxy', async (req, res) => {
   const raw = String(req.query.url || '');
   let parsed;
@@ -9660,30 +9666,12 @@ app.get('/api/imgproxy', async (req, res) => {
   if (isPrivateHost(parsed.hostname)) {
     return res.status(403).type('text/plain').send('forbidden host');
   }
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 8000);
-  try {
-    const upstream = await fetch(parsed.toString(), {
-      redirect: 'error',          // a redirect could target an internal host
-      signal: controller.signal,
-      headers: { 'User-Agent': 'FrutiparcImageProxy/1.0', 'Accept': 'image/*' },
-    });
-    if (!upstream.ok) return res.status(502).type('text/plain').send('upstream ' + upstream.status);
-    const type = String(upstream.headers.get('content-type') || '');
-    if (!type.startsWith('image/')) return res.status(415).type('text/plain').send('not an image');
-    const len = Number(upstream.headers.get('content-length') || 0);
-    if (len && len > 5 * 1024 * 1024) return res.status(413).type('text/plain').send('too large');
-    const buf = Buffer.from(await upstream.arrayBuffer());
-    if (buf.length > 5 * 1024 * 1024) return res.status(413).type('text/plain').send('too large');
-    res.set('Content-Type', type);
-    res.set('Cache-Control', 'public, max-age=86400');
-    res.set('Access-Control-Allow-Origin', '*');
-    res.end(buf);
-  } catch (e) {
-    res.status(502).type('text/plain').send('fetch failed');
-  } finally {
-    clearTimeout(timer);
-  }
+  const r = await relaisImages.obtenir(parsed.toString());
+  if (!r.ok) return res.status(r.status).type('text/plain').send(r.motif);
+  res.set('Content-Type', r.type);
+  res.set('Cache-Control', 'public, max-age=86400');
+  res.set('Access-Control-Allow-Origin', '*');
+  res.end(r.buf);
 });
 
 app.get('/login', (req, res) => {
@@ -31052,7 +31040,7 @@ const forumImageCache = new CacheBorne({ nom: 'forum', maxOctets: moEnv('CACHE_F
  * gardées en mémoire, une fois par heure, pour voir laquelle grossit.
  */
 const { MemoireServeur } = require('./memoireServeur');
-const imageCaches = () => [forumImageCache, wallpaperImageCache, quizImageCache, customPictoImageCache, shopAssetImageCache];
+const imageCaches = () => [forumImageCache, wallpaperImageCache, quizImageCache, customPictoImageCache, shopAssetImageCache, chatImageCache];
 const memoireServeur = new MemoireServeur({
   pool: process.env.DATABASE_URL ? db.pool : null,
   limite: moEnv('MEMOIRE_LIMITE_MO', 512),
