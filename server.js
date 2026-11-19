@@ -5200,7 +5200,7 @@ function collectTopForRanking(rankingId, n = 3) {
 }
 
 const GAME_DISPLAY_NAMES = {
-  bkiwi: 'Burning Kiwi', snake3: 'Frutisnake', kaluga: 'Kaluga',
+  bkiwi: 'Burning Kiwi', snake3: 'Frutisnake', snake2vk: 'Frutisnake 2 VK', kaluga: 'Kaluga',
   swapou2: 'Swapou', miniwave2: 'MiniWave', miniwave: 'MiniWave', mb2: 'MotionBall',
   bandas: 'Frutibandas', grapiz: 'Grapiz', minipixiz: 'MiniPixiz',
   minifever: 'Mini-Fever', jamajama: 'JamaJama',
@@ -28616,6 +28616,21 @@ const GAME_DISCS = {
     iconName: 'bkiwi',
     gameId: 'light/bkiwi',
     props: 'w=362;h=376;m=p',
+    files: [],
+  },
+  // Frutisnake 2 VK (/snake2vk/) : la réécriture de Frutisnake par Kobbs, en
+  // disque light À PART, à côté de l'ancien. Son libellé (iconName) est
+  // « snake2vk » et non « snake3 » : sur le bureau, le libellé choisit la
+  // jaquette ET le jeu lancé, « snake3 » ouvrirait l'ancien. AUCUN classement
+  // à son nom : le jeu est compilé sans envoi de score, et un envoi forgé ne
+  // trouverait aucune cuve où se ranger.
+  snake2vklight: {
+    discType: '3',
+    playMode: 'single',
+    swfName: 'snake2vk',
+    iconName: 'snake2vk',
+    gameId: 'light/snake2vk',
+    props: 'w=820;h=760;m=p',
     files: [],
   },
   jamajama: {

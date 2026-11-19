@@ -107,6 +107,8 @@ window.BureauFrutiz = (function () {
     miniwave:   { panneau: '#miniwave-panel',  titre: 'Mini-Wave',      l: 900, h: 700 },
     minipixiz:  { panneau: '#minipixiz-panel', titre: 'MiniPixiz',      l: 900, h: 700 },
     snake3:     { panneau: '#snake3-panel',    titre: 'Frutisnake',     l: 880, h: 740 },
+    // Frutisnake 2 VK : la réécriture de Kobbs, même fenêtre que l'ancien.
+    snake2vk:   { panneau: '#snake2vk-panel',  titre: 'Frutisnake 2 VK', l: 880, h: 740 },
     // Kaluga : sa scène fait 700×480 (l'en-tête du SWF), et la fenêtre la
     // montre à l'échelle 1 — 12 et 26 de plus pour le cadre (minFenetre).
     kaluga:     { panneau: '#kaluga-panel',    titre: 'Kaluga',         l: 712, h: 506 },
@@ -768,7 +770,7 @@ window.BureauFrutiz = (function () {
     work: 'Au travail', eat: 'À table' };
   var JEUX_NOM = {
     forum: 'Forum', bkiwi: 'Burning Kiwi', mb2: 'MotionBall 2', swapou: 'Swapou',
-    swapou2: 'Swapou', snake3: 'Frutisnake', bandas: 'Frutibandas', grapiz: 'Grapiz',
+    swapou2: 'Swapou', snake3: 'Frutisnake', snake2vk: 'Frutisnake 2 VK', bandas: 'Frutibandas', grapiz: 'Grapiz',
     kaluga: 'Kaluga', miniwave: 'Mini-Wave', minipixiz: 'Minipixiz',
     minifever: 'Mini-Fever',
   };
@@ -1889,7 +1891,7 @@ window.BureauFrutiz = (function () {
     Grapiz: 'grapiz', grapiz: 'grapiz', bandas: 'bandas', bkiwi: 'bkiwi',
     kaluga: 'kaluga', kalugaPreview: 'kalugaPreview', swapou2: 'swapou2',
     miniwave: 'miniwave', minipixiz: 'minipixiz', minifever: 'minifever',
-    snake3: 'snake', snake: 'snake', jama: 'jama', mb2: 'mb2',
+    snake3: 'snake', snake: 'snake', snake2vk: 'snake2vk', jama: 'jama', mb2: 'mb2',
     mele: 'mele', tower: 'tower', tuberculoz: 'tuberculoz',
   };
   function dessinDisque(type, jeu) {
@@ -2492,6 +2494,8 @@ window.BureauFrutiz = (function () {
     kaluga: 'kaluga',
     // MotionBall, pareil : le FD gris et le disque light ouvrent le portage.
     mb2: 'mb2',
+    // Frutisnake 2 VK : SON libellé de disque lance SON jeu (pas l'ancien).
+    snake2vk: 'snake2vk',
     // Burning Kiwi, pareil : le FD noir et le disque rouge ouvrent le portage
     // (/bkiwi/) ; le quota de Fruits Défendus se règle au serveur (/do/fdclaim).
     bkiwi: 'bkiwi',

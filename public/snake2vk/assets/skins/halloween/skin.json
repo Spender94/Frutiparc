@@ -1,0 +1,31 @@
+{
+ "id": "halloween",
+ "name": "Halloween",
+ "res": 4,
+ "head": {
+  "file": "head.png",
+  "anchor": [
+   0.38,
+   0.5
+  ]
+ },
+ "headEat": {
+  "file": "head_eat.png",
+  "anchor": [
+   0.38,
+   0.5
+  ]
+ },
+ "body": {
+  "file": "body.png",
+  "aspect": 0.9166666666666666
+ },
+ "tail": null,
+ "particles": [
+  "particle_0.png",
+  "particle_1.png",
+  "particle_2.png",
+  "particle_3.png"
+ ],
+ "light": "#ff7a1a"
+}

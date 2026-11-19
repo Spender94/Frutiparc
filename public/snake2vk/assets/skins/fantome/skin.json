@@ -1,0 +1,28 @@
+{
+ "id": "fantome",
+ "name": "Fant\u00f4me",
+ "res": 4,
+ "head": {
+  "file": "head.png",
+  "anchor": [
+   0.3939393939393939,
+   0.5
+  ]
+ },
+ "headEat": {
+  "file": "head_eat.png",
+  "anchor": [
+   0.3939393939393939,
+   0.5
+  ]
+ },
+ "body": {
+  "file": "body.png",
+  "aspect": 1.7358490566037736
+ },
+ "tail": null,
+ "particles": [],
+ "particleColor": "#c9fff4",
+ "light": "#a8fff0",
+ "alpha": 0.72
+}

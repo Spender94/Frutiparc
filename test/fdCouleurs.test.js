@@ -79,11 +79,11 @@ test('la feuille du téléphone montre le disque que montre le bureau HTML', () 
   const cat = catalogue();
   const portes = new Set(Object.values(cat).filter(estPortage).map((d) => d.swfName));
   // Les entrées à jaquette de la feuille, et le jeu qu'elles ouvrent.
-  const tabVersJeu = { snake3: 'snake3', kaluga: 'kaluga', mb2: 'mb2', bkiwi: 'bkiwi', jamajama: 'jamajama' };
+  const tabVersJeu = { snake3: 'snake3', snake2vk: 'snake2vk', kaluga: 'kaluga', mb2: 'mb2', bkiwi: 'bkiwi', jamajama: 'jamajama' };
   const i = LIGHT.indexOf('var DISCS = [');
   const bloc = LIGHT.slice(i, LIGHT.indexOf('\n  ];', i));
   const entrees = bloc.match(/\{ tab: "[^"]+", jaquette: "[^"]+"[^}]*\}/g) || [];
-  assert.equal(entrees.length, 5, 'cinq disques à jaquette sur la feuille');
+  assert.equal(entrees.length, 6, 'six disques à jaquette sur la feuille');
   for (const e of entrees) {
     const tab = /tab: "([^"]+)"/.exec(e)[1];
     const anneau = (/anneau: "(\d)"/.exec(e) || [])[1] || '0';
@@ -141,9 +141,9 @@ test('« Mes disques » marque chaque disque d\'époque de son disque de portage
   for (const [id, n] of Object.entries(noeuds)) {
     assert.equal(n.l, attendu[id] || null, `${id} : remplaçant ${n.l}`);
   }
-  // Ce qui reste au bureau HTML : un disque par jeu, onze en tout — la même
+  // Ce qui reste au bureau HTML : un disque par jeu, douze en tout — la même
   // liste que la feuille du téléphone.
   const restants = Object.keys(noeuds).filter((id) => !noeuds[id].l);
-  assert.equal(restants.length, 11, `un disque par jeu (${restants.join(', ')})`);
+  assert.equal(restants.length, 12, `un disque par jeu (${restants.join(', ')})`);
   assert.equal(noeuds.bkiwilight.type, '3', 'Burning Kiwi light, rouge sur le fil aussi');
 });

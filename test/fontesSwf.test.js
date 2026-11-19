@@ -31,7 +31,9 @@ const ROOT = path.join(__dirname, '..');
 function tousLesWoff(dir) {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
     const p = path.join(dir, e.name);
-    if (e.isDirectory()) return tousLesWoff(p);
+    // Les polices web du build de Frutisnake 2 VK (DejaVu) ne sont pas tirées
+    // d'un SWF : ce contrôle ne les concerne pas.
+    if (e.isDirectory()) return p === path.join(ROOT, 'public', 'snake2vk') ? [] : tousLesWoff(p);
     return e.name.endsWith('.woff') ? [p] : [];
   });
 }

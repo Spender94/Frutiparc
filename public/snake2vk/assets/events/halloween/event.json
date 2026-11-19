@@ -1,0 +1,106 @@
+{
+ "id": "halloween",
+ "name": "Halloween",
+ "playField": "terrain.png",
+ "colors": {
+  "frame": "#2c1e4c",
+  "scoreBar": "#4a3a6b",
+  "page": "#2c1e4c"
+ },
+ "panelMatrix": [
+  0.6,
+  0.2,
+  0,
+  0,
+  0,
+  0.15,
+  0.15,
+  0.3,
+  0,
+  0,
+  0.3,
+  0.6,
+  0.2,
+  0,
+  0,
+  0,
+  0,
+  0,
+  1,
+  0
+ ],
+ "hd": {
+  "atlases": [
+   "fbarre",
+   "fbarre_mid",
+   "bout",
+   "bout_droite"
+  ],
+  "recolor": [
+   {
+    "from": "#ffffff",
+    "to": "#4a3a6b"
+   },
+   {
+    "from": "#729f1c",
+    "to": "#ff9a3c"
+   },
+   {
+    "hue": 28,
+    "min_sat": 0.15
+   }
+  ]
+ },
+ "skin": "squelette",
+ "difficulty": true,
+ "intro": "L'événement Halloween est en cours ! Pour l'occasion, Frutisnake s'est fait une petite beauté : terrain hanté, ambiance frissonnante… et même un serpent squelette !",
+ "sounds": [
+  "sound_game_loop",
+  "sound_glurps",
+  "sound_glurps_2",
+  "sound_oapp",
+  "sound_game_over",
+  "sound_thunder",
+  "sound_thunder_2",
+  "sound_bats",
+  "sound_ghost"
+ ],
+ "scares": [
+  "bats",
+  "ghost"
+ ],
+ "thunder": [
+  18,
+  40
+ ],
+ "lightning": [
+  6,
+  9
+ ],
+ "hardScore": 2,
+ "help": {
+  "intro": "Ce qui change par rapport au Frutisnake que vous connaissez",
+  "common": [
+   "Votre serpent devient un squelette, sur un terrain hanté aux couleurs d'Halloween.",
+   "Musique et bruitages de saison : les fruits craquent comme des os, un ricanement annonce chaque bonus.",
+   "L'orage gronde : à chaque coup de tonnerre, le sol tremble et les fruits sautent un peu plus loin.",
+   "Fruits, bonus et règles restent ceux de Frutisnake."
+  ],
+  "easy": [
+   "Le terrain reste éclairé et les fruits rapportent leurs points habituels."
+  ],
+  "hard": [
+   "Nuit noire : seule une faible lueur autour du serpent éclaire le terrain.",
+   "Les fruits valent double.",
+   "Les fruits restent visibles dans le noir, les plus rares brillent un peu plus.",
+   "Fruits dorés : en manger un agrandit votre lueur pendant 15 secondes.",
+   "Nouveau bonus, l'os phosphorescent : rare, il fait luire tout votre corps pendant 25 secondes. Plus vous êtes long, plus il éclaire.",
+   "Des éclairs silencieux dévoilent le terrain par moments, et le tonnerre fait vaciller votre lumière.",
+   "Chauves-souris et fantômes rôdent : inoffensifs, mais ils assombrissent votre lueur en passant."
+  ],
+  "arena": [
+   "Votre serpent devient un squelette.",
+   "L'orage gronde : à chaque coup de tonnerre, l'écran tremble et les fruits sautent un peu plus loin."
+  ]
+ }
+}

@@ -1,0 +1,28 @@
+{
+ "id": "squelette",
+ "name": "Squelette",
+ "res": 4,
+ "head": {
+  "file": "head.png",
+  "anchor": [
+   0.43243243243243246,
+   0.5
+  ]
+ },
+ "headEat": {
+  "file": "head_eat.png",
+  "anchor": [
+   0.43243243243243246,
+   0.5
+  ]
+ },
+ "body": {
+  "file": "body.png",
+  "aspect": 0.6698113207547169
+ },
+ "tail": null,
+ "particles": [],
+ "particleColor": "#f4efe0",
+ "light": "#b6ff6a",
+ "alpha": 1
+}
