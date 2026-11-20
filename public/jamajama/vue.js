@@ -3,8 +3,11 @@
  * dessiné et animé comme le lecteur Flash le faisait.
  *
  * regles.js produit des LOTS de descripteurs (un par flush du jeu
- * d'origine) : les « rapides » jouent en parallèle avec leurs délais, les
- * « effets » l'un après l'autre. La vue tient son propre état visuel (image,
+ * d'origine) : les « rapides » jouent en parallèle avec leurs délais, PUIS
+ * les « effets » l'un après l'autre — dans l'ordre même où le moteur en
+ * applique les crochets (Partie._jouerLot). Un effet ne NAÎT qu'à son tour :
+ * c'est à sa création qu'il pose ses images (flash blanc, gaz, frame), et le
+ * créer d'avance montrait la fin avant le début. La vue tient son propre état visuel (image,
  * position, transparence de chaque sprite) et ne le change qu'au rythme des
  * descripteurs — l'état du moteur, lui, est déjà final. À la fin des lots
  * d'une entrée, la vue se RECALE sur le moteur : toute dérive s'efface.
@@ -67,7 +70,7 @@
       this.voile = null;                   // le fondu (iris) au premier plan
       this.compteur = 0;
       this._lots = [];                     // les lots en attente
-      this._courant = null;                // {rapides:[anims], effets:[anims], t}
+      this._courant = null;                // {rapides:[anims], effets:[descripteurs], effet, aLaFin}
       this._finis = true;
       for (const s of partie.sprites()) this._creerVue(s);
       this._recaler();
@@ -363,7 +366,9 @@
         for (const e of lot.auDebut || []) this._evenement(e);
         this._courant = {
           rapides: lot.rapides.map((d) => this._creerAnim(d)).filter(Boolean),
-          effets: lot.effets.map((d) => this._creerAnim(d)).filter(Boolean),
+          // Les effets restent des DESCRIPTEURS jusqu'à leur tour (cf. plus bas).
+          effets: lot.effets.slice(),
+          effet: null,                     // l'effet qui joue
           aLaFin: lot.aLaFin || [],
         };
       }
@@ -373,12 +378,28 @@
         if (a.finie) continue;
         if (!a.update(tmod)) a.finie = true; else resteRapide = true;
       }
+      /*
+       * LES EFFETS ATTENDENT LA FIN DES RAPIDES, puis jouent l'un après
+       * l'autre, chacun créé au moment où il commence. Le pas de Tiki est un
+       * rapide ; ce qui y répond (le gaz de la statue de jade, la course de
+       * l'araignée, son flash, la mort) est un effet du MÊME lot. Lancés en
+       * même temps que le pas, la statue tirait avant que Tiki ne soit sur sa
+       * case ; créés d'avance, le flash blanc de la morsure s'allumait dès le
+       * départ de l'araignée et restait jusqu'à la fin de sa course.
+       */
       let resteEffet = false;
-      for (const a of c.effets) {
-        if (a.finie) continue;
-        if (!a.update(tmod)) { a.finie = true; continue; }
+      if (resteRapide) {
         resteEffet = true;
-        break;                             // les effets jouent l'un après l'autre
+      } else {
+        for (;;) {
+          if (!c.effet) {
+            if (!c.effets.length) break;
+            c.effet = this._creerAnim(c.effets.shift());
+            if (!c.effet) continue;
+          }
+          if (c.effet.update(tmod)) { resteEffet = true; break; }
+          c.effet = null;                  // fini : le suivant commence dans la même image
+        }
       }
       if (!resteRapide && !resteEffet) {
         for (const e of c.aLaFin) this._evenement(e);

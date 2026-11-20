@@ -348,3 +348,71 @@ test('clavier : la répétition automatique ne met rien en attente, les flèches
   assert.match(src, /flechesTenues\.clear\(\);/);
   assert.doesNotMatch(src, /touches\.Arrow/);
 });
+
+/*
+ * LE TEMPO DES RÉACTIONS (retour de l'admin, niveau « test pour kasparov ») :
+ * « si tu vas sur une case adjacente à l'une des tourelles de la statue de
+ * Jade, la statue déclenche son attaque AVANT que Tiki ne soit complètement
+ * sur la case » ; et l'araignée : « l'écran va être blanc plus longtemps que
+ * prévu ; normalement, on voit l'araignée se déplacer jusqu'à Tiki, puis
+ * l'écran est blanc une frame au moment où elle est entrée en contact ».
+ *
+ * Le pas de Tiki est une animation « rapide » ; la réaction (gaz, course de
+ * l'araignée, flash, mort) des « effets » du même lot. Les effets attendent
+ * la fin des rapides, et chacun ne naît qu'à son tour.
+ */
+// Image par image après une entrée : l'état visuel qu'on veut suivre.
+function filmer(m, code, releve) {
+  m.entree(code);
+  const images = [];
+  for (let i = 0; i < 3000 && !m.vue.libre(); i++) {
+    m.vue.update(0.5);
+    images.push(releve());
+  }
+  return images;
+}
+const premier = (images, f) => images.findIndex(f);
+
+test('l’araignée court jusqu’à Tiki APRÈS son pas, et l’écran ne blanchit qu’au contact', async () => {
+  const W = await chargerBac();
+  // Deux oranges à fusionner (la sortie s'ouvre, l'araignée sort du cocon),
+  // puis Tiki descend dans l'axe de l'araignée.
+  const m = monter(W, plateau(W, 5, 3, [0, 0], [[E.FRUIT, 1, 0, 2], [E.FRUIT, 2, 0, 2], [E.SPIDER, 4, 2]]));
+  const araignee = m.seul(E.SPIDER);
+  m.jouer(1);                                          // les oranges fusionnent
+  assert.ok(m.partie.isExitOpen() && !araignee.isInCocoon(), 'l’araignée est sortie');
+  m.jouer(2);                                          // Tiki descend : pas encore dans l'axe
+  assert.ok(m.partie.getHero().alive);
+  const heros = m.partie.getHero();
+  const images = filmer(m, 2, () => ({
+    herosY: m.v(heros).y,
+    araigneeX: m.v(araignee).x,
+    flash: m.vue.fx.some((f) => f.genre === 'flash' && !f.mort),
+  }));
+  assert.ok(!heros.alive, 'Tiki est mordu');
+  const arrive = premier(images, (i) => i.herosY === 64);
+  const depart = premier(images, (i) => i.araigneeX < 128);
+  const contact = premier(images, (i) => i.araigneeX === 64);
+  const blanc = images.map((i, k) => (i.flash ? k : -1)).filter((k) => k >= 0);
+  assert.ok(arrive >= 0 && depart >= 0 && contact >= 0, JSON.stringify({ arrive, depart, contact }));
+  assert.ok(depart >= arrive, `l’araignée part quand Tiki est arrivé (pas ${arrive}, départ ${depart})`);
+  assert.ok(blanc.length > 0, 'l’écran blanchit');
+  assert.ok(blanc[0] >= contact, `pas de blanc pendant la course (blanc dès ${blanc[0]}, contact ${contact})`);
+  assert.ok(blanc.length <= 4, `un éclair, pas un écran blanc qui dure (${blanc.length} images à tmod 0,5)`);
+});
+
+test('la statue de jade crache son gaz quand Tiki est sur la case, pas pendant son pas', async () => {
+  const W = await chargerBac();
+  // La tourelle nord-ouest de la statue (2,2) couvre la case (1,1).
+  const m = monter(W, plateau(W, 4, 4, [0, 1], [[E.JADE, 2, 2], [E.FRUIT, 3, 0, 1]]));
+  const heros = m.partie.getHero();
+  const images = filmer(m, 1, () => ({
+    herosX: m.v(heros).x,
+    gaz: m.vue.fx.some((f) => f.genre === 'gaz' && !f.mort),
+  }));
+  assert.ok(!heros.alive, 'Tiki est gazé');
+  const arrive = premier(images, (i) => i.herosX === 32);
+  const gaz = premier(images, (i) => i.gaz);
+  assert.ok(arrive >= 0 && gaz >= 0, JSON.stringify({ arrive, gaz }));
+  assert.ok(gaz >= arrive, `le gaz attend que Tiki soit arrivé (arrivée ${arrive}, gaz ${gaz})`);
+});
