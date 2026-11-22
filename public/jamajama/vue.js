@@ -38,6 +38,9 @@
   // (jama_Hero, image 43 : retour à « sleep_loop »).
   const PONT_CASSE = 17;
   const FIN_SOMMEIL = 43;
+  // Les enfants de l'œil ouvert (jama_Eye, image « Open ») qui jouent seuls :
+  // la paupière (clip603) et l'iris qu'elle porte (clip599).
+  const OEIL_OUVERT = ['s', 's.iris'];
 
   // La plage d'images d'une étiquette : de son image à la veille de la
   // suivante (ou à la fin du clip).
@@ -188,7 +191,16 @@
           v.frame = s._inCocoon ? 'cocon' : NOMS_DIR[s.orientation];
           break;
         case Element.EYE:
+          // Ouvert : l'image « Open » porte la paupière (s, cinq images, un
+          // stop() sur la dernière) et, dedans, l'iris (dix-sept images, stop()
+          // de même) ; nées avec l'image, elles jouent une fois. Un œil qui
+          // s'ouvre finit sa course ; un œil trouvé ouvert l'est grand.
           v.frame = s._opened ? 'Open' : 'Close';
+          v.clips = {};
+          if (s._opened) {
+            if (seuls) { v.seuls = seuls; this._poserSeuls(v); }
+            else this._lancerSeuls(v, OEIL_OUVERT, false, Infinity);
+          }
           break;
         case Element.JADE:
           v.frame = 'normal';
@@ -384,7 +396,16 @@
           break;
         case 'cacher': if (v) v.visible = false; break;
         case 'nage': if (v) { v.frame = 'swim'; v.jJoue = true; } break;
-        case 'oeil': if (v) v.frame = e.ouvert ? 'Open' : 'Close'; break;
+        case 'oeil':
+          // show() : gotoAndStop("Open") ou ("Close"). À l'ouverture, la
+          // paupière et l'iris naissent avec l'image et s'ouvrent jusqu'à leur
+          // stop() — figés sur leur première image, l'œil restait mi-clos.
+          if (!v) break;
+          v.frame = e.ouvert ? 'Open' : 'Close';
+          v.clips = {};
+          v.seuls = null;
+          if (e.ouvert) this._lancerSeuls(v, OEIL_OUVERT, false);
+          break;
         default: break;                    // destroy & co : le recalage s'en charge
       }
     }

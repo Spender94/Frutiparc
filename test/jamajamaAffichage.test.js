@@ -494,3 +494,32 @@ test('la flamme de Kohl possédé tourne en boucle', async () => {
   m.jouer(Replay.STOP_GHOST);
   assert.strictEqual(m.v(kohl).seuls, null, 'endormi, plus de flamme qui tourne');
 });
+
+test('le zoeil s’ouvre en grand quand l’esprit de Tiki sort, pas à moitié', async () => {
+  const W = await chargerBac();
+  const m = monter(W, plateau(W, 5, 5, [0, 0], [[E.EYE, 4, 4], [E.FRUIT, 2, 2, 1]]));
+  const oeil = m.seul(E.EYE);
+  const regard = () => {
+    const a = peindre(W, m.vue).find((x) => x.cle === 'jama_Eye');
+    return { image: a.ref, paupiere: imageEnfant(a, 's'), iris: imageEnfant(a, 's.iris') };
+  };
+  assert.strictEqual(regard().image, 'Close');
+  m.entree(Replay.START_GHOST);                        // l'esprit sort : aucun lot, recalage immédiat
+  assert.ok(oeil.isOpened(), 'le zoeil voit le fantôme');
+  const vues = [];
+  for (let i = 0; i < 40; i++) { m.vue.update(0.5); vues.push(regard()); }
+  assert.ok(vues.every((r) => r.image === 'Open'));
+  // La paupière (clip603) joue ses cinq images et s'arrête sur son stop() ;
+  // l'iris qu'elle porte (clip599) va jusqu'à sa dix-septième.
+  assert.strictEqual(vues[0].paupiere, 1, 'l’ouverture part de la paupière mi-close');
+  assert.deepStrictEqual([...new Set(vues.map((r) => r.paupiere))], [1, 2, 3, 4, 5], 'la paupière s’ouvre image par image');
+  assert.strictEqual(vues[vues.length - 1].paupiere, 5, 'grand ouvert');
+  assert.strictEqual(vues[vues.length - 1].iris, 17, 'l’iris au bout de sa course');
+  // Un coup du fantôme, son recalage : l'œil reste grand ouvert.
+  m.jouer(1);
+  const r = regard();
+  assert.deepStrictEqual([r.image, r.paupiere, r.iris], ['Open', 5, 17]);
+  // Retour au corps : il se referme.
+  m.jouer(Replay.STOP_GHOST);
+  assert.strictEqual(regard().image, 'Close');
+});
