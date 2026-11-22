@@ -27,7 +27,23 @@
 
   // ── l'échelle : 384 logique, net sur tout écran ──
   let K = 1;
+  let E = 1;                                   // l'échelle (entière) du dessin dans le canevas
   let manette = false;                         // la manette au doigt est-elle affichée ?
+  /*
+   * LE CANEVAS SE PEINT À UNE ÉCHELLE ENTIÈRE. Le plateau est une mosaïque :
+   * chaque case d'eau, de mur, de bord, de pont est un dessin à part, posé
+   * bord à bord contre ses voisines. À une échelle quelconque (K·dpr = 2,37,
+   * disons), la frontière de deux cases tombe au milieu d'un pixel : chacune
+   * le couvre à moitié, l'anticrénelage du canevas les compose l'une sur
+   * l'autre et le fond transparaît — un quadrillage de fines lignes dans
+   * l'eau, les « trous » du testeur. Le lecteur Flash (et Ruffle) peint toute
+   * la scène d'un seul tenant et n'en montre aucun. Peint à l'échelle entière
+   * supérieure, chaque frontière tombe sur un bord de pixel ; c'est ensuite le
+   * navigateur qui réduit l'image entière à la taille de la page, d'un bloc.
+   */
+  function echelleDuCanevas(k, dpr) {
+    return Math.max(1, Math.ceil(k * dpr - 1e-6));
+  }
   function dimensionner() {
     const l = window.innerWidth, h = window.innerHeight;
     let taille = Math.min(l, h);
@@ -43,8 +59,9 @@
     K = taille / Consts.WIDTH;
     canvas.style.width = taille + 'px';
     canvas.style.height = taille + 'px';
-    canvas.width = Math.round(Consts.WIDTH * K * dpr);
-    canvas.height = Math.round(Consts.HEIGHT * K * dpr);
+    E = echelleDuCanevas(K, dpr);
+    canvas.width = Consts.WIDTH * E;
+    canvas.height = Consts.HEIGHT * E;
   }
   window.addEventListener('resize', dimensionner);
   dimensionner();
@@ -640,8 +657,7 @@
     // Le temps du lecteur avance pour tout le monde : c'est lui qui fait
     // battre les clips que le jeu ne pilote pas (la flamme d'un joker…).
     Rendu.avancer(tmod);
-    const dpr = window.devicePixelRatio || 1;
-    ctx.setTransform(K * dpr, 0, 0, K * dpr, 0, 0);
+    ctx.setTransform(E, 0, 0, E, 0, 0);
     if (etat) {
       etat.update(tmod);
       if (etat) etat.dessiner();
@@ -652,7 +668,7 @@
   }
 
   // ── le chargement ──
-  ctx.setTransform(K * (window.devicePixelRatio || 1), 0, 0, K * (window.devicePixelRatio || 1), 0, 0);
+  ctx.setTransform(E, 0, 0, E, 0, 0);
   ctx.fillStyle = teinteHex(Consts.BROWN);
   ctx.fillRect(0, 0, Consts.WIDTH, Consts.HEIGHT);
   function teinteHex(n) { return '#' + n.toString(16).padStart(6, '0'); }

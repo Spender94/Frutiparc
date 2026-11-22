@@ -373,6 +373,24 @@ function filmer(m, code, releve) {
 }
 const premier = (images, f) => images.findIndex(f);
 
+// Une image telle que la vue la PEINT : la suite de ses Rendu.dessiner, dans
+// l'ordre (le contexte est un leurre, rien n'est tracé). Chaque appel dit le
+// symbole, l'image et les consignes des enfants nommés.
+function peindre(W, vue) {
+  const appels = [];
+  const leurre = new Proxy({ globalAlpha: 1 }, {
+    get: (o, k) => (k in o ? o[k] : () => {}),
+    set: (o, k, x) => { o[k] = x; return true; },
+  });
+  const vrai = W.JamaRendu.dessiner;
+  W.JamaRendu.dessiner = (ctx, cle, ref, sur) => { appels.push({ cle, ref, clips: (sur && sur.clips) || {} }); };
+  try { vue.dessiner(leurre); } finally { W.JamaRendu.dessiner = vrai; }
+  return appels;
+}
+// L'image que montrera un enfant nommé : sa consigne, ou sa première image —
+// rendu.js ne fait jamais tourner seul un enfant qui porte un nom.
+const imageEnfant = (appel, chemin) => (appel.clips[chemin] !== undefined ? appel.clips[chemin] : 1);
+
 test('l’araignée court jusqu’à Tiki APRÈS son pas, et l’écran ne blanchit qu’au contact', async () => {
   const W = await chargerBac();
   // Deux oranges à fusionner (la sortie s'ouvre, l'araignée sort du cocon),
@@ -415,4 +433,149 @@ test('la statue de jade crache son gaz quand Tiki est sur la case, pas pendant s
   const gaz = premier(images, (i) => i.gaz);
   assert.ok(arrive >= 0 && gaz >= 0, JSON.stringify({ arrive, gaz }));
   assert.ok(gaz >= arrive, `le gaz attend que Tiki soit arrivé (arrivée ${arrive}, gaz ${gaz})`);
+});
+
+/*
+ * LA DÉFLAGRATION D'UNE BOBOMBE. Dans le fichier, une flamme (BombFlames)
+ * accroche jama_fx_Fire au plateau, le fait jouer… et rend false dès sa
+ * première image : pour le lecteur, l'animation est finie, le clip vit sa vie
+ * et se retire seul (removeMovieClip, image 16). L'effet de la bombe elle-même
+ * (sa flamme, son BurnSprite sans animation) tient donc UNE image, et la
+ * propagation part derrière, une couronne toutes les trois images
+ * (ParallelAnimations, délais 3, 6, 9…). Attendre la fin de la flamme de la
+ * bombe, c'était l'explosion « en deux temps » du testeur.
+ */
+test('la déflagration d’une bombe se propage pendant que sa flamme brûle encore', async () => {
+  const W = await chargerBac();
+  const m = monter(W, plateau(W, 7, 5, [0, 2], [[E.BOMB, 1, 2, 2], [E.FRUIT, 6, 4, 1]]));
+  m.jouer(1);                                          // la bombe glisse en (2,2), un coup avant l'explosion
+  const flammes = () => m.vue.fx.filter((f) => f.genre === 'flamme' && f.actif && !f.mort)
+    .map((f) => f.x / 32 + ',' + f.y / 32);
+  const images = filmer(m, 0, flammes);                // le héros monte en (1,1) : elle explose
+  assert.ok(!m.seul(E.BOMB), 'la bombe a sauté');
+  assert.ok(m.partie.getHero().alive, 'le héros est hors des lignes de feu');
+  const bombe = premier(images, (i) => i.includes('2,2'));
+  const voisine = premier(images, (i) => i.includes('3,2'));
+  const loin = premier(images, (i) => i.includes('6,2'));
+  assert.ok(bombe >= 0 && voisine >= 0 && loin >= 0, JSON.stringify({ bombe, voisine, loin }));
+  // Trois images de délai (six pas à tmod 0,5), une de plus pour passer
+  // d'un effet à l'autre : la flamme de la bombe, elle, en dure quinze.
+  assert.ok(voisine - bombe >= 5 && voisine - bombe <= 9,
+    `la case voisine prend feu trois images après la bombe (bombe ${bombe}, voisine ${voisine})`);
+  assert.ok(images[voisine].includes('2,2'), 'la flamme de la bombe brûle encore quand la voisine s’allume');
+  // (6,2) est la quatrième couronne : neuf images après (3,2).
+  assert.ok(loin - voisine >= 16 && loin - voisine <= 20, `une couronne toutes les trois images (voisine ${voisine}, (6,2) ${loin})`);
+  // Le coup rendu, les dernières flammes finissent de brûler : le recalage ne
+  // les souffle pas.
+  const restantes = flammes();
+  assert.ok(restantes.length > 0, 'des flammes brûlent encore quand le coup se termine');
+  let n = 0;
+  while (flammes().length && n < 100) { m.vue.update(0.5); n += 1; }
+  assert.ok(n > 0 && n < 40, `elles s’éteignent d’elles-mêmes, à leur image 16 (${n} pas)`);
+});
+
+test('la flamme de Kohl possédé tourne en boucle', async () => {
+  const W = await chargerBac();
+  const m = monter(W, plateau(W, 4, 3, [0, 0], [[E.KOHL, 1, 0], [E.FRUIT, 3, 2, 1]]));
+  const kohl = m.seul(E.KOHL);
+  m.jouer(Replay.START_GHOST);
+  m.jouer(1);                                          // le fantôme possède Kohl
+  assert.strictEqual(m.partie.getCurrentAvatar(), kohl);
+  const flamme = () => imageEnfant(peindre(W, m.vue).find((a) => a.cle === 'jama_Kohl'), 'j.flame');
+  const vues = [];
+  for (let i = 0; i < 24; i++) { m.vue.update(0.5); vues.push(flamme()); }
+  // clip250 : six images, pas de stop() — douze tmod, deux tours.
+  assert.deepStrictEqual([...new Set(vues)].sort(), [1, 2, 3, 4, 5, 6], 'les six images de la flamme : ' + vues.join(','));
+  // …et elle tourne encore après un pas de Kohl et le recalage qui le suit.
+  m.jouer(2);
+  const apres = new Set();
+  for (let i = 0; i < 12; i++) { m.vue.update(0.5); apres.add(flamme()); }
+  assert.ok(apres.size >= 5, 'la flamme tourne toujours après un pas : ' + [...apres].join(','));
+  m.jouer(Replay.STOP_GHOST);
+  assert.strictEqual(m.v(kohl).seuls, null, 'endormi, plus de flamme qui tourne');
+});
+
+test('le zoeil s’ouvre en grand quand l’esprit de Tiki sort, pas à moitié', async () => {
+  const W = await chargerBac();
+  const m = monter(W, plateau(W, 5, 5, [0, 0], [[E.EYE, 4, 4], [E.FRUIT, 2, 2, 1]]));
+  const oeil = m.seul(E.EYE);
+  const regard = () => {
+    const a = peindre(W, m.vue).find((x) => x.cle === 'jama_Eye');
+    return { image: a.ref, paupiere: imageEnfant(a, 's'), iris: imageEnfant(a, 's.iris') };
+  };
+  assert.strictEqual(regard().image, 'Close');
+  m.entree(Replay.START_GHOST);                        // l'esprit sort : aucun lot, recalage immédiat
+  assert.ok(oeil.isOpened(), 'le zoeil voit le fantôme');
+  const vues = [];
+  for (let i = 0; i < 40; i++) { m.vue.update(0.5); vues.push(regard()); }
+  assert.ok(vues.every((r) => r.image === 'Open'));
+  // La paupière (clip603) joue ses cinq images et s'arrête sur son stop() ;
+  // l'iris qu'elle porte (clip599) va jusqu'à sa dix-septième.
+  assert.strictEqual(vues[0].paupiere, 1, 'l’ouverture part de la paupière mi-close');
+  assert.deepStrictEqual([...new Set(vues.map((r) => r.paupiere))], [1, 2, 3, 4, 5], 'la paupière s’ouvre image par image');
+  assert.strictEqual(vues[vues.length - 1].paupiere, 5, 'grand ouvert');
+  assert.strictEqual(vues[vues.length - 1].iris, 17, 'l’iris au bout de sa course');
+  // Un coup du fantôme, son recalage : l'œil reste grand ouvert.
+  m.jouer(1);
+  const r = regard();
+  assert.deepStrictEqual([r.image, r.paupiere, r.iris], ['Open', 5, 17]);
+  // Retour au corps : il se referme.
+  m.jouer(Replay.STOP_GHOST);
+  assert.strictEqual(regard().image, 'Close');
+});
+
+/*
+ * LES TRAPPES DE SORTIE, AU-DESSUS DE LEURS VOISINS UNE FOIS OUVERTES. Dans le
+ * fichier, open() attache le trou sous la porte ; à la fin de l'ouverture,
+ * swapLayer fait passer la porte dans la couche du dessus du plateau (un cran
+ * plus haut pour une porte nord, un cran plus bas sinon). La porte sud, qui
+ * s'ouvre vers le bas et déborde de sa case, couvre alors le pont posé
+ * dessous ; la porte nord, rabattue sur la case d'au-dessus, couvre la caisse
+ * qui s'y trouve. La vue les laissait sous leurs voisins.
+ */
+test('les trappes ouvertes passent au-dessus de leurs voisins, comme dans le fichier', async () => {
+  const W = await chargerBac();
+  const m = monter(W, plateau(W, 7, 7, [0, 3], [[E.FRUIT, 1, 3, 1], [E.FRUIT, 2, 3, 1],
+    [E.EXIT, 4, 1, -1, 2], [E.BRIDGE, 4, 2],            // trappe sud, un pont dessous
+    [E.EXIT, 4, 5, -1, 0], [E.BOX, 4, 4]]));             // trappe nord, une caisse dessus
+  const ordre = () => {
+    const a = peindre(W, m.vue);
+    const ou = (f) => a.findIndex(f);
+    const sud = ou((x) => x.cle === 'jama_Exit' && (x.ref === 'South' || (x.ref >= 22 && x.ref <= 36)));
+    const nord = ou((x) => x.cle === 'jama_Exit' && (x.ref === 'North' || (x.ref >= 42 && x.ref <= 56)));
+    return {
+      sud, nord,
+      imageSud: a[sud].ref, imageNord: a[nord].ref,
+      trous: a.filter((x) => x.ref === 'Hole').length,
+      pont: ou((x) => x.cle === 'jama_Bridge'),
+      caisse: ou((x) => x.cle === 'jama_Box'),
+      premierTrou: ou((x) => x.ref === 'Hole'),
+    };
+  };
+  const avant = ordre();
+  assert.strictEqual(avant.trous, 0, 'fermées : pas de trou');
+  const images = filmer(m, 1, ordre);                  // les oranges fusionnent : les trappes s'ouvrent
+  assert.ok(m.partie.isExitOpen());
+  // Le trou est là dès l'ouverture (open() l'attache), sous chaque porte.
+  assert.ok(images.every((i) => i.trous === 2), 'deux trous, dès la première image');
+  assert.ok(images.every((i) => i.premierTrou < i.sud), 'le trou sous la porte');
+  // Les deux portes s'ouvrent l'une après l'autre, sur leurs quatorze images.
+  const num = (x) => (typeof x === 'number' ? x : null);
+  const sud = images.map((i) => num(i.imageSud)).filter((x) => x !== null);
+  const nord = images.map((i) => num(i.imageNord)).filter((x) => x !== null);
+  assert.strictEqual(sud[0], 23); assert.strictEqual(sud[sud.length - 1], 36);
+  assert.strictEqual(nord[0], 43); assert.strictEqual(nord[nord.length - 1], 56);
+  assert.ok(premier(images, (i) => num(i.imageNord) !== null) > premier(images, (i) => i.imageSud === 36),
+    'la porte nord attend que la sud ait fini');
+  // Pendant l'ouverture, chaque porte reste dans sa couche…
+  const sudEnCours = images.find((i) => i.imageSud === 30);
+  const nordEnCours = images.find((i) => i.imageNord === 50);
+  assert.ok(sudEnCours.sud < sudEnCours.pont, 'la porte sud s’ouvre sous le pont');
+  assert.ok(nordEnCours.nord < nordEnCours.caisse, 'la porte nord s’ouvre sous la caisse');
+  // …et, ouverte, passe dessus.
+  const fin = ordre();
+  assert.deepStrictEqual([fin.imageSud, fin.imageNord], [36, 56], 'les images d’arrêt des deux portes');
+  assert.ok(fin.sud > fin.pont, 'ouverte, la porte sud couvre le pont posé dessous');
+  assert.ok(fin.nord > fin.caisse, 'ouverte, la porte nord rabattue couvre la caisse d’au-dessus');
+  assert.ok(fin.premierTrou < fin.pont, 'le trou, lui, reste dessous');
 });
