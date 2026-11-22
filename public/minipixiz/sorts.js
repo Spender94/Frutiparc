@@ -150,6 +150,34 @@ class Sort {
     this.flOccupe = true;
   }
 
+  /*
+   * RANGÉ, PAS ENCORE LANCÉ. Entre le rangement (la cascade close, initSorts)
+   * et le lancer (la première image de l'étape MAGIE, ou plus tard s'il
+   * attend son tour derrière un autre sort de saList), le sort est déjà dans
+   * sList : le jeu d'origine faisait donc tourner son `update` AVANT qu'il
+   * n'ait rien lancé. Sur un sort neuf, c'était sans effet : ses champs sont
+   * vides, et chaque `update` le teste (voir « Une prudence que Flash n'avait
+   * pas », en tête de fichier).
+   *
+   * Mais le sort d'une fée n'est PAS neuf. C'est un objet unique, monté une
+   * fois pour la partie (FaerieInfo.initSpellList) et relancé tel quel. Son
+   * `update` lisait donc ce que le lancer PRÉCÉDENT avait laissé — le flUsed
+   * du Météore, la startPiece de la Dactylo, le chrono échu de l'Exaltation —
+   * et le sort se dissipait avant même d'être lancé : la mana partait, l'effet
+   * non. Pire, dissipé trop tôt, il restait le `sortEnCours` de sa fée, et le
+   * lancer d'après s'interrompait lui-même.
+   *
+   * Chacun de ces sorts efface sa trace au rangement. Et pour qu'un sort à
+   * venir ne retombe pas dans le piège, le champ ne fait plus vivre un sort
+   * qui attend son lancer (Champ.update) : tant qu'il n'est pas lancé, rien de
+   * ce qu'il porte n'appartient à ce lancer-ci. Les règles du jeu n'en
+   * bougent pas — la mana part toujours au lancer, et un sort neuf n'avait
+   * rien à faire de cette image-là. (Seule une seconde Nuit Noire, en attente
+   * derrière une nuit déjà tombée, tirait le rond de lumière vers son propre
+   * démon avant de renoncer ; elle ne le fait plus.)
+   */
+  attendSonLancer() { return !this.flLance && this.jeu.saList.indexOf(this) >= 0; }
+
   // cast : le mana part MAINTENANT, et un sort déjà en cours chez la même fée
   // est interrompu net.
   lancer() {
@@ -734,6 +762,27 @@ class Dactylo extends Sort {
     this.cout = 2; this.bList = []; this.startPiece = null;
     this.decal = 0; this.dSpeed = 1; this.nStar = 0;
   }
+
+  /*
+   * LA MÊME FAILLE QUE LE MÉTÉORE. `startPiece` — « l'effet court depuis
+   * telle pièce » — n'est posé qu'au LANCER (ShapeSmall.cast). Au rangement
+   * suivant, il datait du lancer PRÉCÉDENT, et l'`update` qui tourne entre les
+   * deux y lisait un effet échu depuis longtemps : la Dactylo se dissipait
+   * avant d'être lancée. Lancée quand même — mana prise, étoiles en orbite,
+   * portrait qui clignote —, son `executer` ne faisait plus que reprendre la
+   * bille que cette dissipation venait de rendre en trop : les pièces
+   * gardaient leur taille. Aucun effet, pour deux de mana.
+   *
+   * Et si le joueur la rappelait avant seize pièces, c'était pire. Restée le
+   * `sortEnCours` de sa fée, elle s'interrompait elle-même au lancer : la
+   * dissipation RENDAIT une bille sans que l'animation, coupée, ne la reprenne
+   * jamais. Chaque rappel grossissait les pièces d'une bille de plus — le
+   * contraire exact du sort. Le jeu d'origine avait la même faille.
+   *
+   * Ranger le sort, c'est préparer un lancer neuf : il ne court encore depuis
+   * aucune pièce.
+   */
+  ranger() { this.startPiece = null; super.ranger(); }
 
   lancer() {
     this.startPiece = this.jeu.pieces;
@@ -1433,6 +1482,23 @@ class Ascension extends Sort {
 class Exaltation extends Sort {
   static get MULTI() { return 20; }
   constructor(c) { super(c); this.cout = 3; }
+
+  /*
+   * LA MÊME FAILLE ENCORE, ET LA PLUS COÛTEUSE. Le chrono de la fureur
+   * (`timer`) finit sous zéro : c'est ce qui la dissipe. Au rangement suivant
+   * il y était toujours, et l'`update` d'avant le lancer dissipait une
+   * Exaltation qui n'avait rien donné — cinq de force RETIRÉS à une fée qui ne
+   * les avait pas, et la fréquence de charge divisée par vingt, arrondie à
+   * l'entier : 15 / 20 donne 0. Le lancer qui suivait rendait la force et
+   * multipliait ce zéro. Résultat, dès le deuxième lancer : trois de mana,
+   * pas un point de force en plus, et une fée qui ne chargeait PLUS JAMAIS de
+   * tout le niveau. Hors de sList, le chrono neuf ne décomptait pas non plus,
+   * et le lancer d'après s'interrompait lui-même (resté `sortEnCours`).
+   *
+   * Au rangement, la fureur n'a pas commencé : pas de chrono. `update` et
+   * `dissiper` le testent déjà.
+   */
+  ranger() { this.timer = null; super.ranger(); }
 
   initStep(n) {
     this.step = n;
