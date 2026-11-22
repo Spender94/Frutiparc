@@ -1133,8 +1133,10 @@ class Client {
     });
     // initExpSlot pose un `onRollOver` sur chaque case du panneau de montée de
     // niveau : le nom passe dans `fieldName`, et une bulle donne la description.
+    // Sous le voile de pause, le survol ne désigne rien : la case, son nom et
+    // sa description restent ceux d'avant la pause.
     this.canvas.addEventListener('mousemove', () => {
-      if (!this.evolution || !this.pointeur) return;
+      if (!this.evolution || !this.pointeur || this.pause) return;
       const c = this.casesEvolutionEcran().find((q) => Math.abs(this.pointeur.x - q.x) <= q.r
         && Math.abs(this.pointeur.y - q.y) <= q.r);
       this.evolution.survole = c ? c.i : null;
@@ -1169,6 +1171,12 @@ class Client {
     this.canvas.addEventListener('click', (ev) => {
       if (!this.carteForet && !this.nouvelle && !this.ornegon && !this.gromelin
         && !this.evolution) return;
+      // SOUS LE VOILE, RIEN NE RÉPOND. La pause se pose aussi sur le panneau
+      // de montée de niveau (P y est permis : une partie est ouverte), et le
+      // clic passait au travers — on choisissait sa caractéristique sous le
+      // voile. Seule la pause elle-même se lève : P, Échap, le bouton, ou le
+      // doigt sur le plateau (brancherToucher).
+      if (this.pause) return;
       suivre(ev.clientX, ev.clientY);
       if (this.evolution) { this.clicEvolution(this.pointeur.x, this.pointeur.y); return; }
       if (this.gromelin) {
@@ -3745,6 +3753,18 @@ class Client {
 
     this.canvas.addEventListener('touchstart', (ev) => {
       if (!Garde.vraie(ev)) return;     // un doigt fabriqué par un script
+      // En pause, toucher le plateau la LÈVE — c'est ce que dit le panneau au
+      // doigt, et c'est le geste qu'on fait en revenant à l'appli. Rien d'autre :
+      // ce toucher-là ne pivote pas la pièce, et n'atteint pas ce qui est sous
+      // le voile. Ce test passait APRÈS celui du panneau de montée de niveau :
+      // en pause sur le panneau, le doigt y désignait une case, et le clic
+      // synthétisé la choisissait. `preventDefault` n'en synthétise aucun.
+      if (this.pause) {
+        ev.preventDefault();
+        this.basculerPause();
+        this.majBoutonPause();
+        return;
+      }
       // Le panneau de montée de niveau n'a pas de survol au doigt : le PREMIER
       // appui sur une case la désigne — son nom dans le bandeau, sa
       // description en bas, comme au passage de la souris — et l'appui suivant
@@ -3761,15 +3781,6 @@ class Client {
         } else if (!c) {
           this.evolution.survole = null;
         }
-        return;
-      }
-      // En pause, toucher le plateau la LÈVE — c'est ce que dit le panneau au
-      // doigt, et c'est le geste qu'on fait en revenant à l'appli. Rien d'autre :
-      // ce toucher-là ne pivote pas la pièce.
-      if (this.pause) {
-        ev.preventDefault();
-        this.basculerPause();
-        this.majBoutonPause();
         return;
       }
       if (!enJeu()) return;            // les écrans gardent leurs clics
@@ -4003,7 +4014,14 @@ class Client {
 
   // Le joueur appelle sa fée. Elle ne lancera son sort qu'au bout du tour —
   // c'est ce délai qui fait qu'on appelle en prévision, pas en réaction.
+  //
+  // En pause, elle ne s'appelle pas. Game.update ne sonde la touche d'aide
+  // qu'à l'étape JEU, et Manager ne fait plus tourner Game pendant la pause :
+  // l'appui n'était pas lu. Le portage l'écoutait quand même — la touche, et
+  // surtout le bouton ✦ de la manette, à côté du plateau voilé : la fée était
+  // appelée sous le voile, et son sort partait à la reprise.
   appelerFee() {
+    if (this.pause) return false;
     if (!this.jeu || this.jeu.termine) return false;
     return this.jeu.appelerAide();
   }

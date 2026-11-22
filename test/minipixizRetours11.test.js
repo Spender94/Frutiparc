@@ -14,6 +14,11 @@
  *     faille. La Cloche d'immunité, soupçonnée, ne l'avait pas : sa
  *     dissipation efface sa bulle. Et pour les sorts à venir, un garde-fou :
  *     le champ ne fait plus vivre un sort qui attend son lancer.
+ *   · Les clics passaient sous le voile de pause : le panneau de montée de
+ *     niveau, sur lequel P est permis, choisissait encore sa case ; au doigt,
+ *     le panneau passait avant la pause ; et le bouton ✦ appelait la fée,
+ *     dont le sort partait à la reprise. Sous le voile, plus rien ne répond —
+ *     sauf ce qui lève la pause.
  */
 'use strict';
 
@@ -47,18 +52,32 @@ function bus() {
   };
 }
 
+// Un bouton de la page : il retient ses écouteurs, ses attributs, ses classes.
+function bouton() {
+  const attrs = {};
+  const classes = new Set();
+  return Object.assign(bus(), {
+    textContent: '',
+    setAttribute(k, v) { attrs[k] = String(v); },
+    getAttribute(k) { return attrs[k]; },
+    classList: { toggle(c, on) { if (on) classes.add(c); else classes.delete(c); }, contains: (c) => classes.has(c) },
+  });
+}
+
 function client() {
   const src = fs.readFileSync(path.join(ROOT, 'public/minipixiz/game.js'), 'utf8');
   const fenetre = Object.assign(bus(), {
     MinipixizLangue: require(path.join(ROOT, 'public/minipixiz/langue.js')),
     MinipixizEngine: E, MinipixizCombat: C, devicePixelRatio: 1,
   });
+  // La manette : le bouton ✦ (appeler la fée) et le bouton pause.
+  const boutons = { '[data-cmd-aide]': bouton(), '[data-cmd-pause]': bouton() };
   const doc = Object.assign(bus(), {
     hidden: false,
     body: { clientWidth: 0, clientHeight: 0 },
     createElement: () => ({ getContext: () => ({}), width: 0, height: 0 }),
     querySelectorAll: () => [],
-    querySelector: () => null,
+    querySelector: (q) => boutons[q] || null,
   });
   new Function('window', 'document', 'navigator', 'Image', src)(fenetre, doc, { userAgent: '' }, function () {});
   const canevas = Object.assign(bus(), {
@@ -66,7 +85,16 @@ function client() {
     getBoundingClientRect: () => ({ left: 0, top: 0 }),
   });
   const c = new fenetre.MinipixizClient.Client({ canvas: canevas, sprites: {} });
-  return { c, fenetre, doc, canevas };
+  return {
+    c, fenetre, doc, canevas,
+    aide: boutons['[data-cmd-aide]'], boutonPause: boutons['[data-cmd-pause]'],
+  };
+}
+const touche = (key, keyCode) => ({ key, keyCode, preventDefault() {} });
+// P, enfoncé puis relâché : la pause bascule une fois.
+function appuyerSurP(fenetre) {
+  fenetre.emettre('keydown', touche('p', 80));
+  fenetre.emettre('keyup', touche('p', 80));
 }
 
 // Un contexte de dessin qui note chaque aplat posé.
@@ -373,4 +401,94 @@ test('garde-fou : aucun sort ne vit entre son rangement et son lancer', () => {
   assert.ok(t.vus.length > 0, 'il a vécu');
   assert.ok(t.vus.every(Boolean), 'jamais avant son lancer (images vues : '
     + t.vus.filter((v) => !v).length + ' de trop)');
+});
+
+// ── 3 · Rien ne passe sous le voile de pause ──────────────────────────────
+
+// Une partie ouverte (P y est permis) et, par-dessus, le panneau de montée de
+// niveau au repos (80 %), qui propose une caractéristique et un sort.
+function panneauDeMonteeDeNiveau() {
+  const o = client();
+  const { c } = o;
+  c.echelle = 1;                       // un pixel de page = un pixel de scène
+  c.jeu = { termine: false };
+  c.ouvrirEvolution({ fi: { fs: { $next: [0, 3] } } });
+  c.evolution.sc = 80;
+  const [cas] = c.casesEvolutionEcran();
+  return Object.assign(o, { cas });
+}
+function toucher(canevas, x, y) {
+  let empeche = false;
+  canevas.emettre('touchstart', {
+    changedTouches: [{ identifier: 1, clientX: x, clientY: y }],
+    preventDefault() { empeche = true; },
+  });
+  return empeche;
+}
+
+test('en pause, un clic sur le panneau de montée de niveau ne choisit rien', () => {
+  const { c, fenetre, canevas, cas } = panneauDeMonteeDeNiveau();
+  appuyerSurP(fenetre);
+  assert.strictEqual(c.pause, true, 'P est permis sur le panneau');
+  canevas.emettre('click', { clientX: cas.x, clientY: cas.y });
+  assert.strictEqual(c.evolution.choix, null, 'le clic ne traverse pas le voile');
+  assert.strictEqual(c.evolution.sortie, false, 'et le panneau reste ouvert');
+  // La pause levée, le même clic choisit.
+  appuyerSurP(fenetre);
+  assert.strictEqual(c.pause, false);
+  canevas.emettre('click', { clientX: cas.x, clientY: cas.y });
+  assert.strictEqual(c.evolution.choix, 0, 'hors pause, le clic choisit');
+});
+
+test('en pause, le survol du panneau ne désigne aucune case', () => {
+  const { c, fenetre, canevas, cas } = panneauDeMonteeDeNiveau();
+  appuyerSurP(fenetre);
+  canevas.emettre('mousemove', { clientX: cas.x, clientY: cas.y });
+  assert.strictEqual(c.evolution.survole, null, 'ni nom ni description sous le voile');
+  appuyerSurP(fenetre);
+  canevas.emettre('mousemove', { clientX: cas.x, clientY: cas.y });
+  assert.strictEqual(c.evolution.survole, cas.i, 'hors pause, le survol désigne');
+});
+
+test('au doigt, toucher le panneau en pause lève la pause, et rien d\'autre', () => {
+  const { c, fenetre, canevas, cas } = panneauDeMonteeDeNiveau();
+  appuyerSurP(fenetre);
+  const empeche = toucher(canevas, cas.x, cas.y);
+  assert.strictEqual(c.pause, false, 'le toucher lève la pause, comme le dit le panneau');
+  assert.ok(empeche, 'sans clic synthétisé derrière, qui choisirait la case');
+  assert.strictEqual(c.evolution.survole, null, 'aucune case désignée par ce toucher-là');
+  assert.strictEqual(c.evolution.choix, null);
+  // La partie reprise, le panneau répond comme avant : un appui désigne.
+  toucher(canevas, cas.x, cas.y);
+  assert.strictEqual(c.evolution.survole, cas.i);
+});
+
+test('en pause, ni le bouton ✦ ni la touche d\'aide n\'appellent la fée', () => {
+  const { c, fenetre, aide } = client();
+  let appels = 0;
+  c.jeu = { termine: false, appelerAide() { appels++; return true; } };
+  appuyerSurP(fenetre);
+  assert.strictEqual(c.pause, true);
+  aide.emettre('touchstart');
+  aide.emettre('mousedown');
+  fenetre.emettre('keydown', touche('e', 69));
+  fenetre.emettre('keyup', touche('e', 69));
+  assert.strictEqual(appels, 0, 'la fée n\'est pas appelée sous le voile (son sort partirait à la reprise)');
+  appuyerSurP(fenetre);
+  aide.emettre('touchstart');
+  assert.strictEqual(appels, 1, 'hors pause, le bouton appelle');
+  fenetre.emettre('keydown', touche('e', 69));
+  assert.strictEqual(appels, 2, 'et la touche aussi');
+});
+
+test('les commandes de la pause, elles, répondent toujours', () => {
+  const { c, fenetre, boutonPause } = panneauDeMonteeDeNiveau();
+  boutonPause.emettre('touchstart');
+  assert.strictEqual(c.pause, true, 'le bouton pose la pause');
+  boutonPause.emettre('touchstart');
+  assert.strictEqual(c.pause, false, 'et la lève');
+  appuyerSurP(fenetre);
+  assert.strictEqual(c.pause, true, 'P aussi');
+  fenetre.emettre('keydown', touche('Escape', 27));
+  assert.strictEqual(c.pause, false, 'et Échap');
 });
