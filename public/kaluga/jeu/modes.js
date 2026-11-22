@@ -100,7 +100,10 @@ class Classic extends J.Game {
     // prévenu — c'est SON horloge qui dira la durée de la partie.
     this.debutJeu = K.getTimer();
     this.pausesAuDebut = this.mng.pauseTotal || 0;
-    if (this.tournament == null && this.mng.client.debutPartie) this.mng.client.debutPartie();
+    // Seule la partie classée l'annonce (comme initEndGame pour le score) :
+    // le bac à sable hérite de ce départ, mais n'est pas une partie — le
+    // serveur compte désormais les parties à leur départ.
+    if (this.type === '$classic' && this.tournament == null && this.mng.client.debutPartie) this.mng.client.debutPartie();
     this.difTimer = 0;
     this.kilo = 0;
     this.step = 1;

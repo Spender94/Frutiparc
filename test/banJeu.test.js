@@ -153,7 +153,7 @@ test('le barème monte avec les bans reçus à ce jeu ; un ban levé pour erreur
 test('le câblage : persistScore, le tournoi et la récupération Swapou passent par le ban', () => {
   const srv = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
   const ps = srv.slice(srv.indexOf('function persistScore('), srv.indexOf('function persistScore(') + 2500);
-  assert.match(ps, /const banJeu = banJeuEnCours\(username, RANKINGS\[rankingId\]\.game\);\s*if \(banJeu\) return scoreExclu\(username, rankingId, score, banJeu\);/);
+  assert.match(ps, /const banJeu = banJeuEnCours\(username, RANKINGS\[rankingId\]\.game\);\s*if \(banJeu\) return scoreExclu\(username, rankingId, score, banJeu, opts\);/);
   const ct = srv.slice(srv.indexOf('function captureTournamentScore('), srv.indexOf('function captureTournamentScore(') + 600);
   assert.match(ct, /banJeuEnCours\(username, RANKINGS\[rankingId\]\.game\)\) return;/);
   assert.match(srv, /if \(joueurExcluDesClassements\(r\.username\) \|\| banJeuEnCours\(r\.username, 'swapou2'\)\) continue;/);

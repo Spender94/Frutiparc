@@ -3072,10 +3072,10 @@ function persistScore(username, rankingId, score, data, opts) {
       oldPos: pos, newPos: pos, horsJour: true };
   }
   // Un joueur exclu des classements (onglet Alertes) : la partie compte, pas le score.
-  if (joueurExcluDesClassements(username)) return scoreExclu(username, rankingId, score);
+  if (joueurExcluDesClassements(username)) return scoreExclu(username, rankingId, score, null, opts);
   // Banni de CE jeu pour un temps (onglet Alertes, « Bannir d'un jeu ») : idem.
   const banJeu = banJeuEnCours(username, RANKINGS[rankingId].game);
-  if (banJeu) return scoreExclu(username, rankingId, score, banJeu);
+  if (banJeu) return scoreExclu(username, rankingId, score, banJeu, opts);
   if (!scoresData.users[username]) scoresData.users[username] = {};
   const prev = scoresData.users[username][rankingId];
   const oldScore = (prev && Number.isFinite(Number(prev.score))) ? Number(prev.score) : 0;
@@ -3085,7 +3085,8 @@ function persistScore(username, rankingId, score, data, opts) {
   // Tournoi : si une fenêtre de capture est ouverte sur ce ranking, on retient le
   // meilleur score du joueur pour le tour en cours (indépendant de son record perso).
   captureTournamentScore(username, rankingId, n, newData, opts);
-  noterPartie(username, RANKINGS[rankingId].game);
+  // La partie de ce score — comptée ici, ou déjà à son départ (cf. noterPartie).
+  const numeroPartie = noterPartie(username, RANKINGS[rankingId].game, opts);
   quetesEvenement(username, { type: 'score', rk: rankingId, v: n, data: newData, challenge: isDailyResetRanking(rankingId), jeu: RANKINGS[rankingId].game });
   const oldPos = computePosition(rankingId, username);
   let updated = false;
@@ -3118,7 +3119,7 @@ function persistScore(username, rankingId, score, data, opts) {
         console.error('[DB] score save error:', e.message);
       });
     }
-    if (scoreImproved && isDailyResetRanking(rankingId)) noterPartieDuRecord(username, rankingId);
+    if (scoreImproved && isDailyResetRanking(rankingId)) noterPartieDuRecord(username, rankingId, numeroPartie);
   }
   const newPos = computePosition(rankingId, username);
   return { updated, newScore: updated ? n : oldScore, oldScore, oldPos, newPos };
@@ -9155,7 +9156,8 @@ const partiesRecentes = new Map();   // 'pseudo|jeu' → instant
  * LES PARTIES DU JOUR, et laquelle a fait le meilleur score (idée de
  * Liptonair : « savoir que le temps de BK a été fait à la 4e partie, ou à la
  * 40e »). Le compte par joueur et par jeu, c'est celui de noterPartie
- * (parties_joueur_jour, les écritures d'une même partie fusionnées) ; quand
+ * (parties_joueur_jour, les écritures d'une même partie fusionnées ; la
+ * partie compte à son DÉPART quand le serveur le voit, cf. plus bas) ; quand
  * un score bat le meilleur du jour d'un classement du Challenge, on retient
  * le numéro de la partie en cours (partie_record_jour). Le tableau du light
  * le dit en infobulle, sans toucher au rendu d'origine.
@@ -9166,12 +9168,14 @@ function partiesDuJourCourant() {
   if (partiesDuJourMem.jour !== j) { partiesDuJourMem.jour = j; partiesDuJourMem.n.clear(); partiesDuJourMem.rec.clear(); }
   return partiesDuJourMem;
 }
-function noterPartieDuRecord(username, rankingId) {
+// `partie` : le numéro de la partie qui a fait ce score, quand noterPartie le
+// sait (la partie comptée à son départ) ; sinon la dernière partie du jour.
+function noterPartieDuRecord(username, rankingId, partie) {
   const u = String(username || '').toLowerCase();
   const jeu = RANKINGS[rankingId] && RANKINGS[rankingId].game;
   if (!u || !jeu) return;
   const M = partiesDuJourCourant();
-  const k = Math.max(1, M.n.get(u + '|' + jeu) || 1);
+  const k = Number(partie) > 0 ? Number(partie) : Math.max(1, M.n.get(u + '|' + jeu) || 1);
   M.rec.set(u + '|' + rankingId, k);
   if (process.env.DATABASE_URL) db.partieRecordNoter(M.jour, u, rankingId, k).catch(dbErr('partieRecordNoter'));
 }
@@ -9182,21 +9186,146 @@ async function chargerPartiesDuJour() {
   for (const x of r.records) M.rec.set(String(x.username).toLowerCase() + '|' + x.ranking_id, Number(x.partie) || 1);
 }
 
-function noterPartie(username, jeu) {
-  const cle = String(username || '').toLowerCase();
-  if (!cle || !jeu || NPC_USERNAMES.has(cle) || !users[cle]) return;
-  const k = cle + '|' + jeu, t = Date.now();
-  if (t - (partiesRecentes.get(k) || 0) < PARTIE_FUSION_MS) return;
-  partiesRecentes.set(k, t);
-  if (partiesRecentes.size > 5000) for (const [kk, tt] of partiesRecentes) if (t - tt > PARTIE_FUSION_MS) partiesRecentes.delete(kk);
+/*
+ * UNE PARTIE COMPTE À SON DÉPART (demande de l'admin, novembre 2026 : « pour
+ * certains jeux comme Fever, ce nombre s'incrémente après la fin de la partie
+ * et non pas au clic sur le bouton démarrer »).
+ *
+ * Compter au score laissait de côté tout ce qui ne finit pas par un score
+ * classé : la partie abandonnée, celle qu'on quitte en voyant qu'elle part
+ * mal, celle que le rejeu refuse. Or c'est justement ce que l'anti-triche
+ * veut voir — le joueur qui relance jusqu'à LA partie chanceuse affichait
+ * « 3 parties » pour trente départs.
+ *
+ * Quand le serveur VOIT le départ, la partie compte donc là
+ * (compterPartieAuDepart) :
+ *   · le jeton d'une partie vérifiée — Mini-Fever (/api/minifever/partie),
+ *     l'Arbre creux de MiniPixiz (/api/minipixiz/arbre/partie) ;
+ *   · la course ACCORDÉE par /do/fdclaim — Burning Kiwi (portage et SWF
+ *     rustiné), le Challenge de Swapou (portage et SWF) ; un refus faute de
+ *     FD n'ouvre aucune partie, et ne compte pas ;
+ *   · le début annoncé par le jeu (/api/partie/debut) — Kaluga ;
+ *   · le départ d'une course en ligne de Burning Kiwi (sans score : elle
+ *     compte, et se ferme aussitôt).
+ * La partie reste alors OUVERTE jusqu'à son premier score. Ce score-là la
+ * ferme sans la recompter, et les écritures sœurs qui le suivent de près (le
+ * miroir du Challenge, le Freestyle de Kaluga, le Contest de Swapou, le
+ * classement que le rejeu de Swapou écrit après coup) non plus : noterPartie
+ * les reconnaît. Un nouveau départ du même jeu remplace la partie ouverte (la
+ * précédente est finie, abandonnée ou non) ; passé PARTIE_OUVERTE_MAX_MS, un
+ * départ resté sans score est oublié.
+ *
+ * Les jeux dont le serveur ne voit pas le départ (Frutisnake, MotionBall,
+ * MiniWave, JamaJama, les séries de Grapiz et de Frutibandas, les coupes et
+ * le Survivor de Burning Kiwi) comptent toujours à leur score, comme avant.
+ *
+ * Les QUÊTES ne bougent pas : « jouer N parties » avance à la fin d'une partie
+ * qui a écrit un score, une fois par partie. Un départ abandonné ne doit pas
+ * les faire avancer — dix clics sur « démarrer » rempliraient la quête.
+ */
+const PARTIE_OUVERTE_MAX_MS = 6 * 3600 * 1000;   // au-delà, un départ sans score est oublié
+const PARTIE_FIN_FUSION_MS = 60 * 1000;          // les écritures d'une même fin de partie
+const partiesOuvertes = new Map();               // 'pseudo|jeu' → { debut, jour, n, finA }
+let jeuxDesClassements = null;
+function estJeuClasse(jeu) {
+  if (!jeuxDesClassements) jeuxDesClassements = new Set(Object.values(RANKINGS).map((r) => r.game));
+  return jeuxDesClassements.has(jeu);
+}
+// Le +1 lui-même : la mémoire du jour, les statistiques, la base.
+function compterUnePartie(cle, jeu) {
   const M = partiesDuJourCourant();
-  M.n.set(k, (M.n.get(k) || 0) + 1);
-  quetesEvenement(cle, { type: 'partie', jeu });
+  const k = cle + '|' + jeu;
+  const n = (M.n.get(k) || 0) + 1;
+  M.n.set(k, n);
   noterInteraction(cle);
   if (process.env.DATABASE_URL) {
-    db.statsPartieNoter(parisDayKey(), jeu).catch(dbErr('statsPartieNoter'));
-    db.partieJoueurNoter(parisDayKey(), cle, jeu).catch(dbErr('partieJoueurNoter'));
+    db.statsPartieNoter(M.jour, jeu).catch(dbErr('statsPartieNoter'));
+    db.partieJoueurNoter(M.jour, cle, jeu).catch(dbErr('partieJoueurNoter'));
   }
+  return n;
+}
+// Le départ d'une partie, vu par le serveur. `sansScore` : une partie qui
+// n'écrira jamais de score (la course en ligne de Burning Kiwi) — elle compte,
+// fait avancer les quêtes comme avant, et ne reste pas ouverte.
+function compterPartieAuDepart(username, jeu, opts = {}) {
+  const cle = String(username || '').toLowerCase();
+  const j = jeuDeClassement(jeu);
+  if (!cle || !j || !estJeuClasse(j) || NPC_USERNAMES.has(cle) || !users[cle]) return 0;
+  const k = cle + '|' + j, t = Date.now();
+  const o = partiesOuvertes.get(k);
+  // Pas de fusion ici : chaque départ accordé est une partie distincte (un
+  // jeton, une graine, une course) — relancer au bout de deux secondes parce
+  // que la partie démarre mal, c'est précisément ce qu'on veut voir.
+  const n = compterUnePartie(cle, j);
+  if (opts.sansScore) {
+    partiesOuvertes.delete(k);
+    quetesEvenement(cle, { type: 'partie', jeu: j });
+  } else {
+    // `avantFermee` : la partie d'avant avait-elle déjà son score ? (Sinon,
+    // un score d'elle qui s'écrirait encore — le rejeu de Swapou — la ferme.)
+    partiesOuvertes.set(k, { debut: t, jour: partiesDuJourCourant().jour, n, finA: 0,
+      avantFermee: !o || !!o.finA || t - o.debut >= PARTIE_OUVERTE_MAX_MS });
+  }
+  if (partiesOuvertes.size > 5000) {
+    for (const [kk, v] of partiesOuvertes) if (t - v.debut > PARTIE_OUVERTE_MAX_MS) partiesOuvertes.delete(kk);
+  }
+  return n;
+}
+// Un départ qui n'ouvre pas de partie comptée (une course refusée, une coupe
+// de Burning Kiwi qui comptera à son score) : la partie ouverte, s'il y en
+// avait une, est finie — son score ne viendra plus.
+function oublierPartieOuverte(username, jeu) {
+  partiesOuvertes.delete(String(username || '').toLowerCase() + '|' + jeuDeClassement(jeu));
+}
+
+/*
+ * Un score écrit (persistScore, scoreExclu). Rend le numéro de la partie qui
+ * l'a fait, quand on le sait (cf. noterPartieDuRecord).
+ *   · `opts.a` : l'heure où le score est ARRIVÉ, quand il s'écrit plus tard
+ *     (le rejeu de Swapou) — c'est elle qui dit à quelle partie il revient ;
+ *   · `opts.sansPartie` : une écriture qui n'est pas une partie jouée (l'admin
+ *     classe à la main une partie refusée : elle a déjà compté à son départ).
+ */
+function noterPartie(username, jeu, opts = {}) {
+  const cle = String(username || '').toLowerCase();
+  if (!cle || !jeu || NPC_USERNAMES.has(cle) || !users[cle]) return null;
+  // (Sa quête, elle, avance comme avant : la partie a fini par un score.)
+  if (opts.sansPartie) { quetesEvenement(cle, { type: 'partie', jeu }); return null; }
+  const k = cle + '|' + jeu, t = Number(opts.a) || Date.now();
+  const jour = partiesDuJourCourant().jour;
+  const o = partiesOuvertes.get(k);
+  if (o && t - o.debut < PARTIE_OUVERTE_MAX_MS) {
+    // Une partie comptée à son départ (un numéro d'un autre jour ne dit rien
+    // du tableau d'aujourd'hui : on le tait).
+    const numero = (x) => (o.jour === jour && x > 0 ? x : null);
+    // Arrivé AVANT ce départ : le score de la partie d'avant, que son rejeu
+    // n'écrit qu'après le nouveau départ. Elle a eu son compte (à son départ,
+    // ou à son score) ; il ne lui manque, au plus, que sa quête.
+    if (t < o.debut) {
+      if (!o.avantFermee) { o.avantFermee = true; quetesEvenement(cle, { type: 'partie', jeu }); }
+      return numero(o.n - 1);
+    }
+    // Son premier score la ferme : pas de +1, mais la quête avance.
+    if (!o.finA) {
+      o.finA = t;
+      quetesEvenement(cle, { type: 'partie', jeu });
+      noterInteraction(cle);
+      return numero(o.n);
+    }
+    // Les écritures sœurs de la même fin de partie.
+    if (t - o.finA < PARTIE_FIN_FUSION_MS) return numero(o.n);
+  }
+  if (o) partiesOuvertes.delete(k);
+  // Pas de départ vu : la partie compte à son score, comme avant. Une même
+  // partie peut écrire deux classements dans la même requête : on fusionne
+  // les écritures à moins de trois secondes d'écart.
+  const M = partiesDuJourCourant();
+  if (t - (partiesRecentes.get(k) || 0) < PARTIE_FUSION_MS) return M.n.get(k) || null;
+  partiesRecentes.set(k, t);
+  if (partiesRecentes.size > 5000) for (const [kk, tt] of partiesRecentes) if (t - tt > PARTIE_FUSION_MS) partiesRecentes.delete(kk);
+  const n = compterUnePartie(cle, jeu);
+  quetesEvenement(cle, { type: 'partie', jeu });
+  return n;
 }
 
 /*
@@ -10779,7 +10908,8 @@ app.post('/api/admin/swapou/parties/:id/classer', adminAuth, async (req, res) =>
   if (!users[username]) return res.status(404).json({ ok: false, error: 'joueur introuvable' });
   const score = Number(p.score_declare) || 0;
   if (score <= 0) return res.status(400).json({ ok: false, error: 'score nul' });
-  const r = persistScore(username, rk, score, p.data || '');
+  // (La partie a compté à son départ : la classer n'en fait pas une de plus.)
+  const r = persistScore(username, rk, score, p.data || '', { sansPartie: true });
   await db.classerPartieSwapou(p.id, 'admin');
   if (Array.isArray(p.combos)) await swapouCompterCombos(username, p.id, p.combos).catch((e) => console.error('[SWAPOU] combos :', e.message));
   console.log(`[ADMIN] swapou : partie ${p.id} de ${username} classée à la main (${rk} ${score}, updated=${r.updated})`);
@@ -11338,6 +11468,7 @@ app.post('/api/partie/debut', (req, res) => {
   const jeu = jeuDeClassement(String(b.jeu || '').toLowerCase());
   if (!jeuxBannissables().some((j) => j.id === jeu)) return res.json({ ok: false, error: 'jeu' });
   noterDebutTrace(username, jeu);
+  compterPartieAuDepart(username, jeu);           // la partie compte dès ici (cf. noterPartie)
   res.json({ ok: true });
 });
 
@@ -18066,6 +18197,7 @@ app.post('/api/minifever/partie', (req, res) => {
   if (!antitricheDebit(username)) return res.json({ ok: false, error: 'rate_limited' });
   const p = AT.creerJeton({ jeu: 'minifever', username, mode: palier });
   noterDebutPartie(username, 'minifever');
+  compterPartieAuDepart(username, 'minifever');   // la partie compte dès ici (cf. noterPartie)
   AT.ouvrirBattements(p.id, username, 'minifever', p.t);
   if (process.env.DATABASE_URL) {
     db.creerPartieVerifiee({ id: p.id, jeu: 'minifever', username, graine: p.graine, mode: palier, jour: parisDayKey() })
@@ -18856,9 +18988,9 @@ function pictoRetire(username, nom) {
 // Le score d'un joueur exclu : la partie compte (statistiques, quêtes), le
 // classement non. Même forme de retour que persistScore.
 // `ban` : le ban par jeu qui l'écarte (sinon, l'exclusion de tous les classements).
-function scoreExclu(username, rankingId, score, ban) {
+function scoreExclu(username, rankingId, score, ban, opts) {
   const u = String(username).toLowerCase();
-  noterPartie(u, (RANKINGS[rankingId] && RANKINGS[rankingId].game) || '');
+  noterPartie(u, (RANKINGS[rankingId] && RANKINGS[rankingId].game) || '', opts || {});
   const cle = u + '|' + rankingId, t = Date.now();
   if (t - (scoresExclusSignales.get(cle) || 0) > 60 * 60 * 1000) {
     scoresExclusSignales.set(cle, t);
@@ -19411,6 +19543,7 @@ app.post('/api/minipixiz/arbre/partie', (req, res) => {
   if (!username || !users[username]) return res.status(401).json({ ok: false, error: 'not_authenticated' });
   if (!antitricheDebit(username)) return res.json({ ok: false, error: 'rate_limited' });
   const p = AT.creerJeton({ jeu: 'minipixiz', username, mode: 0 });
+  compterPartieAuDepart(username, 'minipixiz');   // la partie compte dès ici (cf. noterPartie)
   AT.ouvrirBattements(p.id, username, 'minipixiz', p.t);
   if (process.env.DATABASE_URL) {
     db.creerPartieVerifiee({ id: p.id, jeu: 'minipixiz', username, graine: p.graine, mode: 0, jour: parisDayKey() })
@@ -19588,7 +19721,8 @@ app.post('/api/admin/antitriche/parties/:id/classer', adminAuth, async (req, res
   const donnee = p.jeu === 'minifever'
     ? minifeverDonnee(Number(p.mode), Math.round(score / minifeverScore(Number(p.mode), 1, minifeverRegle(p.jour))))
     : '';
-  const r = persistScore(username, rk, score, donnee);
+  // (La partie a compté à son départ : la classer n'en fait pas une de plus.)
+  const r = persistScore(username, rk, score, donnee, { sansPartie: true });
   await db.classerPartieVerifiee(p.id, 'admin');
   console.log(`[ADMIN] antitriche : partie ${p.id} de ${username} classée à la main (${rk} ${score}, updated=${r.updated})`);
   res.json({ ok: true, updated: r.updated, score });
@@ -26415,6 +26549,18 @@ app.get('/api/daily-status', (req, res) => {
 //        le menu revient nativement en arrière ; le popup affiche l'overlay
 //        de rachat via le drapeau fdRefused lu par /api/check-ejected).
 // ─────────────────────────────────────────────
+// LE COMPTE DES PARTIES (cf. compterPartieAuDepart) : une course ACCORDÉE est
+// une partie commencée, qu'elle aille au bout ou non. Burning Kiwi annonce son
+// mode (vs.gameMode) : la Fruticup (0) et le Survivor (6) enchaînent plusieurs
+// courses — un claim chacune — pour UN score, ils comptent donc à leur score,
+// comme avant ; le tutoriel (5) n'en écrit aucun. Ces départs-là ferment
+// seulement la partie ouverte d'avant.
+const BKIWI_MODES_COMPTES_AU_SCORE = new Set([0, 5, 6]);
+function compterPartieFdclaim(username, game, params) {
+  const mode = (params.mode !== undefined && params.mode !== '') ? Number(params.mode) : NaN;
+  if (game === 'bkiwi' && BKIWI_MODES_COMPTES_AU_SCORE.has(mode)) { oublierPartieOuverte(username, game); return; }
+  compterPartieAuDepart(username, game);
+}
 app.post('/do/fdclaim', async (req, res) => {
   await rollDailyChallengeIfNeeded();
   const params = Object.assign({}, req.query || {}, req.body || {});
@@ -26425,7 +26571,9 @@ app.post('/do/fdclaim', async (req, res) => {
   const user = users[username];
   const game = String(params.game || '').toLowerCase();
   noterDebutPartie(username, game);          // la partie s'ouvre ici (cf. partieACheval)
-  if (!fdGameIsLimited(game)) return res.send('ok=1&fd=free');
+  // Chaque réponse « ok=1 » ouvre une partie : elle compte (compterPartieFdclaim).
+  const accordee = (reponse) => { compterPartieFdclaim(username, game, params); return res.send(reponse); };
+  if (!fdGameIsLimited(game)) return accordee('ok=1&fd=free');
   // BKiwi v2 : le SWF patché envoie mode = vs.gameMode (inc/gameData.as —
   // ARCADE=1 est le bouton « Challenge » du menu ; DUEL=2, TIMETRIAL=3, etc.).
   // SEUL le mode Challenge consomme un FD : Duel, TimeTrial, entraînements et
@@ -26441,7 +26589,7 @@ app.post('/do/fdclaim', async (req, res) => {
   if (modeKnown && modeRaw !== 1) {
     fdStampRaceMode(username, game, false); // efface un éventuel « payé » antérieur
     fdSetClaim(sid, game, 'free');          // Duel / TimeTrial / entraînement
-    return res.send('ok=1&fd=free');
+    return accordee('ok=1&fd=free');
   }
   // Mode INCONNU (SWF antérieur au patch v2) : on retombe sur l'heuristique de
   // circuit d'origine — course sur un autre circuit que celui du jour = gratuite.
@@ -26450,7 +26598,7 @@ app.post('/do/fdclaim', async (req, res) => {
     const daily = getBkiwiDailyTrack();
     if (Number.isFinite(track) && track !== daily) {
       fdSetClaim(sid, game, 'free');
-      return res.send('ok=1&fd=free');
+      return accordee('ok=1&fd=free');
     }
   }
   if (fdConsume(username, user, game)) {
@@ -26462,12 +26610,13 @@ app.post('/do/fdclaim', async (req, res) => {
     fdSetClaim(sid, game, 'paid');
     const left = fdRemaining(user, game);
     console.log(`[FD] ${username} : claim ${game} OK (reste ${left})`);
-    return res.send(`ok=1&fd=paid&remaining=${left}`);
+    return accordee(`ok=1&fd=paid&remaining=${left}`);
   }
   // Course REFUSÉE (plus de FD) : on efface tout « payé » antérieur — elle ne doit
   // en aucun cas être classée si le jeu tente quand même d'enregistrer un score.
   if (game === 'bkiwi') fdStampRaceMode(username, game, false);
   fdFlagRefusal(sid, game);
+  oublierPartieOuverte(username, game);      // pas de course : rien ne compte, et la précédente est finie
   console.log(`[FD] ${username} : claim ${game} REFUSÉ (plus de FD)`);
   return res.send(`ok=0&err=no_fd&remaining=0&price=${FD_PASS_PRICE}`);
 });
@@ -37989,7 +38138,7 @@ const { BkiwiNet } = require('./public/bkiwi/server/net.js');
 const bkiwiNet = new BkiwiNet({
   // Une course en ligne est une partie de Burning Kiwi (les quêtes, les
   // statistiques) ; le voyant du parc s'allume pour chaque pilote.
-  onDepart: (pilotes) => { for (const u of pilotes) { marquerEnPartie(u, 'bkiwi'); noterPartie(u, 'bkiwi'); } },
+  onDepart: (pilotes) => { for (const u of pilotes) { marquerEnPartie(u, 'bkiwi'); compterPartieAuDepart(u, 'bkiwi', { sansScore: true }); } },
   onFin: (pilotes) => { for (const u of pilotes) marquerFinDePartie(u); },
 });
 function bkiwiFlush(messages) {

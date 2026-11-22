@@ -890,7 +890,7 @@
     <span id="pv-audit-etat" style="margin-left:auto;font-size:13px"></span>
   </div>
   <table>
-    <thead><tr><th>Jour</th><th>Joueur</th><th>Jeu</th><th>Score</th><th title="L'heure où ce meilleur score du jour a été enregistré (scores.updated_at, archivé dans challenge_score_archive.updated_at), et le nombre de scores envoyés ce jour-là (parties_joueur_jour). Aucune heure de départ n'était gardée : pas de durée.">Score écrit à</th><th>Gravité</th><th>Raisons</th></tr></thead>
+    <thead><tr><th>Jour</th><th>Joueur</th><th>Jeu</th><th>Score</th><th title="L'heure où ce meilleur score du jour a été enregistré (scores.updated_at, archivé dans challenge_score_archive.updated_at), et le nombre de parties ce jour-là (parties_joueur_jour : comptées à leur départ depuis novembre 2026, avant les scores envoyés). Aucune heure de départ n'était gardée : pas de durée.">Score écrit à</th><th>Gravité</th><th>Raisons</th></tr></thead>
     <tbody id="pv-audit"></tbody>
   </table>
 </div>
@@ -961,7 +961,7 @@
     <thead><tr><th>Jour</th><th>Connectés</th><th title="Comptes de moins d'un mois parmi les connectés">dont nouveaux</th><th title="Revenus après au moins 14 jours d'absence">Retours</th><th>Pic</th><th>Inscriptions</th><th>Forum</th><th>Chat</th><th>Parties</th><th title="Minutes d'activité réelle par joueur actif">Temps actif</th></tr></thead>
     <tbody id="stats-jours-body"></tbody>
   </table>
-  <h3>Parties classées par jeu</h3>
+  <h3 title="Une partie compte à son départ quand le serveur le voit (Mini-Fever, Arbre creux, Burning Kiwi, Challenge de Swapou, Kaluga) — abandonnées comprises ; sinon à son score">Parties par jeu</h3>
   <table>
     <thead><tr><th>Jeu</th><th>Parties (7 j)</th><th id="stats-jeux-fenetre">Parties (période)</th><th title="Joueurs différents">Joueurs (7 j)</th><th title="Joueurs différents">Joueurs (période)</th><th title="Parties par joueur sur la période">Parties / joueur</th><th style="width:30%"></th></tr></thead>
     <tbody id="stats-jeux"></tbody>
@@ -2600,7 +2600,7 @@ async function auditPortages() {
       <td>${esc(PV_JEU[x.jeu] || x.jeu)}</td>
       <td>${Number(x.score).toLocaleString('fr-FR')}</td>
       <td style="white-space:nowrap">${x.enregistreLe ? tFmtDate(x.enregistreLe) : '—'}${x.partiesDuJour != null
-        ? `<div style="font-size:11px;color:#777" title="Scores envoyés ce jour-là (record battu ou non), sans heure">${x.partiesDuJour} score${x.partiesDuJour > 1 ? 's' : ''} envoyé${x.partiesDuJour > 1 ? 's' : ''} ce jour</div>` : ''}
+        ? `<div style="font-size:11px;color:#777" title="Parties de ce jeu ce jour-là, sans heure — comptées à leur départ depuis novembre 2026 (abandonnées et refusées comprises) ; avant, les scores envoyés">${x.partiesDuJour} partie${x.partiesDuJour > 1 ? 's' : ''} ce jour</div>` : ''}
         <div style="font-size:11px;color:#999">durée inconnue</div></td>
       <td class="grav-${esc(x.gravite)}">${esc(x.gravite)}</td>
       <td style="font-size:12px">${x.raisons.map(esc).join('<br>')}</td>
