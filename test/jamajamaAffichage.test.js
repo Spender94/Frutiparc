@@ -416,3 +416,42 @@ test('la statue de jade crache son gaz quand Tiki est sur la case, pas pendant s
   assert.ok(arrive >= 0 && gaz >= 0, JSON.stringify({ arrive, gaz }));
   assert.ok(gaz >= arrive, `le gaz attend que Tiki soit arrivé (arrivée ${arrive}, gaz ${gaz})`);
 });
+
+/*
+ * LA DÉFLAGRATION D'UNE BOBOMBE. Dans le fichier, une flamme (BombFlames)
+ * accroche jama_fx_Fire au plateau, le fait jouer… et rend false dès sa
+ * première image : pour le lecteur, l'animation est finie, le clip vit sa vie
+ * et se retire seul (removeMovieClip, image 16). L'effet de la bombe elle-même
+ * (sa flamme, son BurnSprite sans animation) tient donc UNE image, et la
+ * propagation part derrière, une couronne toutes les trois images
+ * (ParallelAnimations, délais 3, 6, 9…). Attendre la fin de la flamme de la
+ * bombe, c'était l'explosion « en deux temps » du testeur.
+ */
+test('la déflagration d’une bombe se propage pendant que sa flamme brûle encore', async () => {
+  const W = await chargerBac();
+  const m = monter(W, plateau(W, 7, 5, [0, 2], [[E.BOMB, 1, 2, 2], [E.FRUIT, 6, 4, 1]]));
+  m.jouer(1);                                          // la bombe glisse en (2,2), un coup avant l'explosion
+  const flammes = () => m.vue.fx.filter((f) => f.genre === 'flamme' && f.actif && !f.mort)
+    .map((f) => f.x / 32 + ',' + f.y / 32);
+  const images = filmer(m, 0, flammes);                // le héros monte en (1,1) : elle explose
+  assert.ok(!m.seul(E.BOMB), 'la bombe a sauté');
+  assert.ok(m.partie.getHero().alive, 'le héros est hors des lignes de feu');
+  const bombe = premier(images, (i) => i.includes('2,2'));
+  const voisine = premier(images, (i) => i.includes('3,2'));
+  const loin = premier(images, (i) => i.includes('6,2'));
+  assert.ok(bombe >= 0 && voisine >= 0 && loin >= 0, JSON.stringify({ bombe, voisine, loin }));
+  // Trois images de délai (six pas à tmod 0,5), une de plus pour passer
+  // d'un effet à l'autre : la flamme de la bombe, elle, en dure quinze.
+  assert.ok(voisine - bombe >= 5 && voisine - bombe <= 9,
+    `la case voisine prend feu trois images après la bombe (bombe ${bombe}, voisine ${voisine})`);
+  assert.ok(images[voisine].includes('2,2'), 'la flamme de la bombe brûle encore quand la voisine s’allume');
+  // (6,2) est la quatrième couronne : neuf images après (3,2).
+  assert.ok(loin - voisine >= 16 && loin - voisine <= 20, `une couronne toutes les trois images (voisine ${voisine}, (6,2) ${loin})`);
+  // Le coup rendu, les dernières flammes finissent de brûler : le recalage ne
+  // les souffle pas.
+  const restantes = flammes();
+  assert.ok(restantes.length > 0, 'des flammes brûlent encore quand le coup se termine');
+  let n = 0;
+  while (flammes().length && n < 100) { m.vue.update(0.5); n += 1; }
+  assert.ok(n > 0 && n < 40, `elles s’éteignent d’elles-mêmes, à leur image 16 (${n} pas)`);
+});

@@ -244,7 +244,10 @@
       for (const [uid, v] of this.vues) {
         if (!vivants.has(uid)) this.vues.delete(uid);
       }
-      this.fx = [];
+      // Les flammes qui brûlent encore ne sont plus d'aucun lot : le coup
+      // rendu, elles finissent leur course (le clip du fichier ne dépend
+      // de personne). Le reste des effets s'efface.
+      this.fx = this.fx.filter((f) => f.genre === 'flamme' && f.actif && !f.mort);
       this.compteur = this.partie.countMoves();
     }
 
@@ -338,6 +341,16 @@
 
     // ── la marche du temps ──
     update(tmod) {
+      // Les flammes des bombes brûlent seules, lots ou pas (cf. « flammes ») :
+      // une image de plus à chaque tour, jusqu'à la seizième, qui les retire.
+      // Avancées AVANT les lots, une flamme qui s'allume dans ce tour se
+      // montre sur sa première image.
+      const finFeu = Rendu.longueur('jama_fx_Fire');
+      for (const fx of this.fx) {
+        if (fx.genre !== 'flamme' || !fx.actif || fx.mort) continue;
+        fx.frame += tmod;
+        if (fx.frame >= finFeu) fx.mort = true;
+      }
       // Le ballottement du héros (FlyAnim : _y = -1 + cos(t)·2, t += tmod/5).
       for (const [, v] of this.vues) {
         if ((v.sprite.id === Element.HERO || v.sprite.id === Element.GHOST) && v.sprite.alive) {
@@ -511,16 +524,24 @@
           } };
         }
         case 'flammes': {
+          /*
+           * BombFlames : à son tour, la flamme accroche jama_fx_Fire au
+           * plateau, le fait jouer… et son update rend false dès la première
+           * image — pour le lecteur, l'animation est FINIE. Le clip, lui, vit
+           * sa vie et se retire seul à son image 16 (removeMovieClip) ; c'est
+           * `update` qui le fait brûler, hors des lots. Tenir l'effet jusqu'à
+           * l'extinction, c'était faire attendre toute la déflagration (l'effet
+           * suivant) la fin de la flamme de la bombe : l'explosion « en deux
+           * temps ». Dans le fichier, la propagation part derrière, une
+           * couronne toutes les trois images.
+           */
           const fx = { genre: 'flamme', x: d.x * 32, y: d.y * 32, frame: 1, actif: false };
           this.fx.push(fx);
-          const fin = Rendu.longueur('jama_fx_Fire');
           let attente = (d.delai || 0);
           return { update(t) {
             if (attente > 0) { attente -= t; return true; }
             fx.actif = true;
-            fx.frame += t;
-            if (fx.frame >= fin) { fx.mort = true; return false; }
-            return true;
+            return false;
           } };
         }
         case 'burn': {
