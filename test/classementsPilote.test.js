@@ -324,7 +324,11 @@ test('les deux portages envoient leur score en fin de partie', () => {
   const pix = fs.readFileSync(path.join(ROOT, 'public/minipixiz/index.html'), 'utf8');
   assert.match(pix, /classe === 'Arbre' && client\.lieu && client\.lieu\.score > 0/,
     'l\'arbre creux, et lui seul, est classé');
-  assert.match(pix, /plateforme\.envoyerPartieArbre\(partie, client\.lieu\.score, journalArbre\)/,
+  // Le score est lu sur le lieu AVANT d'attendre le dernier battement (le
+  // lieu peut changer pendant ce temps), puis envoyé avec le journal.
+  assert.match(pix, /var scoreArbre = client\.lieu\.score;/,
+    'le score envoyé est celui de l\'arbre, figé à la fin de la partie');
+  assert.match(pix, /plateforme\.envoyerPartieArbre\(partie, scoreArbre, journalArbre\)/,
     'avec sa preuve : le jeton et le journal de la partie');
   assert.match(pix, /MinipixizRejeu\.brancher\(l\)/, 'l\'enregistreur est branché sur le lieu');
   const pixP = fs.readFileSync(path.join(ROOT, 'public/minipixiz/plateforme.js'), 'utf8');
@@ -333,7 +337,9 @@ test('les deux portages envoient leur score en fin de partie', () => {
 
   const mw = fs.readFileSync(path.join(ROOT, 'public/miniwave/index.html'), 'utf8');
   assert.match(mw, /l\.mode === 'challenge'/, 'le Challenge, et lui seul, est classé');
-  assert.match(mw, /plateforme\.envoyerScore\(info\.score, \(Number\(info\.level\) \|\| 0\) \+ 1\)/,
+  // …et le jour où la partie a commencé : une partie à cheval sur minuit
+  // compte pour le challenge de son départ.
+  assert.match(mw, /plateforme\.envoyerScore\(info\.score, \(Number\(info\.level\) \|\| 0\) \+ 1, l\.jour\)/,
     'le niveau affiché part avec le score');
   const mwP = fs.readFileSync(path.join(ROOT, 'public/miniwave/plateforme.js'), 'utf8');
   assert.match(mwP, /game: 'miniwave', m: '0'/);
