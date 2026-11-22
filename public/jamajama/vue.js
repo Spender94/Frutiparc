@@ -50,6 +50,24 @@
     return { debut, fin };
   }
 
+  // Le clip d'un enfant NOMMÉ, par son chemin d'instance (« j.flame »,
+  // « s.iris ») dans l'image `ref` d'un symbole. L'extraction a pu fondre un
+  // parent d'une seule image (la pièce s'appelle alors « j.flame » d'un bloc)
+  // ou le garder en renvoi (« s », puis « iris » dans son clip) : on descend.
+  function clipDe(cle, ref, chemin, prefixe) {
+    const etat = Rendu.etatDe(Rendu.symbole(cle), ref);
+    for (const p of etat.pieces || []) {
+      if (!p.clip || !p.nom) continue;
+      const c = prefixe ? prefixe + '.' + p.nom : p.nom;
+      if (c === chemin) return p.clip;
+      if (chemin.startsWith(c + '.')) {
+        const r = clipDe(p.clip, p.frame || 1, chemin, c);
+        if (r) return r;
+      }
+    }
+    return null;
+  }
+
   class VueJeu {
     /**
      * @param partie   la Partie de regles.js (état final au fil des entrées)
@@ -90,6 +108,7 @@
         visible: true,
         jJoue: false,                      // le sous-clip j avance tout seul
         boucle: null,                      // la ligne de temps principale tourne seule
+        seuls: null,                       // des enfants nommés qui jouent seuls (cf. _lancerSeuls)
         bande: s.id === Element.GHOST ? 2 : (s.below ? 0 : 1),
       };
       this.vues.set(s.uid, v);
@@ -106,6 +125,11 @@
       const eveille = this.partie.getCurrentAvatar() === s;
       const boucle = v.boucle;
       v.boucle = null;
+      // Comme la boucle : des enfants qui jouent seuls ne repartent pas de
+      // leur première image à chaque recalage — la flamme de Kohl tourne
+      // d'un coup à l'autre, la paupière du zoeil finit de s'ouvrir.
+      const seuls = v.seuls;
+      v.seuls = null;
       switch (s.id) {
         case Element.EXIT:
           v.frame = s._opened ? undefined : NOMS_DIR[s.orientation];
@@ -158,7 +182,7 @@
         case Element.LOUKI:
         case Element.KOHL:
         case Element.WINKLE:
-          this._poserCreature(v, eveille);
+          this._poserCreature(v, eveille, seuls);
           break;
         case Element.SPIDER:
           v.frame = s._inCocoon ? 'cocon' : NOMS_DIR[s.orientation];
@@ -189,7 +213,13 @@
     // à chacune — le kohl y montre sa flamme, et la fin de son « wakeUp » est
     // cette même image). Endormie : la fin de son clip « sleep » si elle en
     // vient, sinon son image de départ. Le winkle qui nage reste à la nage.
-    _poserCreature(v, eveille) {
+    //
+    // La FLAMME de Kohl éveillé est un enfant nommé (j.flame, clip de six
+    // images sans stop) que le code ne touche qu'en mode Édition
+    // (showEditor : subMc.flame.stop()) ; en partie, setOrientation fait
+    // gotoAndStop(direction) et la flamme tourne en boucle. Le rendu tient
+    // immobiles les enfants nommés : c'est donc à la vue de la faire jouer.
+    _poserCreature(v, eveille, seuls) {
       const s = v.sprite;
       const dir = NOMS_DIR[s.orientation] || 'South';
       if (s.id === Element.WINKLE && s._inWater) {
@@ -202,6 +232,10 @@
         if (s.id === Element.LOUKI) v.frame = 'move' + (s._loaded ? 'Full' : '') + dir;
         else v.frame = dir;
         v.clips = {};
+        if (s.id === Element.KOHL) {
+          if (seuls) { v.seuls = seuls; this._poserSeuls(v); }
+          else this._lancerSeuls(v, ['j.flame'], true);
+        }
         return;
       }
       if (v.frame === 'sleep') {
@@ -210,6 +244,33 @@
       }
       v.frame = s.id === Element.KOHL ? 'base' : 'default';
       v.clips = {};
+    }
+
+    // DES ENFANTS NOMMÉS QUI JOUENT SEULS. Le rendu laisse sur leur image
+    // les enfants nommés (c'est, d'ordinaire, le code qui les pilote) ; ceux
+    // que le code laisse filer, la vue les fait avancer, une image par tmod
+    // comme les autres lignes de temps du portage. Ils naissent avec l'image
+    // du parent qui les porte : leur horloge part de 1. En boucle, ils
+    // tournent sur leur longueur ; sinon ils s'arrêtent sur leur dernière
+    // image (le stop() qui la porte). `depart` permet de les poser d'emblée
+    // au bout de leur course.
+    _lancerSeuls(v, chemins, boucle, depart) {
+      const longueurs = {};
+      for (const c of chemins) {
+        const clip = clipDe(v.cle, v.frame, c);
+        if (clip) longueurs[c] = Rendu.longueur(clip);
+      }
+      v.seuls = { t: depart || 1, longueurs, boucle };
+      this._poserSeuls(v);
+    }
+    _poserSeuls(v) {
+      const o = v.seuls;
+      const f = Math.floor(o.t);
+      const clips = Object.assign({}, v.clips);
+      for (const [chemin, n] of Object.entries(o.longueurs)) {
+        clips[chemin] = o.boucle ? ((f - 1) % n) + 1 : Math.min(n, f);
+      }
+      v.clips = clips;
     }
 
     // La boucle du sommeil du héros, à partir d'une étiquette.
@@ -280,6 +341,7 @@
           } else if (s.id === Element.KOHL) {
             v.frame = NOMS_DIR[e.d] || v.frame;
             v.clips = {};
+            if (v.seuls) this._poserSeuls(v);      // la flamme tourne toujours
           } else if (s.id === Element.LOUKI) {
             if (s._active) { v.frame = 'move' + (s._loaded ? 'Full' : '') + NOMS_DIR[e.d]; v.clips = {}; }
           } else if (s.id === Element.WINKLE) {
@@ -362,6 +424,10 @@
           bo.t += tmod;
           if (bo.t >= bo.fin + 1) bo.t = bo.retour + ((bo.t - bo.fin - 1) % (bo.fin + 1 - bo.retour));
           v.frame = Math.min(bo.fin, Math.floor(bo.t));
+        }
+        if (v.seuls) {
+          v.seuls.t += tmod;
+          this._poserSeuls(v);
         }
         if (v.jJoue) {
           const long = this._longueurJ(v);
@@ -564,6 +630,7 @@
               p = plage(v.cle, 'burn');
               if (!p) { v.visible = false; return false; }
               etape = p.debut;
+              v.seuls = null;
             }
             etape += t;
             v.frame = Math.min(p.fin, Math.round(etape));
@@ -734,6 +801,7 @@
           const etiquette = d.type === 'sommeil' ? 'sleep' : (d.type === 'wakeUp' ? 'wakeUp' : 'enterWater');
           v.frame = etiquette;
           v.jJoue = false;
+          v.seuls = null;                    // Kohl s'endort : sa flamme s'en va
           const long = this._longueurJ(v);
           let etape = 1;
           return { update(t) {

@@ -373,6 +373,24 @@ function filmer(m, code, releve) {
 }
 const premier = (images, f) => images.findIndex(f);
 
+// Une image telle que la vue la PEINT : la suite de ses Rendu.dessiner, dans
+// l'ordre (le contexte est un leurre, rien n'est tracé). Chaque appel dit le
+// symbole, l'image et les consignes des enfants nommés.
+function peindre(W, vue) {
+  const appels = [];
+  const leurre = new Proxy({ globalAlpha: 1 }, {
+    get: (o, k) => (k in o ? o[k] : () => {}),
+    set: (o, k, x) => { o[k] = x; return true; },
+  });
+  const vrai = W.JamaRendu.dessiner;
+  W.JamaRendu.dessiner = (ctx, cle, ref, sur) => { appels.push({ cle, ref, clips: (sur && sur.clips) || {} }); };
+  try { vue.dessiner(leurre); } finally { W.JamaRendu.dessiner = vrai; }
+  return appels;
+}
+// L'image que montrera un enfant nommé : sa consigne, ou sa première image —
+// rendu.js ne fait jamais tourner seul un enfant qui porte un nom.
+const imageEnfant = (appel, chemin) => (appel.clips[chemin] !== undefined ? appel.clips[chemin] : 1);
+
 test('l’araignée court jusqu’à Tiki APRÈS son pas, et l’écran ne blanchit qu’au contact', async () => {
   const W = await chargerBac();
   // Deux oranges à fusionner (la sortie s'ouvre, l'araignée sort du cocon),
@@ -454,4 +472,25 @@ test('la déflagration d’une bombe se propage pendant que sa flamme brûle enc
   let n = 0;
   while (flammes().length && n < 100) { m.vue.update(0.5); n += 1; }
   assert.ok(n > 0 && n < 40, `elles s’éteignent d’elles-mêmes, à leur image 16 (${n} pas)`);
+});
+
+test('la flamme de Kohl possédé tourne en boucle', async () => {
+  const W = await chargerBac();
+  const m = monter(W, plateau(W, 4, 3, [0, 0], [[E.KOHL, 1, 0], [E.FRUIT, 3, 2, 1]]));
+  const kohl = m.seul(E.KOHL);
+  m.jouer(Replay.START_GHOST);
+  m.jouer(1);                                          // le fantôme possède Kohl
+  assert.strictEqual(m.partie.getCurrentAvatar(), kohl);
+  const flamme = () => imageEnfant(peindre(W, m.vue).find((a) => a.cle === 'jama_Kohl'), 'j.flame');
+  const vues = [];
+  for (let i = 0; i < 24; i++) { m.vue.update(0.5); vues.push(flamme()); }
+  // clip250 : six images, pas de stop() — douze tmod, deux tours.
+  assert.deepStrictEqual([...new Set(vues)].sort(), [1, 2, 3, 4, 5, 6], 'les six images de la flamme : ' + vues.join(','));
+  // …et elle tourne encore après un pas de Kohl et le recalage qui le suit.
+  m.jouer(2);
+  const apres = new Set();
+  for (let i = 0; i < 12; i++) { m.vue.update(0.5); apres.add(flamme()); }
+  assert.ok(apres.size >= 5, 'la flamme tourne toujours après un pas : ' + [...apres].join(','));
+  m.jouer(Replay.STOP_GHOST);
+  assert.strictEqual(m.v(kohl).seuls, null, 'endormi, plus de flamme qui tourne');
 });
