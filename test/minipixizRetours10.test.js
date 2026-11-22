@@ -2,10 +2,11 @@
  * Le dixième lot de retours MiniPixiz : la pause, et le Météore.
  *
  *   · « Réduire l'opacité du fond d'écran quand on Pause dans l'Arbre creux —
- *     pour la santé de nos yeux. » — l'aplat lavande à 90 % éblouissait. Dans
- *     l'arbre creux (le mode classé), la pause doit pourtant CACHER le
- *     plateau : le voile y devient un violet de nuit à 97 %, plus couvrant,
- *     plus doux. Partout ailleurs, la lavande du jeu d'origine reste.
+ *     pour la santé de nos yeux. » — l'aplat lavande à 90 % éblouissait. Le
+ *     voile de l'arbre était devenu un violet de nuit à 97 %, pour que la pause
+ *     continue de CACHER le plateau ; l'admin a tranché depuis qu'elle doit
+ *     laisser voir à travers (minipixizRetours11.test.js). Partout ailleurs, la
+ *     lavande du jeu d'origine reste.
  *   · « Le sort Météores bugue, il fonctionne 1 fois sur 3 alors que la mana
  *     est retirée à chaque fois. » — le sort d'une fée est un objet unique,
  *     relancé tel quel, et son `flUsed` du lancer précédent le dissipait
@@ -94,36 +95,9 @@ function voileApresPause(c, images) {
 
 // ── 1 · Le voile de pause de l'arbre creux ────────────────────────────────
 
-test('arbre creux : la pause pose un voile SOMBRE qui cache toujours tout le plateau', () => {
-  const { c } = client();
-  c.lieu = { cadre: 'cadreArbre' };
-  const voiles = voileApresPause(c, 12);
-  const fin = voiles[voiles.length - 1];
-  // Toute la scène, plateau, tronc et score compris.
-  assert.deepStrictEqual([fin.x, fin.y, fin.l, fin.h], [0, 0, 240, 240]);
-  // Sombre : plus de lavande éblouissante.
-  assert.ok(fin.r < 60 && fin.g < 60 && fin.b < 60, 'un violet de nuit, pas la lavande : '
-    + [fin.r, fin.g, fin.b].join(','));
-  assert.ok(fin.b >= fin.r && fin.b >= fin.g, 'il reste violet (le bleu domine)');
-  // Couvrant : l'anti-triche veut un plateau caché pendant la pause.
-  assert.ok(fin.a >= 0.9, 'au moins 90 % d\'opacité : ' + fin.a);
-  // Et le fondu d'origine est gardé : il monte, il ne tombe pas d'un coup.
-  assert.ok(voiles[0].a < fin.a, 'le voile monte en quelques images');
-  for (let i = 1; i < voiles.length; i++) assert.ok(voiles[i].a >= voiles[i - 1].a, 'sans jamais redescendre');
-  // La lavande à 90 % laissait voir la grille à un écart de clarté donné ;
-  // sous le voile sombre, une bille vive doit s'en détacher MOINS.
-  const lum = (v) => {
-    const l = (x) => { const s = x / 255; return s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4); };
-    const Y = 0.2126 * l(v.r) + 0.7152 * l(v.g) + 0.0722 * l(v.b);
-    return Y > 0.008856 ? 116 * Math.cbrt(Y) - 16 : 903.3 * Y;     // L* (CIE)
-  };
-  const sous = (voile, a, bille) => ({
-    r: voile.r * a + bille[0] * (1 - a), g: voile.g * a + bille[1] * (1 - a), b: voile.b * a + bille[2] * (1 - a),
-  });
-  const ecart = (voile, a) => lum(sous(voile, a, [255, 204, 0])) - lum(sous(voile, a, [0, 0, 0]));
-  assert.ok(ecart(fin, fin.a) < ecart({ r: 147, g: 141, b: 195 }, 0.9),
-    'la grille se lit moins sous le voile sombre que sous la lavande');
-});
+// Le voile de l'arbre creux lui-même — qui a d'abord caché le plateau à 97 %,
+// et le laisse désormais voir à travers — est vérifié dans
+// minipixizRetours11.test.js.
 
 test('ailleurs, le voile de pause reste la lavande du jeu d\'origine, à 90 %', () => {
   for (const poser of [

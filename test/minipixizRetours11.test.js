@@ -1,6 +1,11 @@
 /*
  * Le onzième lot de retours MiniPixiz.
  *
+ *   · La pause de l'Arbre creux, encore. Le dixième lot avait assombri son
+ *     voile à 97 % pour qu'il continue de cacher le plateau ; l'admin a
+ *     tranché (22 novembre 2026) : « l'idée est de voir à travers ». Le voile
+ *     reste un violet de nuit, mais à 55 % : la grille figée se lit, rien
+ *     n'éblouit, et le panneau « Pause » reste lisible.
  *   · Les sorts qui prennent la mana et ne font rien à partir du deuxième
  *     lancer. Le sort d'une fée est un objet unique, relancé tel quel ; son
  *     `update` tourne déjà entre le rangement et le lancer, et y lisait les
@@ -14,6 +19,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
+const fs = require('node:fs');
 const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..');
@@ -26,6 +32,139 @@ function tirage(g) {
   let s = g;
   return () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; };
 }
+
+// ── Le client, sur une page factice ───────────────────────────────────────
+//
+// Comme minipixizRetours10.test.js : le script de navigateur est chargé dans
+// une fonction dont les paramètres masquent les globales, et construit pour de
+// bon sur un canevas qui retient ses écouteurs.
+function bus() {
+  const ecoutes = {};
+  return {
+    ecoutes,
+    addEventListener(n, f) { (ecoutes[n] = ecoutes[n] || []).push(f); },
+    emettre(n, ev) { (ecoutes[n] || []).forEach((f) => f(ev || { preventDefault() {} })); },
+  };
+}
+
+function client() {
+  const src = fs.readFileSync(path.join(ROOT, 'public/minipixiz/game.js'), 'utf8');
+  const fenetre = Object.assign(bus(), {
+    MinipixizLangue: require(path.join(ROOT, 'public/minipixiz/langue.js')),
+    MinipixizEngine: E, MinipixizCombat: C, devicePixelRatio: 1,
+  });
+  const doc = Object.assign(bus(), {
+    hidden: false,
+    body: { clientWidth: 0, clientHeight: 0 },
+    createElement: () => ({ getContext: () => ({}), width: 0, height: 0 }),
+    querySelectorAll: () => [],
+    querySelector: () => null,
+  });
+  new Function('window', 'document', 'navigator', 'Image', src)(fenetre, doc, { userAgent: '' }, function () {});
+  const canevas = Object.assign(bus(), {
+    getContext: () => ({}), parentElement: null, style: {},
+    getBoundingClientRect: () => ({ left: 0, top: 0 }),
+  });
+  const c = new fenetre.MinipixizClient.Client({ canvas: canevas, sprites: {} });
+  return { c, fenetre, doc, canevas };
+}
+
+// Un contexte de dessin qui note chaque aplat posé.
+function contexteEspion() {
+  const aplats = [];
+  return {
+    aplats,
+    fillStyle: '',
+    fillRect(x, y, l, h) { aplats.push({ style: this.fillStyle, x, y, l, h }); },
+    save() {}, restore() {}, fillText() {},
+  };
+}
+function lireRgba(style) {
+  const m = /^rgba\((\d+),(\d+),(\d+),([\d.]+)\)$/.exec(style);
+  assert.ok(m, 'un aplat rgba : ' + style);
+  return { r: +m[1], g: +m[2], b: +m[3], a: +m[4] };
+}
+
+// Les aplats successifs du voile, image après image, depuis l'appui sur P.
+function voileApresPause(c, images) {
+  c.basculerPause();
+  assert.strictEqual(c.pause, true);
+  const ctx = contexteEspion();
+  for (let i = 0; i < images; i++) c.dessinerPause(ctx, 1);
+  return ctx.aplats.map((a) => Object.assign(lireRgba(a.style), { x: a.x, y: a.y, l: a.l, h: a.h }));
+}
+
+// ── 1 · Le voile de pause de l'arbre creux, vu à travers ──────────────────
+
+// La clarté perçue (L*, CIE) et la luminance relative (pour le contraste d'un
+// texte, à la manière du WCAG).
+function luminance(c) {
+  const l = (x) => { const s = x / 255; return s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4); };
+  return 0.2126 * l(c[0]) + 0.7152 * l(c[1]) + 0.0722 * l(c[2]);
+}
+function clarte(c) {
+  const Y = luminance(c);
+  return Y > 0.008856 ? 116 * Math.cbrt(Y) - 16 : 903.3 * Y;
+}
+// Ce que l'œil voit d'une couleur sous un voile.
+function sous(v, a, c) {
+  return [v.r * a + c[0] * (1 - a), v.g * a + c[1] * (1 - a), v.b * a + c[2] * (1 - a)];
+}
+const rgb = (n) => [(n >> 16) & 0xFF, (n >> 8) & 0xFF, n & 0xFF];
+const NOIR = [0, 0, 0];                // le creux du tronc, derrière la grille
+const BLANC = [255, 255, 255];
+const ANCIEN = { r: 24, g: 20, b: 42, a: 0.97 };
+const LAVANDE = { r: 147, g: 141, b: 195, a: 0.9 };
+
+function voileDeLArbre() {
+  const { c } = client();
+  c.lieu = { cadre: 'cadreArbre' };
+  return voileApresPause(c, 12);
+}
+
+test('arbre creux : le voile de pause laisse voir le plateau', () => {
+  const voiles = voileDeLArbre();
+  const fin = voiles[voiles.length - 1];
+  // Toujours toute la scène — le plateau, le tronc, le score.
+  assert.deepStrictEqual([fin.x, fin.y, fin.l, fin.h], [0, 0, 240, 240]);
+  // Translucide : on voit à travers, et l'on voit bien qu'on est en pause.
+  assert.ok(fin.a >= 0.45 && fin.a <= 0.65, 'entre 45 et 65 % d\'opacité : ' + fin.a);
+  // Chacune des huit couleurs de bille se détache du creux noir du tronc —
+  // ce que l'ancien voile à 97 % empêchait (3 points de clarté au plus).
+  for (const n of E.COULEURS) {
+    const ecart = clarte(sous(fin, fin.a, rgb(n))) - clarte(sous(fin, fin.a, NOIR));
+    const avant = clarte(sous(ANCIEN, ANCIEN.a, rgb(n))) - clarte(sous(ANCIEN, ANCIEN.a, NOIR));
+    assert.ok(ecart >= 15, 'la bille ' + n.toString(16) + ' se lit sous le voile : ' + ecart.toFixed(1));
+    assert.ok(ecart > avant * 5, 'bien mieux que sous l\'ancien voile (' + avant.toFixed(1) + ')');
+  }
+});
+
+test('arbre creux : le voile reste doux pour les yeux, et le panneau lisible', () => {
+  const voiles = voileDeLArbre();
+  const fin = voiles[voiles.length - 1];
+  // Sombre : pas de retour à l'aplat clair qui éblouissait.
+  assert.ok(fin.r < 60 && fin.g < 60 && fin.b < 60, 'un violet de nuit : ' + [fin.r, fin.g, fin.b].join(','));
+  assert.ok(fin.b >= fin.r && fin.b >= fin.g, 'il reste violet (le bleu domine)');
+  // Ce que la scène a de plus clair reste en dessous de l'aplat lavande.
+  assert.ok(clarte(sous(fin, fin.a, BLANC)) < clarte(sous(LAVANDE, LAVANDE.a, BLANC)) - 5,
+    'le blanc le plus vif, voilé, reste plus sombre que la lavande');
+  // « Pause » et sa consigne s'écrivent en blanc PAR-DESSUS le voile : même
+  // sur ce que le plateau a de plus clair, le contraste tient (3:1).
+  const contraste = 1.05 / (luminance(sous(fin, fin.a, BLANC)) + 0.05);
+  assert.ok(contraste >= 3, 'le blanc du panneau reste lisible : ' + contraste.toFixed(2) + ':1');
+});
+
+test('arbre creux : le voile monte comme la lavande, rapporté à son plafond', () => {
+  const voiles = voileDeLArbre();
+  const fin = voiles[voiles.length - 1];
+  // `max × (1 + pauseAlpha / 90)` : la moitié à la première image, les trois
+  // quarts à la deuxième — le geste de `90 + pauseAlpha`.
+  assert.ok(Math.abs(voiles[0].a - fin.a / 2) < 0.002, 'la moitié d\'abord : ' + voiles[0].a);
+  assert.ok(Math.abs(voiles[1].a - fin.a * 0.75) < 0.002, 'puis les trois quarts : ' + voiles[1].a);
+  for (let i = 1; i < voiles.length; i++) assert.ok(voiles[i].a >= voiles[i - 1].a, 'sans jamais redescendre');
+  // La couleur ne change pas pendant le fondu : seule l'opacité monte.
+  for (const v of voiles) assert.deepStrictEqual([v.r, v.g, v.b], [fin.r, fin.g, fin.b]);
+});
 
 // ── 2 · Les sorts relancés ────────────────────────────────────────────────
 //

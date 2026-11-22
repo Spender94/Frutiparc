@@ -418,20 +418,40 @@ const PAUSE_CONSIGNE_TACTILE = 'Touchez l\'écran pour continuer';
  * LE VOILE DE PAUSE. Partout, celui du jeu d'origine : Manager.setPause teint
  * la scène vers 0x938DC3 jusqu'à 90 % (PAUSE_FADE).
  *
- * Sauf dans l'ARBRE CREUX. C'est le mode classé, et sa pause doit CACHER le
- * plateau — on ne réfléchit pas sur une grille figée (décision d'admin : les
- * pauses sont permises, elles ne montrent rien). Or un aplat lavande à 90 %
- * qui couvre tout l'écran éblouit : « réduire l'opacité du fond d'écran quand
- * on Pause dans l'Arbre creux — pour la santé de nos yeux ». Le rendre plus
- * transparent rouvrirait la grille ; on l'ASSOMBRIT donc : un violet de nuit,
- * à 97 %. Dans le sombre l'œil distingue mieux les écarts, d'où ces sept
- * points de plus : on devine le décor, plus les billes — la grille est bien
- * moins lisible sous lui qu'elle ne l'était sous la lavande. Le panneau, lui,
- * ne change pas : « Pause » en blanc et sa bande lavande ressortent mieux sur
- * ce fond que sur l'ancien.
+ * Sauf dans l'ARBRE CREUX, le mode classé. Un aplat lavande à 90 % qui couvre
+ * tout l'écran y éblouissait : « réduire l'opacité du fond d'écran quand on
+ * Pause dans l'Arbre creux — pour la santé de nos yeux ».
+ *
+ * Une première réponse l'avait ASSOMBRI sans l'éclaircir — un violet de nuit
+ * à 97 % — pour que la pause continue de cacher la grille : on ne réfléchit
+ * pas sur une grille figée. L'admin a tranché autrement (22 novembre 2026) :
+ * « l'idée est de voir à travers ». Une pause laisse donc regarder la grille
+ * figée, et c'est accepté ; elle n'a plus à rien cacher, seulement à reposer
+ * l'œil et à dire qu'on est en pause.
+ *
+ * D'où le même violet de nuit, mais à 55 %. Le plateau reste net — chaque
+ * bille garde sa couleur et sa forme, la colonne des pièces à venir se lit —
+ * à un peu moins de la moitié de son éclat : une bille verte à 212 retombe
+ * vers 107, le ciel du décor vers un gris moyen. En chiffres (clarté L*) :
+ *   · chacune des huit couleurs de bille se détache du creux noir du tronc
+ *     d'au moins 18 points — contre 3 au plus sous l'ancien voile à 97 %, et
+ *     7 sous la lavande ;
+ *   · le blanc le plus vif retombe à 53, sous l'aplat lavande (65) : rien à
+ *     l'écran n'est plus clair que ce qui éblouissait, et presque tout l'est
+ *     bien moins ;
+ *   · « Pause » et sa consigne, en blanc, gardent au moins 4:1 de contraste
+ *     sur ce que le plateau a de plus clair (3:1 suffit à un texte de cette
+ *     taille). À 40 %, ce contraste tombait à 2,5:1, et le ciel gardait
+ *     presque tout son éclat ; à 65 %, les billes violettes se détachaient
+ *     à peine du creux du tronc (14 points).
+ *
+ * Le fondu d'entrée suit le plafond (`max`) : dessinerPause monte vers
+ * `max × (1 + pauseAlpha / 90)`, la moitié à la première image, les trois
+ * quarts à la deuxième — le geste de la lavande (`90 + pauseAlpha`), à
+ * l'échelle de son propre plafond.
  */
 const VOILE_PAUSE = { r: 147, g: 141, b: 195, max: 90 };
-const VOILE_PAUSE_ARBRE = { r: 24, g: 20, b: 42, max: 97 };
+const VOILE_PAUSE_ARBRE = { r: 24, g: 20, b: 42, max: 55 };
 const SUPER = 4;                       // le rendu tramé est fait plus grand que
                                        // nature : la matrice l'agrandit souvent
 
@@ -2364,8 +2384,10 @@ class Client {
     // Mc.setPercentColor(slot, prc, 0x938DC3) : un fondu linéaire vers le
     // violet — un aplat de cette couleur, à cette opacité. `PAUSE_FADE +
     // pauseAlpha` : le voile part de zéro et monte à son plafond en quelques
-    // images. Le même fondu sert au voile sombre de l'arbre, rapporté à son
-    // propre plafond (pour la lavande, c'est exactement `90 + pauseAlpha`).
+    // images. Le même fondu sert au voile de l'arbre, plus sombre et plus
+    // léger, rapporté à son propre plafond (pour la lavande, c'est exactement
+    // `90 + pauseAlpha`) : ajouter `pauseAlpha` à 55 partirait de 10 % et
+    // n'aurait plus la même courbe.
     const v = this.voilePause();
     const prc = Math.min(v.max, v.max * (1 + this.pauseAlpha / 90));
     ctx.fillStyle = 'rgba(' + v.r + ',' + v.g + ',' + v.b + ',' + (prc / 100).toFixed(3) + ')';
