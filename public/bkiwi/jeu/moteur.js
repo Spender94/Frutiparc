@@ -1142,6 +1142,14 @@ J.installerMoteur = function (M) {
     }
 
     // ** FREINAGE
+    // Le frein agit AUSSI pendant la nitro, comme dans le jeu d'origine :
+    // mainGame.as n'y met aucune condition (sa ligne `nitroStopped = true` est
+    // en commentaire) et le bytecode de burningkiwi.swf comme de racer.swf le
+    // confirme. Il multiplie la vitesse par statBrake^gtmod sans éteindre le
+    // boost ; mais la nitro accélère de force (nitroTimer > 0) avec
+    // accelBoost = 9^(1/gtmod), ×15,6 à 40 i/s : la croisière ne baisse que
+    // d'environ 7 à 10 % (17,75 → 16,53 pour la voiture 2), assez pour mieux
+    // braquer (rotationVitesseRapide = 0,3 × vitesse). Cf. test/bkiwiFreinBoost.test.js.
     if (carPJ.finished || Key.isDown(M.controls[1])) {
       if (carPJ.finished && carPJ.skinId == 5) carPJ.speed *= 0.98; // KiwiX   // eslint-disable-line eqeqeq
       else carPJ.speed *= Math.pow(carPJ.statBrake, G.gtmod);
