@@ -11,8 +11,15 @@
     téléphone à l'horizontale), ce qui maximise la taille de jeu ;
   - le canvas est rastérisé à la résolution physique (devicePixelRatio)
     pour un rendu net ;
-  - tactile : l'appui montre le sélecteur de paire, le glissement l'ajuste,
-    le relâcher effectue l'échange (la souris garde le clic immédiat).
+  - tactile : « viser puis valider ». Un appui bref VISE (la paire reste
+    montrée, le sélecteur pulse) ; un second appui bref sur la même paire
+    l'échange ; ailleurs, il vise ailleurs, et hors du plateau il désarme.
+    Un glissé franc vers le voisin échange encore d'un seul geste, et revenir
+    près du point d'appui avant de lever le doigt l'annule. Aux premières
+    visées, « Touche encore pour valider » s'affiche en haut du plateau.
+    Réglable dans « Paramètres de jeu » (« au doigt : viser / direct »,
+    retenu par l'appareil) ; la souris garde le clic immédiat. Seuils et
+    détails : « VISER PUIS VALIDER », en tête de game.js.
   ?sid= pour la persistance plateforme (slots, scores, titems).
 -->
 <style>
@@ -187,33 +194,53 @@
     e.preventDefault();
   });
 
-  // tactile : appui = aperçu du sélecteur, glissé = ajustement,
-  // relâcher = action (échange / clic)
+  // tactile : appui = aperçu du sélecteur, glissé = ajustement, relâcher =
+  // action — un glissé franc échange, un appui bref vise ou valide (le jeu lit
+  // le geste : SW.geste, game.js). Les points passent par toLogical : les
+  // seuils du doigt valent donc la même chose en portrait et en paysage.
+  //
+  // UN SEUL DOIGT. On suit celui qui s'est posé le premier (son
+  // `identifier`) ; un second doigt — la paume, le pouce qui tient le
+  // téléphone — ne déplace ni ne relâche rien. Quand c'est le seul doigt à
+  // l'écran, il reprend la main quoi qu'il arrive : un doigt perdu (une fin
+  // de toucher jamais reçue) ne bloque pas le jeu.
+  var doigt = null;
+  function doigtSuivi(e) {
+    for (var i = 0; i < e.changedTouches.length; i++)
+      if (e.changedTouches[i].identifier === doigt) return e.changedTouches[i];
+    return null;
+  }
   window.addEventListener('touchstart', function (e) {
     lastTouchTs = Date.now();
     dismissHint();
+    e.preventDefault();
+    if (doigt !== null && e.touches && e.touches.length > 1) return;
     var t = e.changedTouches[0];
+    doigt = t.identifier;
     var p = toLogical(t.clientX, t.clientY);
     SW.handleTouchStart(p.x, p.y);
-    e.preventDefault();
   }, { passive: false });
   window.addEventListener('touchmove', function (e) {
     lastTouchTs = Date.now();
-    var t = e.changedTouches[0];
+    e.preventDefault();
+    var t = doigtSuivi(e);
+    if (!t) return;
     var p = toLogical(t.clientX, t.clientY);
     SW.handleMouseMove(p.x, p.y);
-    e.preventDefault();
   }, { passive: false });
   window.addEventListener('touchend', function (e) {
     lastTouchTs = Date.now();
-    var t = e.changedTouches[0];
+    e.preventDefault();
+    var t = doigtSuivi(e);
+    if (!t) return;
+    doigt = null;
     var p = toLogical(t.clientX, t.clientY);
     SW.handleTouchEnd(p.x, p.y);
-    e.preventDefault();
   }, { passive: false });
-  window.addEventListener('touchcancel', function () {
-    SW.mouse.touching = false;
-    SW.mouse.outside = true;
+  window.addEventListener('touchcancel', function (e) {
+    if (!doigtSuivi(e)) return;
+    doigt = null;
+    SW.handleTouchCancel();
   });
 
   window.addEventListener('keydown', function (e) {

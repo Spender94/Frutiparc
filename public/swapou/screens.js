@@ -277,7 +277,18 @@
             case D.LOW: U.setLod(D.HIGH); break;
           }
         }, 'Régler le niveau de qualité graphique du jeu');
-        this.attachButton(3, ' retour ', -2, '');
+        // Au doigt : viser puis valider (cf. game.js), ou échanger au relâcher
+        // comme avant. Le réglage est celui de l'APPAREIL (localStorage), pas
+        // du compte : il ne passe pas par savePrefs. Sans écran tactile, pas
+        // de ligne — et « retour » reste à sa place.
+        let ligne = 3;
+        if (SW.tactilePossible()) {
+          this.attachSwitch(ligne++, 'au doigt : ' + (SW.viserValider ? ' viser ' : ' direct '),
+            function () { SW.setViserValider(!SW.viserValider); },
+            SW.viserValider ? 'Un appui vise la paire, un second appui l\'échange'
+              : 'La paire s\'échange dès qu\'on lève le doigt');
+        }
+        this.attachButton(ligne, ' retour ', -2, '');
         break;
       }
       case 20: {
@@ -1255,23 +1266,30 @@
     requestAnimationFrame(frame);
   };
 
-  // Seuil de balayage en coordonnées logiques (cases = 35 px) : au-delà, le
-  // glissé est interprété comme une direction de swap ; en deçà, c'est un appui.
-  var SWIPE_TH = 12;
+  // Les seuils du doigt (SW.TOUCHER, game.js) sont en coordonnées logiques —
+  // une case fait 35 px. Au-delà de GLISSE, le glissé est une direction
+  // d'échange ; en deçà de TAPE, c'est un appui bref, qui vise ou valide
+  // (cf. « VISER PUIS VALIDER », game.js).
   SW.handleMouseMove = function (x, y) {
     SW.mouse.x = x;
     SW.mouse.y = y;
     SW.mouse.outside = (x < 0 || y < 0 || x > D.DOCWIDTH || y > D.DOCHEIGHT);
     // En tactile, on déduit la direction dominante du glissé depuis le point
     // d'appui. La case de départ reste figée (sx,sy) : viser puis glisser.
-    if (SW.mouse.touching && SW.swipe.active) {
-      var ddx = x - SW.swipe.sx, ddy = y - SW.swipe.sy;
-      if (Math.abs(ddx) > SWIPE_TH || Math.abs(ddy) > SWIPE_TH) {
-        if (Math.abs(ddx) >= Math.abs(ddy)) { SW.swipe.dx = ddx > 0 ? 1 : -1; SW.swipe.dy = 0; }
-        else { SW.swipe.dx = 0; SW.swipe.dy = ddy > 0 ? 1 : -1; }
-      } else { SW.swipe.dx = 0; SW.swipe.dy = 0; }
+    // L'écart se mesure par axe ; `loin` retient le plus grand atteint, et
+    // c'est lui qui distingue l'appui bref, l'hésitation et le glissé annulé.
+    const g = SW.swipe;
+    if (SW.mouse.touching && g.active) {
+      const ddx = x - g.sx, ddy = y - g.sy;
+      const ecart = Math.max(Math.abs(ddx), Math.abs(ddy));
+      if (ecart > g.loin) g.loin = ecart;
+      if (ecart >= SW.TOUCHER.GLISSE) {
+        if (Math.abs(ddx) >= Math.abs(ddy)) { g.dx = ddx > 0 ? 1 : -1; g.dy = 0; }
+        else { g.dx = 0; g.dy = ddy > 0 ? 1 : -1; }
+      } else { g.dx = 0; g.dy = 0; }   // revenu près de l'appui : plus de direction
     } else if (!SW.mouse.touching) {
-      SW.swipe.dx = 0; SW.swipe.dy = 0; // souris : jamais de direction héritée
+      g.dx = 0; g.dy = 0;   // souris : jamais de direction héritée
+      SW.desarmer();        // ni de visée laissée par le doigt — le clic joue
     }
   };
   // action au point courant (clic souris ou relâcher tactile)
@@ -1287,7 +1305,11 @@
         return;
       }
     }
+    // Un appui que le plateau n'a pas lu (SW.pickPair) — une icône, le bouton
+    // de l'IA, un tour verrouillé, un menu — n'a rien visé : la visée tombe.
+    SW.viseeLue = false;
     if (mode.onClickDown) mode.onClickDown();
+    if (!SW.viseeLue) SW.desarmer();
   }
   SW.handleMouseDown = function (x, y) {
     // souris : pas de balayage, on garde le ciblage par quadrant historique.
@@ -1297,19 +1319,41 @@
     dispatchPress();
   };
   // tactile : l'appui fige la case de départ et montre le sélecteur de paire,
-  // le glissé choisit la direction du voisin, le relâcher effectue l'échange.
+  // le glissé choisit la direction du voisin. Le relâcher lit le geste
+  // (SW.geste) : un glissé franc échange, un appui bref vise — ou valide la
+  // paire déjà visée.
+  SW.toucheVue = false;   // un doigt s'est posé : l'option du doigt a un sens (menu)
   SW.handleTouchStart = function (x, y) {
+    SW.toucheVue = true;
     SW.mouse.touching = true;
-    SW.swipe.active = true; SW.swipe.sx = x; SW.swipe.sy = y; SW.swipe.dx = 0; SW.swipe.dy = 0;
+    const g = SW.swipe;
+    g.active = true; g.sx = x; g.sy = y; g.dx = 0; g.dy = 0; g.loin = 0;
     SW.handleMouseMove(x, y);
     A.unlock();
   };
   SW.handleTouchEnd = function (x, y) {
     SW.handleMouseMove(x, y);   // fige la direction finale du balayage
-    dispatchPress();            // onClickDown lit SW.swipe via SW.pickPair
+    dispatchPress();            // onClickDown lit le geste via SW.pickPair
     SW.mouse.touching = false;
     SW.mouse.outside = true;    // pas de survol persistant après le relâcher
     SW.swipe.active = false;    // après le dispatch : laisse pickPair lire la direction
+  };
+  // Le système reprend le doigt (geste du bord, appel, notification) : rien
+  // n'est joué, et rien ne reste visé.
+  SW.handleTouchCancel = function () {
+    SW.mouse.touching = false;
+    SW.mouse.outside = true;
+    SW.swipe.active = false; SW.swipe.dx = 0; SW.swipe.dy = 0;
+    SW.desarmer();
+  };
+  // L'appareil sait-il toucher ? L'option du doigt n'apparaît qu'alors : à
+  // la souris seule, elle ne voudrait rien dire.
+  SW.tactilePossible = function () {
+    if (SW.toucheVue) return true;
+    try {
+      if (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0) return true;
+      return typeof window !== 'undefined' && 'ontouchstart' in window;
+    } catch (e) { return false; }
   };
   SW.setEsc = function (down) { SW.escDown = down; };
 

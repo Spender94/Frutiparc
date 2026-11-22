@@ -211,7 +211,8 @@ pump(600, 1); // anim + résolution
 assert(!duel2.pl_lock || duel2.game_over_flag === true || duel2.player_special_combo === false,
   'la défense finit par rendre la main');
 
-// ── tactile : appui = aperçu du sélecteur, relâcher = échange ──────────────
+// ── tactile : appui = aperçu, appui bref = visée, second appui = échange ───
+// (« viser puis valider », game.js ; le détail est dans test/swapouViserValider.test.js)
 SW.Data.gameMode = SW.Data.CHALLENGE;
 SW.Data.players = [0, -1];
 Manager.mode.destroy();
@@ -235,10 +236,17 @@ pump(5, 1);
   assert(chalT.lock === false, "l'appui seul n'échange pas (aperçu)");
   assert(chalT.interf.rollover.visible === true, 'le sélecteur de paire est visible pendant l\'appui');
   SW.handleTouchEnd(px, py);
-  assert(chalT.lock === true, 'le relâcher déclenche l\'échange');
+  assert(chalT.lock === false, 'le premier appui bref vise sans échanger');
   assert(SW.mouse.outside === true, 'plus de survol après le relâcher');
   pump(2, 1);
-  assert(chalT.interf.rollover.visible === false, 'sélecteur masqué après le relâcher');
+  assert(chalT.interf.rollover.visible === true && chalT.interf.rollover.arme === true,
+    'la paire visée reste montrée, armée');
+  SW.handleTouchStart(px, py);
+  pump(1, 1);
+  SW.handleTouchEnd(px, py);
+  assert(chalT.lock === true, 'le second appui sur la même paire déclenche l\'échange');
+  pump(2, 1);
+  assert(chalT.interf.rollover.visible === false, 'sélecteur masqué après l\'échange');
   // laisse le tour se résoudre avant la suite
   let gT = 0;
   while (chalT.lock && gT++ < 20000 && Manager.mode === chalT) pump(1, 1);

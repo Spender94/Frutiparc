@@ -1299,6 +1299,12 @@ const SwapouUI = (function () {
    *                 plaquette brune à liseré noir, le petit crâne, et le
    *                 nombre de coups restants. Caché le reste du temps.
    *
+   * Un seul ajout, qui n'est pas d'époque : la PAIRE ARMÉE. Au doigt, un
+   * premier appui vise sans jouer (cf. « VISER PUIS VALIDER », game.js) ;
+   * l'anneau qui attend sa validation RESPIRE alors — il gonfle de 7 % et
+   * revient, en quatre cinquièmes de seconde —, autour du milieu de la
+   * paire. Mêmes pièces, même dessin : rien de nouveau à peindre.
+   *
    * Les chemins ci-dessous sont ceux des formes du fichier, au centième.
    */
   const ANNEAU = cheminSwf('M35.15 0Q35.15 -6.65 30.5 -11.3Q25.8 -16 19.15 -16L-16.05 -16'
@@ -1318,6 +1324,8 @@ const SwapouUI = (function () {
   const RO_ANNEAU = { x: 31.95, y: 17.25 };
   const RO_MASQUE = { x0: 24.15, y: 17.7, course: 22, periode: 21.8, images: 9 };
   const RO_V = { x: 34.85, y: 8.5 };
+  // La respiration de la paire armée : amplitude et période (en images à 40/s).
+  const RO_POULS = { ampleur: 0.07, periode: 32 };
 
   /* Un chemin de forme SWF — M, L, Q, Z et rien d'autre — mis en commandes
    * une fois pour toutes, puis rejoué sur le contexte. (Path2D ferait l'affaire
@@ -1351,6 +1359,8 @@ const SwapouUI = (function () {
     this.blocked = false;
     this.lockText = null;
     this.phase = 0;                   // le défilement des bandes, en pixels
+    this.arme = false;                // paire visée au doigt, en attente (Interf.displayPair)
+    this.pouls = 0;                   // la respiration de l'anneau armé, en images
   }
   Rollover.prototype.setPair = function (p, geo, hlock) {
     if (p == null || p.f1 == null || p.f2 == null) { this.visible = false; return; }
@@ -1383,6 +1393,14 @@ const SwapouUI = (function () {
     ctx.save();
     ctx.translate(this.x, this.y);
     ctx.rotate(this.rot * Math.PI / 180);
+    if (this.arme) {
+      // Le milieu de la paire — la jointure des deux cases — reste en place.
+      this.pouls = (this.pouls + tmod) % RO_POULS.periode;
+      const k = 1 + RO_POULS.ampleur * (0.5 - 0.5 * Math.cos(2 * Math.PI * this.pouls / RO_POULS.periode));
+      ctx.translate(D.FRUIT_WIDTH, D.FRUIT_HEIGHT / 2);
+      ctx.scale(k, k);
+      ctx.translate(-D.FRUIT_WIDTH, -D.FRUIT_HEIGHT / 2);
+    } else this.pouls = 0;
     ctx.save();
     tracerChemin(ctx, BANDES, RO_MASQUE.x0 + this.phase, RO_MASQUE.y);
     ctx.clip('evenodd');

@@ -20,21 +20,220 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
 
   // état d'entrée global (renseigné par index.html)
   SW.mouse = { x: -1000, y: -1000, touching: false };
-  // Geste de balayage tactile : (sx,sy) = point d'appui initial, (dx,dy) =
-  // direction dominante du glissé (∈ {-1,0,1}). Tant que dx=dy=0 c'est un simple
-  // appui (ciblage par quadrant). Renseigné par les handlers tactiles (screens.js).
-  SW.swipe = { active: false, sx: 0, sy: 0, dx: 0, dy: 0 };
+  // Le geste tactile en cours : (sx,sy) = point d'appui initial ; `loin` = le
+  // plus grand écart atteint depuis l'appui ; (dx,dy) = direction dominante du
+  // glissé (∈ {-1,0,1}), posée seulement tant que le doigt est AU-DELÀ du seuil
+  // de glissé. Renseigné par les handlers tactiles (screens.js).
+  SW.swipe = { active: false, sx: 0, sy: 0, dx: 0, dy: 0, loin: 0 };
   SW.tmod = 1;
   SW.deltaT = 1 / 40;
 
-  // Paire visée par l'entrée courante, partagée par tous les modes jouables.
-  // Si un balayage a donné une direction, on échange le fruit posé (sx,sy) avec
-  // son voisin dans cette direction (fiable au doigt) ; sinon on retombe sur le
-  // ciblage par quadrant au point courant (souris, ou simple tap).
+  /*
+   * VISER PUIS VALIDER — au doigt, le premier appui ne joue plus.
+   *
+   * L'échange partait au RELÂCHER : appuyer montrait le sélecteur, glisser
+   * l'ajustait, lever le doigt jouait. Or une case fait 35 pixels logiques —
+   * moins de trois millimètres sur un téléphone, bien moins qu'un bout de
+   * doigt. Un appui mal posé jouait donc un coup, et un coup joué ne se
+   * reprend pas : il part au journal, que le serveur rejoue avant de classer.
+   *
+   * D'où, au doigt (et seulement au doigt : la souris garde son clic qui
+   * échange tout de suite) :
+   *   · un APPUI BREF — le doigt ne s'écarte pas de plus de TAPE pixels — VISE :
+   *     la paire sous le doigt reste montrée et le sélecteur pulse. Elle est
+   *     ARMÉE ; rien n'est joué ;
+   *   · un second appui bref SUR LA MÊME PAIRE la valide : l'échange part tel
+   *     qu'il serait parti au relâcher — même paire, même sens, même ligne au
+   *     journal (le temps de réflexion compte simplement l'appui de plus) ;
+   *   · un appui sur une autre paire vise celle-là, sans rien jouer ; un appui
+   *     hors du plateau, sur une case vide ou sur l'interface désarme, et tout
+   *     ce qui change la partie aussi : tour verrouillé, pause, plateau qui
+   *     bouge, fin de partie (cf. viseeTient) ;
+   *   · un GLISSÉ FRANC — plus de GLISSE pixels depuis l'appui — échange
+   *     encore d'un seul geste au relâcher, comme avant : la case vient du
+   *     point d'appui, la direction du glissé (Level.getPairWithDir), c'est le
+   *     chemin des habitués. Revenir près du point d'appui avant de lever le
+   *     doigt l'ANNULE : rien n'est joué, et rien ne reste visé ;
+   *   · entre les deux (plus de TAPE, jamais GLISSE), c'est une hésitation :
+   *     elle vise, mais ne valide jamais — on ne confirme pas d'un doigt qui
+   *     a roulé.
+   * Ce qui est montré pendant l'appui est ce que fera le relâcher : la paire
+   * sous le doigt (aperçu), la paire armée qui pulse (le relâcher validera),
+   * la paire du glissé, ou rien du tout (glissé annulé).
+   *
+   * L'option se coupe dans « Paramètres de jeu » (SW.viserValider), et se
+   * retient PAR APPAREIL : le même compte joue au doigt sur son téléphone et à
+   * la souris ailleurs. Coupée, l'appui bref rejoue au relâcher comme avant ;
+   * le glissé franc et son annulation restent.
+   *
+   * Les seuils sont en pixels LOGIQUES (le repère 700 × 480 du jeu) : index.html
+   * ramène chaque point dans ce repère (toLogical), rotation du mode portrait
+   * comprise, et l'écart se mesure par axe — il vaut donc la même chose que le
+   * téléphone soit tenu en long ou en large. Un téléphone affiche le jeu à
+   * environ 0,8 px CSS par pixel logique (390 px de haut pour 480) : TAPE = 10,
+   * c'est ~8 px CSS, la tolérance de toucher d'Android ; GLISSE = 22, près des
+   * deux tiers d'une case (~18 px CSS) — hors de portée d'un doigt qui roule
+   * en se levant, assez court pour un glissé vif vers le voisin.
+   */
+  SW.TOUCHER = { TAPE: 10, GLISSE: 22 };
+
+  // L'option, lue une fois au chargement. Le stockage peut manquer ou lever
+  // (navigation privée, bac à sable des tests) : l'option reste alors à oui.
+  const CLE_VISER = 'swapou2_viser';
+  SW.viserValider = (function () {
+    try { return window.localStorage.getItem(CLE_VISER) !== '0'; } catch (e) { return true; }
+  })();
+  SW.setViserValider = function (oui) {
+    SW.viserValider = !!oui;
+    SW.desarmer();
+    try { window.localStorage.setItem(CLE_VISER, oui ? '1' : '0'); } catch (e) { /* réglage non retenu */ }
+  };
+
+  // Le geste en cours, tel que le relâcher le lira : 'souris' (pas de doigt
+  // posé), 'glisse' (au-delà du seuil, dans une direction), 'annule' (est allé
+  // au-delà puis revenu), 'tape' (appui bref) ou 'hesite' (entre les deux).
+  // L'écart est mesuré par axe, comme la direction dominante du glissé.
+  SW.geste = function () {
+    const g = SW.swipe;
+    if (!SW.mouse.touching || !g.active) return 'souris';
+    if (g.dx || g.dy) return 'glisse';
+    if (g.loin >= SW.TOUCHER.GLISSE) return 'annule';
+    return g.loin <= SW.TOUCHER.TAPE ? 'tape' : 'hesite';
+  };
+
+  // La paire SOUS l'entrée courante. Un glissé franc échange le fruit posé
+  // (sx,sy) avec son voisin dans la direction du geste (fiable au doigt) ; un
+  // glissé annulé ne montre rien ; sinon, ciblage par quadrant au point courant
+  // (la souris, ou le doigt qui n'a pas glissé).
+  SW.pairePointee = function (player) {
+    switch (SW.geste()) {
+      case 'glisse': return player.getPairWithDir(SW.swipe.sx, SW.swipe.sy, SW.swipe.dx, SW.swipe.dy);
+      case 'annule': return null;
+      default: return player.getPair(SW.mouse.x, SW.mouse.y);
+    }
+  };
+
+  // ── La paire armée ──
+  // { player, x, y, dx, dy, f1, f2, grille } : la paire en cases et ses deux
+  // fruits, le joueur qui l'a visée et un relevé de son plateau (les fruits de
+  // chaque case, par référence) — de quoi voir que rien n'a bougé depuis.
+  SW.visee = null;
+  SW.desarmer = function () { SW.visee = null; };
+  function releve(level) {
+    const r = [];
+    for (let x = 0; x < level.fruits.length; x++)
+      for (let y = 0; y < level.fruits[x].length; y++) r.push(level.fruits[x][y]);
+    return r;
+  }
+  function plateauInchange(level, r) {
+    let i = 0;
+    for (let x = 0; x < level.fruits.length; x++)
+      for (let y = 0; y < level.fruits[x].length; y++)
+        if (level.fruits[x][y] !== r[i++]) return false;
+    return i === r.length;
+  }
+  // La même paire de cases, dans un sens ou dans l'autre : (2,3)→droite et
+  // (3,3)→gauche sont le même échange, et le sélecteur les dessine pareil.
+  function memesCases(a, b) {
+    if (a.x === b.x && a.y === b.y && a.dx === b.dx && a.dy === b.dy) return true;
+    return a.x + a.dx === b.x && a.y + a.dy === b.y && b.x + b.dx === a.x && b.y + b.dy === a.y;
+  }
+  // La visée tient-elle encore pour ce joueur ? Sinon (autre partie, plateau
+  // qui a bougé : ligne montée, fruits tombés, échange joué), elle tombe.
+  function viseeTient(player) {
+    const v = SW.visee;
+    if (!v) return false;
+    if (v.player !== player || !plateauInchange(player.level, v.grille)) { SW.desarmer(); return false; }
+    return true;
+  }
+  // On n'arme que ce que le sélecteur sait montrer : deux fruits. Une paire
+  // bloquée (gel, verrou horizontal) s'arme quand même — en rouge, elle dit
+  // pourquoi elle ne s'échangera pas.
+  function armer(player, p) {
+    if (!p || !p.f1 || !p.f2) { SW.desarmer(); return; }
+    if (viseeTient(player) && memesCases(SW.visee, p)) return;   // déjà armée : elle garde son sens
+    SW.visee = { player: player, x: p.x, y: p.y, dx: p.dx, dy: p.dy, f1: p.f1, f2: p.f2, grille: releve(player.level) };
+  }
+  function paireArmee() {
+    const v = SW.visee;
+    return { x: v.x, y: v.y, dx: v.dx, dy: v.dy, f1: v.f1, f2: v.f2 };
+  }
+  // Le doigt, posé sur la paire armée d'un appui encore bref : le relâcher validera.
+  function surLaVisee(player, p, geste) {
+    return geste === 'tape' && !!p && viseeTient(player) && memesCases(SW.visee, p);
+  }
+
+  // La paire que JOUE l'appui courant — le clic de la souris, le relâcher du
+  // doigt —, partagée par tous les modes jouables ; null quand il ne joue
+  // rien (il vise, ou le glissé est annulé). C'est elle qui tient la visée.
+  // `viseeLue` dit à dispatchPress (screens.js) que le plateau a lu l'appui :
+  // un appui consommé ailleurs (une icône, le bouton de l'IA, un tour
+  // verrouillé) n'a rien visé, et la visée tombe.
+  SW.viseeLue = false;
   SW.pickPair = function (player) {
-    if (SW.swipe.dx || SW.swipe.dy)
-      return player.getPairWithDir(SW.swipe.sx, SW.swipe.sy, SW.swipe.dx, SW.swipe.dy);
-    return player.getPair(SW.mouse.x, SW.mouse.y);
+    SW.viseeLue = true;
+    const geste = SW.geste();
+    const p = SW.pairePointee(player);
+    if (geste === 'souris' || geste === 'glisse' || geste === 'annule' || !SW.viserValider) {
+      SW.desarmer();
+      return p;
+    }
+    if (surLaVisee(player, p, geste)) {
+      const q = paireArmee();
+      SW.desarmer();
+      compterValidation();
+      return q;                    // validée : l'échange part, dans le sens visé
+    }
+    armer(player, p);
+    return null;
+  };
+
+  // Ce que montre le sélecteur, à chaque image : { paire, arme } — `arme` fait
+  // pulser l'anneau. `libre` : le joueur a la main (pas de tour verrouillé).
+  SW.selecteur = function (player, libre) {
+    viseeTient(player);
+    if (!libre) { SW.desarmer(); return { paire: null, arme: false }; }
+    const geste = SW.geste();
+    if (geste !== 'souris') {
+      const p = SW.pairePointee(player);
+      if (surLaVisee(player, p, geste)) return { paire: paireArmee(), arme: true };
+      return { paire: p, arme: false };
+    }
+    if (SW.visee) return { paire: paireArmee(), arme: true };
+    return { paire: SW.mouse.outside ? null : SW.pairePointee(player), arme: false };
+  };
+  // L'ASTUCE. Un premier appui qui ne joue plus surprendrait la main habituée
+  // au relâcher. Tant que l'appareil n'a pas validé trois coups de cette façon,
+  // une ligne le dit, en haut du plateau, le temps que la paire reste armée —
+  // dans la fonte de la barre d'aide, et dans le canevas : elle pivote avec le
+  // jeu en portrait. Le compte se retient avec l'option (par appareil).
+  const CLE_ASTUCE = 'swapou2_viser_valides';
+  const ASTUCE_JUSQUA = 3;
+  let validesAuDoigt = (function () {
+    try { return parseInt(window.localStorage.getItem(CLE_ASTUCE), 10) || 0; } catch (e) { return 0; }
+  })();
+  function compterValidation() {
+    if (validesAuDoigt >= ASTUCE_JUSQUA) return;
+    validesAuDoigt++;
+    try { window.localStorage.setItem(CLE_ASTUCE, String(validesAuDoigt)); } catch (e) { /* tant pis */ }
+  }
+  SW.astuceVisible = function (player) {
+    return !!SW.visee && SW.visee.player === player && validesAuDoigt < ASTUCE_JUSQUA;
+  };
+  SW.dessinerAstuce = function (ctx, player) {
+    if (!SW.astuceVisible(player)) return;
+    const i = player.animator.getInfos();
+    U.text(ctx, 'Touche encore pour valider', i.px + player.level.getWidth() * i.sx / 2, i.py + 55,
+      { size: 17, font: 'impact', color: '#ffffff', stroke: '#2a4a10', strokeWidth: 4 });
+  };
+
+  // La pause (Échap, le bouton, la fenêtre passée derrière) fait tomber la
+  // visée. Le jeu n'appelle plus displayPair tant qu'elle dure : on éteint le
+  // sélecteur tout de suite, sans quoi l'anneau pulserait sous la boîte.
+  SW.lacherVisee = function (interf) {
+    if (!SW.visee) return;
+    SW.desarmer();
+    interf.displayPair(null);
   };
 
   // ── Données globales (Data.as globals) ───────────────────────────────────
@@ -2110,8 +2309,11 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     }
   };
 
-  Interf.prototype.displayPair = function (p) {
+  // `arme` : la paire est visée au doigt et attend sa validation — l'anneau
+  // pulse (cf. SW.selecteur, et « VISER PUIS VALIDER » en tête du fichier).
+  Interf.prototype.displayPair = function (p, arme) {
     this.rollover.setPair(p, this.game.player.animator.getInfos(), this.game.player.horizontal_lock);
+    this.rollover.arme = !!arme && this.rollover.visible;
   };
 
   Interf.prototype.gameOver = function () {
@@ -2930,6 +3132,7 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     return this.tire(E.CHALLENGE_MAX_COLORS);
   };
   Challenge.prototype.destroy = function () {
+    SW.desarmer();                 // la visée ne survit pas à sa partie
     this.interf.destroy();
     this.player.destroy();
     if (this.analyse) { this.analyse.destroy(); this.analyse = null; }
@@ -2999,11 +3202,9 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
   Challenge.prototype.iaAttack = function () {};
   Challenge.prototype.iaDefend = function () {};
   Challenge.prototype.main = function (tmod, deltaT) {
-    if (this.pause.main()) return;
-    let fpair = null;
-    if (!this.lock && !SW.mouse.outside)
-      fpair = SW.pickPair(this.player);
-    this.interf.displayPair(fpair);
+    if (this.pause.main()) { SW.lacherVisee(this.interf); return; }
+    const vue = SW.selecteur(this.player, !this.lock);
+    this.interf.displayPair(vue.paire, vue.arme);
     this.player.main(tmod, deltaT);
     this.interf.main(tmod);
     if (this.analyse) this.analyse.main(tmod);
@@ -3020,6 +3221,7 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     this.player.animator.particules.draw(ctx);
     this.interf.drawFx(ctx);
     if (this.player.animator.drawAnnonce) this.player.animator.drawAnnonce(ctx);
+    SW.dessinerAstuce(ctx, this.player);   // « touche encore pour valider »
     // Le conseil de l'IA, par-dessus tout — sauf la pause.
     if (this.analyse) this.analyse.draw(ctx);
     this.drawExtra(ctx);
@@ -3201,6 +3403,7 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     return [];
   };
   Duel.prototype.destroy = function () {
+    SW.desarmer();
     this.player.destroy();
     this.ia.destroy();
     this.interf.destroy();
@@ -3320,7 +3523,7 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     }
   };
   Duel.prototype.main = function (tmod, deltaT) {
-    if (this.pause.main()) return;
+    if (this.pause.main()) { SW.lacherVisee(this.interf); return; }
     if (!this.pl_lock) {
       this.player_timer -= deltaT;
       if (this.player_timer <= 0) {
@@ -3339,10 +3542,8 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
         this.ia.swapPair(iaPair);
       }
     }
-    let fpair = null;
-    if (!this.pl_lock && !SW.mouse.outside)
-      fpair = SW.pickPair(this.player);
-    this.interf.displayPair(fpair);
+    const vue = SW.selecteur(this.player, !this.pl_lock);
+    this.interf.displayPair(vue.paire, vue.arme);
   };
   Duel.prototype.draw = function (ctx) {
     this.interf.drawBack(ctx);
@@ -3351,6 +3552,7 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     this.player.animator.particules.draw(ctx);
     this.ia.animator.particules.draw(ctx);
     this.interf.drawFront(ctx);
+    SW.dessinerAstuce(ctx, this.player);
     SW.drawPauseButton(ctx);
     this.pause.draw(ctx);
   };
