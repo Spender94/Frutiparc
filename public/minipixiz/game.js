@@ -418,20 +418,40 @@ const PAUSE_CONSIGNE_TACTILE = 'Touchez l\'écran pour continuer';
  * LE VOILE DE PAUSE. Partout, celui du jeu d'origine : Manager.setPause teint
  * la scène vers 0x938DC3 jusqu'à 90 % (PAUSE_FADE).
  *
- * Sauf dans l'ARBRE CREUX. C'est le mode classé, et sa pause doit CACHER le
- * plateau — on ne réfléchit pas sur une grille figée (décision d'admin : les
- * pauses sont permises, elles ne montrent rien). Or un aplat lavande à 90 %
- * qui couvre tout l'écran éblouit : « réduire l'opacité du fond d'écran quand
- * on Pause dans l'Arbre creux — pour la santé de nos yeux ». Le rendre plus
- * transparent rouvrirait la grille ; on l'ASSOMBRIT donc : un violet de nuit,
- * à 97 %. Dans le sombre l'œil distingue mieux les écarts, d'où ces sept
- * points de plus : on devine le décor, plus les billes — la grille est bien
- * moins lisible sous lui qu'elle ne l'était sous la lavande. Le panneau, lui,
- * ne change pas : « Pause » en blanc et sa bande lavande ressortent mieux sur
- * ce fond que sur l'ancien.
+ * Sauf dans l'ARBRE CREUX, le mode classé. Un aplat lavande à 90 % qui couvre
+ * tout l'écran y éblouissait : « réduire l'opacité du fond d'écran quand on
+ * Pause dans l'Arbre creux — pour la santé de nos yeux ».
+ *
+ * Une première réponse l'avait ASSOMBRI sans l'éclaircir — un violet de nuit
+ * à 97 % — pour que la pause continue de cacher la grille : on ne réfléchit
+ * pas sur une grille figée. L'admin a tranché autrement (22 novembre 2026) :
+ * « l'idée est de voir à travers ». Une pause laisse donc regarder la grille
+ * figée, et c'est accepté ; elle n'a plus à rien cacher, seulement à reposer
+ * l'œil et à dire qu'on est en pause.
+ *
+ * D'où le même violet de nuit, mais à 55 %. Le plateau reste net — chaque
+ * bille garde sa couleur et sa forme, la colonne des pièces à venir se lit —
+ * à un peu moins de la moitié de son éclat : une bille verte à 212 retombe
+ * vers 107, le ciel du décor vers un gris moyen. En chiffres (clarté L*) :
+ *   · chacune des huit couleurs de bille se détache du creux noir du tronc
+ *     d'au moins 18 points — contre 3 au plus sous l'ancien voile à 97 %, et
+ *     7 sous la lavande ;
+ *   · le blanc le plus vif retombe à 53, sous l'aplat lavande (65) : rien à
+ *     l'écran n'est plus clair que ce qui éblouissait, et presque tout l'est
+ *     bien moins ;
+ *   · « Pause » et sa consigne, en blanc, gardent au moins 4:1 de contraste
+ *     sur ce que le plateau a de plus clair (3:1 suffit à un texte de cette
+ *     taille). À 40 %, ce contraste tombait à 2,5:1, et le ciel gardait
+ *     presque tout son éclat ; à 65 %, les billes violettes se détachaient
+ *     à peine du creux du tronc (14 points).
+ *
+ * Le fondu d'entrée suit le plafond (`max`) : dessinerPause monte vers
+ * `max × (1 + pauseAlpha / 90)`, la moitié à la première image, les trois
+ * quarts à la deuxième — le geste de la lavande (`90 + pauseAlpha`), à
+ * l'échelle de son propre plafond.
  */
 const VOILE_PAUSE = { r: 147, g: 141, b: 195, max: 90 };
-const VOILE_PAUSE_ARBRE = { r: 24, g: 20, b: 42, max: 97 };
+const VOILE_PAUSE_ARBRE = { r: 24, g: 20, b: 42, max: 55 };
 const SUPER = 4;                       // le rendu tramé est fait plus grand que
                                        // nature : la matrice l'agrandit souvent
 
@@ -1113,8 +1133,10 @@ class Client {
     });
     // initExpSlot pose un `onRollOver` sur chaque case du panneau de montée de
     // niveau : le nom passe dans `fieldName`, et une bulle donne la description.
+    // Sous le voile de pause, le survol ne désigne rien : la case, son nom et
+    // sa description restent ceux d'avant la pause.
     this.canvas.addEventListener('mousemove', () => {
-      if (!this.evolution || !this.pointeur) return;
+      if (!this.evolution || !this.pointeur || this.pause) return;
       const c = this.casesEvolutionEcran().find((q) => Math.abs(this.pointeur.x - q.x) <= q.r
         && Math.abs(this.pointeur.y - q.y) <= q.r);
       this.evolution.survole = c ? c.i : null;
@@ -1149,6 +1171,12 @@ class Client {
     this.canvas.addEventListener('click', (ev) => {
       if (!this.carteForet && !this.nouvelle && !this.ornegon && !this.gromelin
         && !this.evolution) return;
+      // SOUS LE VOILE, RIEN NE RÉPOND. La pause se pose aussi sur le panneau
+      // de montée de niveau (P y est permis : une partie est ouverte), et le
+      // clic passait au travers — on choisissait sa caractéristique sous le
+      // voile. Seule la pause elle-même se lève : P, Échap, le bouton, ou le
+      // doigt sur le plateau (brancherToucher).
+      if (this.pause) return;
       suivre(ev.clientX, ev.clientY);
       if (this.evolution) { this.clicEvolution(this.pointeur.x, this.pointeur.y); return; }
       if (this.gromelin) {
@@ -2364,8 +2392,10 @@ class Client {
     // Mc.setPercentColor(slot, prc, 0x938DC3) : un fondu linéaire vers le
     // violet — un aplat de cette couleur, à cette opacité. `PAUSE_FADE +
     // pauseAlpha` : le voile part de zéro et monte à son plafond en quelques
-    // images. Le même fondu sert au voile sombre de l'arbre, rapporté à son
-    // propre plafond (pour la lavande, c'est exactement `90 + pauseAlpha`).
+    // images. Le même fondu sert au voile de l'arbre, plus sombre et plus
+    // léger, rapporté à son propre plafond (pour la lavande, c'est exactement
+    // `90 + pauseAlpha`) : ajouter `pauseAlpha` à 55 partirait de 10 % et
+    // n'aurait plus la même courbe.
     const v = this.voilePause();
     const prc = Math.min(v.max, v.max * (1 + this.pauseAlpha / 90));
     ctx.fillStyle = 'rgba(' + v.r + ',' + v.g + ',' + v.b + ',' + (prc / 100).toFixed(3) + ')';
@@ -3723,6 +3753,18 @@ class Client {
 
     this.canvas.addEventListener('touchstart', (ev) => {
       if (!Garde.vraie(ev)) return;     // un doigt fabriqué par un script
+      // En pause, toucher le plateau la LÈVE — c'est ce que dit le panneau au
+      // doigt, et c'est le geste qu'on fait en revenant à l'appli. Rien d'autre :
+      // ce toucher-là ne pivote pas la pièce, et n'atteint pas ce qui est sous
+      // le voile. Ce test passait APRÈS celui du panneau de montée de niveau :
+      // en pause sur le panneau, le doigt y désignait une case, et le clic
+      // synthétisé la choisissait. `preventDefault` n'en synthétise aucun.
+      if (this.pause) {
+        ev.preventDefault();
+        this.basculerPause();
+        this.majBoutonPause();
+        return;
+      }
       // Le panneau de montée de niveau n'a pas de survol au doigt : le PREMIER
       // appui sur une case la désigne — son nom dans le bandeau, sa
       // description en bas, comme au passage de la souris — et l'appui suivant
@@ -3739,15 +3781,6 @@ class Client {
         } else if (!c) {
           this.evolution.survole = null;
         }
-        return;
-      }
-      // En pause, toucher le plateau la LÈVE — c'est ce que dit le panneau au
-      // doigt, et c'est le geste qu'on fait en revenant à l'appli. Rien d'autre :
-      // ce toucher-là ne pivote pas la pièce.
-      if (this.pause) {
-        ev.preventDefault();
-        this.basculerPause();
-        this.majBoutonPause();
         return;
       }
       if (!enJeu()) return;            // les écrans gardent leurs clics
@@ -3981,7 +4014,14 @@ class Client {
 
   // Le joueur appelle sa fée. Elle ne lancera son sort qu'au bout du tour —
   // c'est ce délai qui fait qu'on appelle en prévision, pas en réaction.
+  //
+  // En pause, elle ne s'appelle pas. Game.update ne sonde la touche d'aide
+  // qu'à l'étape JEU, et Manager ne fait plus tourner Game pendant la pause :
+  // l'appui n'était pas lu. Le portage l'écoutait quand même — la touche, et
+  // surtout le bouton ✦ de la manette, à côté du plateau voilé : la fée était
+  // appelée sous le voile, et son sort partait à la reprise.
   appelerFee() {
+    if (this.pause) return false;
     if (!this.jeu || this.jeu.termine) return false;
     return this.jeu.appelerAide();
   }

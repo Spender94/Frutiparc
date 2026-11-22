@@ -275,8 +275,10 @@ function horloges(indices, tempsJeuMs, dureeMs, minimumMs) {
  *   · l'Arbre — le nombre de pas de l'enregistreur (rejeu.js, `nombre`), un
  *     par appel du moteur. Le serveur relit le journal et cumule les tmod.
  *     La pause de l'Arbre (P, Échap, le bouton, la fenêtre passée derrière)
- *     ne fait AUCUN pas, et cache le plateau sous un voile violet de nuit à
- *     97 % (la lavande du jeu, à 90 %, éblouissait) :
+ *     ne fait AUCUN pas. Elle ne cache plus le plateau : un voile violet de
+ *     nuit à 55 % laisse voir la grille figée (décision d'admin du 22 novembre
+ *     2026 — « l'idée est de voir à travers » ; la lavande du jeu, à 90 %,
+ *     éblouissait). Pendant ce temps,
  *     le jeu dit `pause: 1`, comme pendant le bouquet d'ouverture, le panneau
  *     d'expérience et les cinématiques, où le moteur de l'arbre ne fait pas
  *     de pas non plus.

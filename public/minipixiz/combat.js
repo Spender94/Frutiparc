@@ -1287,7 +1287,11 @@ class Champ {
     for (const p of this.pList.slice()) p.update(tmod);
     for (const p of this.partList.slice()) p.update(tmod);
     for (const s of this.shotList.slice()) s.update(tmod);
-    for (const s of this.jeu.sList.slice()) s.update(tmod);
+    // Un sort rangé mais pas encore lancé ne vit pas encore : son `update`
+    // lirait les restes du lancer précédent (Sort.attendSonLancer).
+    for (const s of this.jeu.sList.slice()) {
+      if (!s.attendSonLancer()) s.update(tmod);
+    }
   }
 
   appelerAide() {
