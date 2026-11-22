@@ -7,8 +7,10 @@
  *     compris, et ne se lève qu'à P / Échap — pas toute seule au retour ;
  *   · les touches tenues sont lâchées (leur keyup part dans l'autre fenêtre) ;
  *   · les écrans qui attendent déjà le joueur (fin de partie, panneau
- *     d'expérience, Ornegon, Gromelin, carte de la forêt, envol de fin de
- *     niveau, cinématique) ne sont pas touchés.
+ *     d'expérience, Ornegon, Gromelin, carte de la forêt, cinématique) ne
+ *     sont pas touchés ;
+ *   · l'envol de fin de niveau, qui n'attend personne et enchaîne sur le
+ *     niveau suivant, se fige comme la partie (il attend la reprise).
  */
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -97,7 +99,6 @@ test('hors partie, ou sur un écran qui attend déjà le joueur : pas de pause',
     ornegon: () => { c.ornegon = {}; },
     gromelin: () => { c.gromelin = {}; },
     carteForet: () => { c.lieu = {}; c.carteForet = {}; },
-    transition: () => { c.jeu = { termine: false }; c.transition = { phase: 'envol' }; },
     cine: () => { c.jeu = { termine: false }; c.cine = { phase: 1 }; },
     nouvelle: () => { c.jeu = { termine: false }; c.nouvelle = {}; },
   };
@@ -109,6 +110,17 @@ test('hors partie, ou sur un écran qui attend déjà le joueur : pas de pause',
     assert.ok(!c.pause, nom + ' : pas de pause');
     assert.strictEqual(c.entree.droite, false, nom + ' : la touche est lâchée quand même');
   }
+});
+
+test('pendant l’envol de fin de niveau, la fenêtre qui passe derrière fige aussi', () => {
+  // La partie du niveau fini est close (`termine`), mais l'envol enchaîne seul
+  // sur le niveau suivant : sans pause, ses billes tomberaient sans le joueur.
+  // L'envol attend désormais la reprise (majTransition) — la pause tient.
+  const { c, fenetre } = client();
+  c.jeu = { termine: true };
+  c.transition = { phase: 'envol', t: 0, fee: null, apres: null };
+  fenetre.emettre('blur');
+  assert.strictEqual(c.pause, true, 'la pause est posée pendant l’envol');
 });
 
 test('le re-calcul de l’échelle au retour est intact', () => {

@@ -855,6 +855,32 @@ class Meteore extends Sort {
     this.cout = 6; this.msList = []; this.m = null; this.flUsed = false; this.burnTimer = 100;
   }
 
+  /*
+   * « LE SORT MÉTÉORES BUGUE, IL FONCTIONNE 1 FOIS SUR 3 ALORS QUE LA MANA EST
+   * RETIRÉE À CHAQUE FOIS. »
+   *
+   * Le sort d'une fée est un objet UNIQUE, monté une fois pour toute la partie
+   * (FaerieInfo.initSpellList) et relancé tel quel. Or `flUsed` — « la pièce
+   * météore est tombée, je peux partir » — n'était remis à zéro qu'au LANCER
+   * (spell/Mass.cast). Entre le rangement et le lancer, `update` tourne déjà
+   * une image (sList passe avant l'étape MAGIE) : au deuxième lancer, il y
+   * lisait le `flUsed` du PREMIER, encore vrai, et se dissipait avant même
+   * d'être lancé. Le lancer suivait quand même — mana prise, météore assemblé
+   * en l'air — mais hors de sList, la pièce suivante ne brûlait rien.
+   *
+   * Et ça s'aggravait : jamais dissipé après ce lancer-là, il restait le
+   * `sortEnCours` de sa fée, si bien qu'au lancer d'après, Sort.lancer
+   * l'interrompait LUI-MÊME (arretUrgence) sitôt la mana prise — ni météore,
+   * ni pièce de feu. Seul un autre sort lancé entre-temps remettait les
+   * compteurs d'aplomb : d'où le « une fois sur trois ». Le jeu d'origine avait
+   * la même faille, mot pour mot.
+   *
+   * Ranger le sort, c'est le préparer pour la PROCHAINE pièce : il n'a encore
+   * rien brûlé. On efface donc la trace du lancer précédent ici, avant que
+   * `update` ne la lise.
+   */
+  ranger() { this.flUsed = false; super.ranger(); }
+
   lancer() { this.flUsed = false; super.lancer(); }
 
   update() {

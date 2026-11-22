@@ -414,6 +414,24 @@ const PAUSE_CONSIGNE = 'Appuyez sur P pour continuer';   // la bande sous « Pau
 // Au doigt il n'y a pas de P : le bouton pause de la page, ou le plateau
 // lui-même, lèvent la pause (voir brancherCommandes et brancherToucher).
 const PAUSE_CONSIGNE_TACTILE = 'Touchez l\'écran pour continuer';
+/*
+ * LE VOILE DE PAUSE. Partout, celui du jeu d'origine : Manager.setPause teint
+ * la scène vers 0x938DC3 jusqu'à 90 % (PAUSE_FADE).
+ *
+ * Sauf dans l'ARBRE CREUX. C'est le mode classé, et sa pause doit CACHER le
+ * plateau — on ne réfléchit pas sur une grille figée (décision d'admin : les
+ * pauses sont permises, elles ne montrent rien). Or un aplat lavande à 90 %
+ * qui couvre tout l'écran éblouit : « réduire l'opacité du fond d'écran quand
+ * on Pause dans l'Arbre creux — pour la santé de nos yeux ». Le rendre plus
+ * transparent rouvrirait la grille ; on l'ASSOMBRIT donc : un violet de nuit,
+ * à 97 %. Dans le sombre l'œil distingue mieux les écarts, d'où ces sept
+ * points de plus : on devine le décor, plus les billes — la grille est bien
+ * moins lisible sous lui qu'elle ne l'était sous la lavande. Le panneau, lui,
+ * ne change pas : « Pause » en blanc et sa bande lavande ressortent mieux sur
+ * ce fond que sur l'ancien.
+ */
+const VOILE_PAUSE = { r: 147, g: 141, b: 195, max: 90 };
+const VOILE_PAUSE_ARBRE = { r: 24, g: 20, b: 42, max: 97 };
 const SUPER = 4;                       // le rendu tramé est fait plus grand que
                                        // nature : la matrice l'agrandit souvent
 
@@ -1770,6 +1788,18 @@ class Client {
     // Un autre écran a pris la main (partie perdue, lieu, bassin, nouvelle) :
     // l'envol n'a plus lieu d'être.
     if (this.lieu || this.bassin || this.cine || this.nouvelle) { this.transition = null; return; }
+    /*
+     * EN PAUSE, L'ENVOL ATTEND. « Lorsqu'on fait pause pendant l'animation de
+     * fin de niveau, la pause se retire toute seule pour passer au niveau
+     * suivant. » Manager.update ne fait plus tourner le slot tant que flPause
+     * tient : l'étape 2 d'Aventure, fée et compte d'images compris, se fige
+     * avec le reste. Ici la fée se figeait bien (la boucle ne fait plus de
+     * pas), mais ce compte-ci vit dans le DESSIN, qui tourne en pause : il
+     * courait jusqu'à 110 images, `apres` ouvrait le niveau suivant, et
+     * nouvellePartie levait au passage la pause que le joueur venait de
+     * poser. Le niveau suivant attend donc la reprise.
+     */
+    if (this.pause) return;
     tr.t += tmod;
     const f = tr.fee;
     const partie = !f || f.flDeath || f.y < -10;
@@ -2288,10 +2318,16 @@ class Client {
    * alors la pause de P, au panneau près, et rien d'autre : pas de reprise
    * au retour, il repart par P ou Échap comme d'une pause qu'il aurait prise.
    *
-   * Seulement en pleine partie : pas sur le bouquet de fin d'un niveau qui
-   * s'envole, une partie finie, le panneau d'expérience, chez Ornegon ou
-   * Gromelin, la carte de la forêt — ces écrans attendent déjà le joueur.
-   * Tous les modes (forêt, bassin, lieux) sont solo : aucun n'est exclu.
+   * Seulement en pleine partie : pas sur une partie finie, le panneau
+   * d'expérience, chez Ornegon ou Gromelin, la carte de la forêt — ces écrans
+   * attendent déjà le joueur. Tous les modes (forêt, bassin, lieux) sont
+   * solo : aucun n'est exclu.
+   *
+   * L'ENVOL de fin de niveau, lui, compte comme la partie : il n'attend
+   * personne, il enchaîne sur le niveau suivant, dont les billes tomberaient
+   * sans le joueur. Il était exclu tant que la pause ne lui survivait pas
+   * (nouvellePartie la levait au bout de l'envol) ; maintenant qu'il l'attend
+   * (majTransition), la fenêtre qui passe derrière le fige comme le reste.
    *
    * Et dans tous les cas, on LÂCHE tout : le `keyup` d'une flèche tenue part
    * vers l'autre fenêtre, et la pièce filerait seule au retour.
@@ -2305,22 +2341,34 @@ class Client {
     this.aideEnfoncee = false;
     this.pauseEnfoncee = false;
     if (this.pause) return false;
+    // Pendant l'envol, la partie du niveau fini est close (`termine`) : c'est
+    // l'envol qui tient lieu de partie.
+    const envol = !!(this.transition && this.transition.phase === 'envol');
     const enPartie = (this.jeu || this.bassin || this.lieu)
-      && !(this.jeu && this.jeu.termine)
-      && !this.cine && !this.nouvelle && !this.carteForet && !this.transition
+      && (envol || !(this.jeu && this.jeu.termine))
+      && !this.cine && !this.nouvelle && !this.carteForet
       && !this.evolution && !this.ornegon && !this.gromelin;
     if (!enPartie) return false;
     this.basculerPause();
     return this.pause;
   }
 
+  // Le voile de la pause en cours : celui de l'arbre creux, ou celui du jeu.
+  voilePause() {
+    return (this.lieu && this.lieu.cadre === 'cadreArbre') ? VOILE_PAUSE_ARBRE : VOILE_PAUSE;
+  }
+
   dessinerPause(ctx, tmod) {
     if (!this.pause) return;
     this.pauseAlpha *= Math.pow(0.5, tmod);
-    const prc = Math.min(90, 90 + this.pauseAlpha);
     // Mc.setPercentColor(slot, prc, 0x938DC3) : un fondu linéaire vers le
-    // violet — un aplat de cette couleur, à cette opacité.
-    ctx.fillStyle = 'rgba(147,141,195,' + (prc / 100).toFixed(3) + ')';
+    // violet — un aplat de cette couleur, à cette opacité. `PAUSE_FADE +
+    // pauseAlpha` : le voile part de zéro et monte à son plafond en quelques
+    // images. Le même fondu sert au voile sombre de l'arbre, rapporté à son
+    // propre plafond (pour la lavande, c'est exactement `90 + pauseAlpha`).
+    const v = this.voilePause();
+    const prc = Math.min(v.max, v.max * (1 + this.pauseAlpha / 90));
+    ctx.fillStyle = 'rgba(' + v.r + ',' + v.g + ',' + v.b + ',' + (prc / 100).toFixed(3) + ')';
     ctx.fillRect(0, 0, SCENE, SCENE);
     // Le panneau porte déjà le mot, en pleins et déliés — et une BANDE sous
     // lui (x 42…193, y 123…134), le champ de texte de mcPause dans root.swf.
