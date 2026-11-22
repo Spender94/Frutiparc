@@ -302,6 +302,77 @@ test('le classement du quiz prend la typo du mode bleu, ex æquo compris', async
   } finally { anim.fermer(); temoin.fermer(); }
 });
 
+// 5. Les points EN MOINS (« pour quand on fait une typo, et pour une certaine
+//    idée de quiz ») : /point pseudo -3. Mêmes droits que le don, même
+//    plafond par commande, un total qui peut passer sous zéro, des messages
+//    qui disent « -3 points » (jamais « +-3 »), un classement qui range les
+//    négatifs à leur place.
+test('des points en moins : /point pseudo -n, total sous zéro, classement trié', async (t) => {
+  if (!dispo) return t.skip('Postgres indisponible sur 5433');
+
+  const sidAnim = await inscrire(ANIM);
+  await donnerRole(ANIM, { is_animator: true });
+  const sidTem = await inscrire('temoinneg');
+  const sidJoueur = await inscrire(JOUEUR);
+  await inscrire(CIBLE);
+  await inscrire('penalise');
+  const anim = await client(ANIM, sidAnim);
+  const temoin = await client('temoinneg', sidTem);
+  const joueur = await client(JOUEUR, sidJoueur);
+  const dire = (qui, texte) => qui.envoyer(`<t g="pomme" t="m" p="">${texte}</t>`);
+  const corpsDe = (x) => x.replace(/[\s\S]*CDATA\[/, '').replace(/\]\][\s\S]*/, '');
+  try {
+    for (const c of [anim, temoin, joueur]) c.envoyer('<o g="pomme" />');
+    await temoin.attendre((x) => x.startsWith('<p') && x.includes('g="pomme"'), 'userlist');
+
+    dire(anim, '/initpoint Quiz à pénalités');
+    await temoin.attendre((x) => x.includes('Quiz lancé'), 'l\'annonce');
+
+    dire(anim, `/point ${CIBLE} 5`);
+    assert.match(corpsDe(await temoin.attendre((x) => x.includes('(total : 5)'), '+5')), /^\+5 points pour /);
+    // La typo corrigée : deux points de trop, retirés.
+    dire(anim, `/point ${CIBLE} -2`);
+    const moins = corpsDe(await temoin.attendre((x) => x.includes('(total : 3)'), '-2'));
+    assert.match(moins, /^-2 points pour /);
+    assert.ok(!moins.includes('+-'), 'jamais « +-2 »');
+    // La pénalité de quiz : le total passe sous zéro, au singulier pour un point.
+    dire(anim, `/point ${JOUEUR} -1`);
+    assert.match(corpsDe(await temoin.attendre((x) => x.includes('(total : -1)'), '-1')), /^-1 point pour /);
+    // /removepoint, la commande d'époque, suit la même règle (plus de borne à zéro).
+    dire(anim, `/removepoint ${JOUEUR} 3`);
+    assert.match(corpsDe(await temoin.attendre((x) => x.includes('(total : -4)'), 'removepoint')), /^-3 points pour /);
+    // Le plafond par commande vaut dans les deux sens.
+    dire(anim, '/point penalise -500');
+    assert.match(corpsDe(await temoin.attendre((x) => x.includes('(total : -100)'), 'le plafond')), /^-100 points pour /);
+
+    // Zéro, ou un nombre illisible : la syntaxe, à l'animateur seul, et rien ne bouge.
+    temoin.trames.length = 0;
+    anim.trames.length = 0;
+    dire(anim, `/point ${CIBLE} 0`);
+    await anim.attendre((x) => x.includes('Syntaxe : /point'), 'la syntaxe (zéro)');
+    anim.trames.length = 0;
+    dire(anim, `/point ${CIBLE} - 3`);
+    await anim.attendre((x) => x.includes('Syntaxe : /point'), 'la syntaxe (signe détaché)');
+    // Un joueur n'a pas ce droit : la commande lui reste inconnue.
+    joueur.trames.length = 0;
+    dire(joueur, `/point ${CIBLE} -5`);
+    await joueur.attendre((x) => x.includes('Commande inconnue'), 'refus au joueur');
+    await wait(300);
+    assert.ok(!temoin.trames.some((x) => /total :/.test(x) || x.includes('Syntaxe')), 'rien n\'a été annoncé au salon');
+
+    // Le classement range les négatifs sous zéro, au pluriel juste.
+    dire(anim, '/showpoint');
+    const cl = corpsDe(await temoin.attendre((x) => x.includes('Classement'), 'le classement'));
+    const lignes = cl.split('<br/>');
+    assert.match(lignes[0], /^Classement — Quiz à pénalités$/);
+    assert.match(lignes[1], new RegExp(`^1\\. ${CIBLE} — 3 pts$`, 'i'));
+    assert.match(lignes[2], new RegExp(`^2\\. ${JOUEUR} — -4 pts$`, 'i'));
+    assert.match(lignes[3], /^3\. penalise — -100 pts$/i);
+    dire(anim, '/endpoint');
+    await temoin.attendre((x) => x.includes('Fin du quiz'), 'la fin');
+  } finally { anim.fermer(); temoin.fermer(); joueur.fermer(); }
+});
+
 test('/sujet change le NOM AFFICHÉ du salon, et seule son équipe y touche', async (t) => {
   if (!dispo) return t.skip('Postgres indisponible sur 5433');
 

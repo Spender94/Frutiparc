@@ -38601,6 +38601,32 @@ function broadcastPoll(channelName, poll, kind) {
   }
 }
 
+/*
+ * LES POINTS D'UN /point (ou d'un /removepoint) : absent, un point ; sinon un
+ * entier signé — « 3 », « +3 », « -3 », et le moins typographique « −3 » que
+ * certains claviers glissent. Borné à QUIZ_POINTS_MAX dans un sens comme dans
+ * l'autre. `retrait` (/removepoint) retire toujours, quel que soit le signe
+ * tapé. Zéro ou une saisie illisible : null — la commande rappelle sa syntaxe
+ * plutôt que de deviner (« /point Toto - 3 » ne donne pas un point).
+ */
+const QUIZ_POINTS_MAX = 100;
+function pointsDeQuiz(brut, retrait) {
+  let n = 1;
+  if (brut !== undefined && brut !== '') {
+    const s = String(brut).replace(/^[\u2212\u2013]/, '-');
+    if (!/^[+-]?\d+$/.test(s)) return null;
+    n = parseInt(s, 10);
+  }
+  if (retrait) n = -Math.abs(n);
+  if (!n) return null;
+  return Math.max(-QUIZ_POINTS_MAX, Math.min(QUIZ_POINTS_MAX, n));
+}
+// « +3 points », « -1 point » — jamais « +-3 ».
+function texteDePoints(n) {
+  const a = Math.abs(n);
+  return `${n < 0 ? '-' : '+'}${a} point${a > 1 ? 's' : ''}`;
+}
+
 /**
  * Le classement d'un quiz, mis au propre.
  *
@@ -38625,7 +38651,8 @@ function formaterClassement(points, titre) {
   for (let i = 0; i < classes.length; i++) {
     const [u, pts] = classes[i];
     if (pts !== precedent) { rang = i + 1; precedent = pts; }
-    lignes.push(`${rang}. ${getDisplayName(u)} — ${pts} pt${pts > 1 ? 's' : ''}`);
+    // (« -3 pts » comme « 3 pts » : le pluriel suit la valeur absolue)
+    lignes.push(`${rang}. ${getDisplayName(u)} — ${pts} pt${Math.abs(pts) > 1 ? 's' : ''}`);
   }
   return [titre, ...lignes].map(escapeXml).join('<br/>');
 }
@@ -40479,33 +40506,49 @@ case 'send': {
       break;
     }
 
-    if (canAnimate && /^\/point\s/i.test(text)) {
-      const args = text.replace(/^\/point\s+/i, '').trim().split(/\s+/);
+    // ── /point pseudo [n] : des points de quiz, EN PLUS OU EN MOINS ──
+    //
+    // Demande de l'admin (novembre 2026) : « pouvoir donner des points
+    // négatifs — pour quand on fait une typo, et pour une certaine idée de
+    // quiz ». `/point Toto -3` en retire trois ; `/removepoint Toto 3`, la
+    // commande d'époque, en est l'alias (elle retire toujours). Les règles :
+    //   · les mêmes droits que le don : les animateurs (canAnimate) ;
+    //   · le même plafond par commande, dans un sens comme dans l'autre
+    //     (QUIZ_POINTS_MAX) ; zéro ou une saisie illisible rappelle la syntaxe
+    //     à l'animateur seul, sans rien distribuer ;
+    //   · le total PEUT passer sous zéro. Un quiz à pénalités n'a de sens que
+    //     si la mauvaise réponse coûte aussi à qui n'a encore rien : bornée à
+    //     zéro, la première faute était gratuite, et l'ordre final mentait
+    //     (deux fautes avant un bon point valaient zéro faute). Les points ne
+    //     se convertissent en rien (ni kikooz, ni classement durable) : un
+    //     négatif ne coûte rien hors du quiz. /removepoint suit la même règle ;
+    //   · la trace : l'annonce publique dans le salon (« -3 points pour Toto »,
+    //     jamais « +-3 »), comme pour un ajout, et une ligne au journal du
+    //     serveur pour chaque mouvement, dans un sens ou dans l'autre.
+    // Le classement (/showpoint, /endpoint) trie les négatifs à leur place.
+    const mPoint = /^\/(point|removepoint)(?:\s+([\s\S]*))?$/i.exec(text);
+    if (canAnimate && mPoint) {
+      const retrait = mPoint[1].toLowerCase() === 'removepoint';
+      const args = String(mPoint[2] || '').trim().split(/\s+/).filter(Boolean);
+      const amount = args.length ? pointsDeQuiz(args[1], retrait) : null;
+      if (amount === null) {
+        const aide = `Syntaxe : /point pseudo [points] — par exemple /point Toto 3, ou /point Toto -2 pour en retirer (${QUIZ_POINTS_MAX} au plus par commande).`;
+        sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml(aide)}</${CMD.send}>`);
+        break;
+      }
       const target = resolveKnownUsername(args[0]);
-      const amount = Math.max(1, Math.min(parseInt(args[1]) || 1, 100));
       if (!target) {
         sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">Utilisateur introuvable.</${CMD.send}>`);
         break;
       }
       if (!quizState[g]) quizState[g] = { question: '', points: new Map(), active: true };
       const cur = quizState[g].points.get(target) || 0;
-      quizState[g].points.set(target, cur + amount);
+      const total = cur + amount;
+      quizState[g].points.set(target, total);
+      console.log(`[QUIZ] ${client.username} : ${texteDePoints(amount)} pour ${target} dans ${g} (total ${total})`);
       // Style animateur (t="c") : le client le rend dans le MÊME bleu gras que
       // /blueon (.msg.blue = penBlueAnimator #000046), au lieu du bleu vif inline.
-      const msg2 = `<![CDATA[+${amount} point${amount > 1 ? 's' : ''} pour ${getDisplayName(target)} (total : ${cur + amount})]]>`;
-      broadcastToChannel(g, `<${CMD.send} u="admin" t="c" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${msg2}</${CMD.send}>`);
-      break;
-    }
-
-    if (canAnimate && /^\/removepoint\s/i.test(text)) {
-      const args = text.replace(/^\/removepoint\s+/i, '').trim().split(/\s+/);
-      const target = resolveKnownUsername(args[0]);
-      const amount = Math.max(1, Math.min(parseInt(args[1]) || 1, 100));
-      if (!target || !quizState[g]) { break; }
-      const cur = quizState[g].points.get(target) || 0;
-      quizState[g].points.set(target, Math.max(0, cur - amount));
-      // Style animateur (t="c") : même bleu gras que /blueon (.msg.blue).
-      const msg2 = `<![CDATA[-${amount} point${amount > 1 ? 's' : ''} pour ${getDisplayName(target)} (total : ${Math.max(0, cur - amount)})]]>`;
+      const msg2 = `<![CDATA[${texteDePoints(amount)} pour ${getDisplayName(target)} (total : ${total})]]>`;
       broadcastToChannel(g, `<${CMD.send} u="admin" t="c" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${msg2}</${CMD.send}>`);
       break;
     }
