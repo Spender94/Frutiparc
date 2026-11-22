@@ -196,7 +196,8 @@ test('le câblage du jeu : compteurs, temps hors pauses, début et relevé', () 
   assert.match(sprites, /tr\.panier\+\+;/);
   assert.match(sprites, /if \(tr\) tr\.ratees\+\+;/);
   assert.match(sprites, /this\.game\.trace\.ptsGrappes \+= bonus;/);
-  assert.match(modes, /if \(this\.tournament == null && this\.mng\.client\.debutPartie\) this\.mng\.client\.debutPartie\(\);/);
+  // (la partie classée seulement : le bac à sable hérite du départ, sans être une partie)
+  assert.match(modes, /if \(this\.type === '\$classic' && this\.tournament == null && this\.mng\.client\.debutPartie\) this\.mng\.client\.debutPartie\(\);/);
   assert.match(mng, /this\.pauseTotal = \(this\.pauseTotal \|\| 0\) \+ \(K\.getTimer\(\) - this\.pauseStart\);/);
   const adm = fs.readFileSync(path.join(ROOT, 'public/admin.html'), 'utf8');
   assert.match(adm, /id="tab-partiestracees"/);
