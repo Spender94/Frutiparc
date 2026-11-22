@@ -523,3 +523,59 @@ test('le zoeil s’ouvre en grand quand l’esprit de Tiki sort, pas à moitié'
   m.jouer(Replay.STOP_GHOST);
   assert.strictEqual(regard().image, 'Close');
 });
+
+/*
+ * LES TRAPPES DE SORTIE, AU-DESSUS DE LEURS VOISINS UNE FOIS OUVERTES. Dans le
+ * fichier, open() attache le trou sous la porte ; à la fin de l'ouverture,
+ * swapLayer fait passer la porte dans la couche du dessus du plateau (un cran
+ * plus haut pour une porte nord, un cran plus bas sinon). La porte sud, qui
+ * s'ouvre vers le bas et déborde de sa case, couvre alors le pont posé
+ * dessous ; la porte nord, rabattue sur la case d'au-dessus, couvre la caisse
+ * qui s'y trouve. La vue les laissait sous leurs voisins.
+ */
+test('les trappes ouvertes passent au-dessus de leurs voisins, comme dans le fichier', async () => {
+  const W = await chargerBac();
+  const m = monter(W, plateau(W, 7, 7, [0, 3], [[E.FRUIT, 1, 3, 1], [E.FRUIT, 2, 3, 1],
+    [E.EXIT, 4, 1, -1, 2], [E.BRIDGE, 4, 2],            // trappe sud, un pont dessous
+    [E.EXIT, 4, 5, -1, 0], [E.BOX, 4, 4]]));             // trappe nord, une caisse dessus
+  const ordre = () => {
+    const a = peindre(W, m.vue);
+    const ou = (f) => a.findIndex(f);
+    const sud = ou((x) => x.cle === 'jama_Exit' && (x.ref === 'South' || (x.ref >= 22 && x.ref <= 36)));
+    const nord = ou((x) => x.cle === 'jama_Exit' && (x.ref === 'North' || (x.ref >= 42 && x.ref <= 56)));
+    return {
+      sud, nord,
+      imageSud: a[sud].ref, imageNord: a[nord].ref,
+      trous: a.filter((x) => x.ref === 'Hole').length,
+      pont: ou((x) => x.cle === 'jama_Bridge'),
+      caisse: ou((x) => x.cle === 'jama_Box'),
+      premierTrou: ou((x) => x.ref === 'Hole'),
+    };
+  };
+  const avant = ordre();
+  assert.strictEqual(avant.trous, 0, 'fermées : pas de trou');
+  const images = filmer(m, 1, ordre);                  // les oranges fusionnent : les trappes s'ouvrent
+  assert.ok(m.partie.isExitOpen());
+  // Le trou est là dès l'ouverture (open() l'attache), sous chaque porte.
+  assert.ok(images.every((i) => i.trous === 2), 'deux trous, dès la première image');
+  assert.ok(images.every((i) => i.premierTrou < i.sud), 'le trou sous la porte');
+  // Les deux portes s'ouvrent l'une après l'autre, sur leurs quatorze images.
+  const num = (x) => (typeof x === 'number' ? x : null);
+  const sud = images.map((i) => num(i.imageSud)).filter((x) => x !== null);
+  const nord = images.map((i) => num(i.imageNord)).filter((x) => x !== null);
+  assert.strictEqual(sud[0], 23); assert.strictEqual(sud[sud.length - 1], 36);
+  assert.strictEqual(nord[0], 43); assert.strictEqual(nord[nord.length - 1], 56);
+  assert.ok(premier(images, (i) => num(i.imageNord) !== null) > premier(images, (i) => i.imageSud === 36),
+    'la porte nord attend que la sud ait fini');
+  // Pendant l'ouverture, chaque porte reste dans sa couche…
+  const sudEnCours = images.find((i) => i.imageSud === 30);
+  const nordEnCours = images.find((i) => i.imageNord === 50);
+  assert.ok(sudEnCours.sud < sudEnCours.pont, 'la porte sud s’ouvre sous le pont');
+  assert.ok(nordEnCours.nord < nordEnCours.caisse, 'la porte nord s’ouvre sous la caisse');
+  // …et, ouverte, passe dessus.
+  const fin = ordre();
+  assert.deepStrictEqual([fin.imageSud, fin.imageNord], [36, 56], 'les images d’arrêt des deux portes');
+  assert.ok(fin.sud > fin.pont, 'ouverte, la porte sud couvre le pont posé dessous');
+  assert.ok(fin.nord > fin.caisse, 'ouverte, la porte nord rabattue couvre la caisse d’au-dessus');
+  assert.ok(fin.premierTrou < fin.pont, 'le trou, lui, reste dessous');
+});

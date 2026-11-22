@@ -113,6 +113,7 @@
         boucle: null,                      // la ligne de temps principale tourne seule
         seuls: null,                       // des enfants nommés qui jouent seuls (cf. _lancerSeuls)
         bande: s.id === Element.GHOST ? 2 : (s.below ? 0 : 1),
+        dessus: false,                     // la porte de sortie ouverte, passée dessus
       };
       this.vues.set(s.uid, v);
       this._poserEtat(v);
@@ -140,6 +141,8 @@
             const p = plage(v.cle, NOMS_DIR[s.orientation]);
             v.frame = p ? p.debut + 14 : 1;
           }
+          // Ouverte et au repos, la porte a fini de s'ouvrir : couche du dessus.
+          v.dessus = !!s._opened;
           break;
         case Element.WATER:
         case Element.BRIDGE:
@@ -597,17 +600,22 @@
           if (!v) return null;
           // La porte coulisse sur quatorze images (ManualAnim) ; le TROU,
           // lui, est un second clip que le fichier attache juste en dessous
-          // — ici c'est `_dessinerSortie` qui le pose, sous la porte.
+          // — ici c'est `dessiner` qui le pose, sous la porte.
           // Le départ se lit sur l'orientation de la porte, pas sur l'image
           // posée : le recalage a pu la mettre DÉJÀ ouverte (une sortie qui
           // s'ouvre dès le lever de rideau), et la porte filait alors au-delà
           // de son image d'arrêt, sur des images vides — elle clignotait.
           const debut = (plage(v.cle, NOMS_DIR[v.sprite.orientation]) || { debut: 1 }).debut;
           let etape = debut;
+          // Elle s'ouvre dans la couche du dessous ; c'est à sa dernière image
+          // que swapLayer la fait passer dans celle du dessus (cf. dessiner).
+          v.dessus = false;
           return { update(t) {
             etape += t;
             v.frame = Math.min(debut + 14, Math.round(etape));
-            return etape < debut + 14;
+            if (etape < debut + 14) return true;
+            v.dessus = true;
+            return false;
           } };
         }
         case 'flammes': {
@@ -1015,28 +1023,47 @@
       ctx.save();
       ctx.translate(this.padX, this.padY);
       this._dessinerBords(ctx);
-      const tri = [...this.vues.values()].filter((v) => v.visible);
-      tri.sort((a, b) => {
-        if (a.sous !== b.sous) return a.sous ? -1 : 1;
-        if (a.bande !== b.bande) return a.bande - b.bande;
-        const ia = Math.round(a.y / 32) * this.dim.width + Math.round(a.x / 32);
-        const ib = Math.round(b.y / 32) * this.dim.width + Math.round(b.x / 32);
-        return ia - ib;
-      });
-      for (const v of tri) {
+      /*
+       * L'ORDRE DES PROFONDEURS du plateau (gui.Board) : la couche du
+       * dessous à 1000 + 4·case, celle du dessus à 2000 + 4·case, le fantôme
+       * à 3000 + 4·case. Une sortie OUVERTE y fait exception, en deux temps :
+       *  · open() monte la porte d'un cran et attache sous elle un second
+       *    clip, le TROU (jama_Exit arrêté sur « Hole »), à la profondeur
+       *    qu'elle quitte ;
+       *  · au bout de son ouverture (OpenExitAnim → swapLayer), la porte
+       *    passe dans la couche du DESSUS, puis un cran plus haut si elle
+       *    s'ouvre au nord, un cran plus bas sinon. Le trou reste dessous.
+       * Au-dessus de la couche du dessus, la porte nord rabattue couvre ce qui
+       * se tient sur la case d'au-dessus (mur, caisse…) ; la porte sud, qui
+       * déborde en bas de sa case, n'est plus mangée par le pont ou la flèche
+       * posés dessous. Tant qu'elle s'ouvre, elle reste dans sa couche : le
+       * fichier ne la déplace qu'à la fin.
+       */
+      const larg = this.dim.width;
+      const entrees = [];
+      for (const v of this.vues.values()) {
+        if (!v.visible) continue;
+        const kase = Math.round(v.y / 32) * larg + Math.round(v.x / 32);
+        let bande = v.bande, cran = 0;
+        if (v.sprite.id === Element.EXIT && v.sprite._opened) {
+          entrees.push({ v, trou: true, bande: v.bande, kase, cran: -1 });
+          if (v.dessus) {
+            bande = 1;
+            cran = v.sprite.orientation === Direction.NORTH ? 1 : -1;
+          }
+        }
+        entrees.push({ v, trou: false, bande, kase, cran });
+      }
+      entrees.sort((a, b) => (a.bande - b.bande) || (a.kase - b.kase) || (a.cran - b.cran));
+      for (const { v, trou } of entrees) {
         ctx.save();
         ctx.translate(v.x + v.dx, v.y + v.dy);
         ctx.globalAlpha *= v.alpha;
         try {
-          // Une sortie OUVERTE, c'est deux clips : le trou (image « Hole »)
-          // et la porte qui a coulissé par-dessus. Le fichier attache le
-          // premier à la profondeur d'en dessous au moment de l'ouverture.
-          if (v.sprite.id === Element.EXIT && v.sprite._opened) {
-            Rendu.dessiner(ctx, v.cle, 'Hole');
-          }
-          Rendu.dessiner(ctx, v.cle, v.frame, { clips: this._clipsDe(v), graine: this._graine(v.sprite.pos) });
+          if (trou) Rendu.dessiner(ctx, v.cle, 'Hole');
+          else Rendu.dessiner(ctx, v.cle, v.frame, { clips: this._clipsDe(v), graine: this._graine(v.sprite.pos) });
         } catch (e) { /* une image manquante ne fige pas la partie */ }
-        if (v.sprite.id === Element.BOMB && v.compteur > 0 && v.sprite.alive) {
+        if (!trou && v.sprite.id === Element.BOMB && v.compteur > 0 && v.sprite.alive) {
           ctx.translate(16, 0);
           try { Rendu.dessiner(ctx, 'jama_fx_BombCounter', String(v.compteur)); } catch (e) {}
         }
