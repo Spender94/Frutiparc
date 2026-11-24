@@ -412,3 +412,45 @@ test('le parchemin de Pigmentation pèse 2, son grimoire 1 (et non plus 0)', () 
   for (let i = 0; i < 2000000 && !vu; i++) vu = E.tirerObjet(60, h, { sac: 3, flasques: 99 }) === 216;
   assert.ok(vu, 'le grimoire de Pigmentation est tiré');
 });
+
+// ── Colorations et globes dans la pioche (Item.initItemList) ──────────────
+//
+// Retour des joueurs : « colorations et globes ne tombent jamais ». L'original
+// ne les écrit pas dans itemList : initItemList les y ajoute au lancement,
+// après les parchemins et grimoires — colorations 60..69 (fréquence 50,
+// niveau 20), puis globes 50..55 (fréquence 8, niveau 50). Le portage les
+// avait oubliés : ni la forêt ni les missions de Gromelin ne pouvaient en donner.
+
+test('la pioche suit Item.initItemList : sorts entrelacés, puis colorations, puis globes', () => {
+  const ids = E.OBJETS.map((o) => o.id);
+  const debutSorts = ids.indexOf(101);
+  // Chaque sort ajoute son parchemin PUIS son grimoire, l'un après l'autre.
+  const attendus = [];
+  for (const s of E.SORTS) attendus.push(100 + s.id, 200 + s.id);
+  for (let i = 0; i < 10; i++) attendus.push(60 + i);
+  for (let i = 0; i < 6; i++) attendus.push(50 + i);
+  assert.deepEqual(ids.slice(debutSorts), attendus);
+  for (let i = 0; i < 10; i++) {
+    assert.deepEqual(E.OBJETS.find((o) => o.id === 60 + i), { id: 60 + i, freq: 50, lvl: 20 });
+  }
+  for (let i = 0; i < 6; i++) {
+    assert.deepEqual(E.OBJETS.find((o) => o.id === 50 + i), { id: 50 + i, freq: 8, lvl: 50 });
+  }
+});
+
+test('la forêt fait tomber des colorations dès le niveau 20, des globes dès le niveau 50', () => {
+  const fiche = { sac: 3, flasques: 99 };
+  const vus = (niveau) => {
+    const g = alea(7);
+    const h = (n) => Math.floor(g() * n);
+    const n = new Set();
+    for (let i = 0; i < 40000; i++) n.add(E.tirerObjet(niveau, h, fiche));
+    return n;
+  };
+  const a19 = vus(19), a20 = vus(20), a49 = vus(49), a50 = vus(50);
+  const famille = (set, lo, hi) => [...set].some((id) => id >= lo && id <= hi);
+  assert.ok(!famille(a19, 60, 69), 'pas de coloration avant le niveau 20');
+  assert.ok(famille(a20, 60, 69), 'colorations au niveau 20');
+  assert.ok(!famille(a49, 50, 55), 'pas de globe avant le niveau 50');
+  assert.ok(famille(a50, 50, 55), 'globes au niveau 50');
+});

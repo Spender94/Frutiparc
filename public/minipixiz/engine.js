@@ -1590,8 +1590,17 @@ const OBJETS = [
   { id: 46, freq: 100, lvl: 10 },
   { id: 70, freq: 700, lvl: 0 }, { id: 71, freq: 300, lvl: 10 }, { id: 72, freq: 80, lvl: 20 },
 ].concat(
-  SORTS.map((s) => ({ id: 100 + s.id, freq: FREQ_CORRIGEE[100 + s.id] ?? Math.floor(s.freq * 0.5), lvl: s.lvl })),
-  SORTS.map((s) => ({ id: 200 + s.id, freq: FREQ_CORRIGEE[200 + s.id] ?? Math.floor(s.freq * 0.2), lvl: Math.floor(s.lvl * 2) })),
+  // Item.initItemList, dans son ordre : pour chaque sort, son parchemin puis
+  // son grimoire ; puis les dix colorations ; puis les six globes. L'ordre
+  // décide de l'objet tiré pour un même nombre au hasard.
+  ...SORTS.map((s) => [
+    { id: 100 + s.id, freq: FREQ_CORRIGEE[100 + s.id] ?? Math.floor(s.freq * 0.5), lvl: s.lvl },
+    { id: 200 + s.id, freq: FREQ_CORRIGEE[200 + s.id] ?? Math.floor(s.freq * 0.2), lvl: Math.floor(s.lvl * 2) },
+  ]),
+  // Colorations pour cheveux (it.Color) et globes (it.CaracAll). Le portage les
+  // avait oubliés : ni la forêt ni les missions n'en donnaient.
+  Array.from({ length: 10 }, (_, i) => ({ id: 60 + i, freq: 50, lvl: 20 })),
+  Array.from({ length: 6 }, (_, i) => ({ id: 50 + i, freq: 8, lvl: 50 })),
 );
 
 const NOURRITURE = [
