@@ -34422,6 +34422,21 @@ app.use('/fb', express.static(path.join(__dirname, 'public', 'fb'), {
     if (/\.(css|html)$/i.test(chemin)) res.setHeader('Cache-Control', 'public, max-age=0');
   },
 }));
+// Frutisnake 2 VK (`/snake2vk`, construit par `pnpm build:frutiparc` dans
+// Frutiback) : 112 fichiers et 13 Mo, tous redemandés à chaque lancement sur
+// le montage générique. C'était l'essentiel de l'attente au lancement du
+// disque, à froid comme à chaud.
+//
+// Tout ce qui est sous `assets/` peut être gardé sans revalidation :
+//   · le code (`index-<empreinte>.js`…) porte l'empreinte de son contenu dans
+//     son nom, Vite en change à chaque modification ;
+//   · les images, sons et manifestes sont demandés par le jeu avec `?v=` et
+//     l'empreinte des ressources du build (src/game/assetUrl.ts) : un build
+//     qui en change une change l'adresse de toutes.
+// `index.html` reste hors de ce montage, donc revalidé à chaque chargement :
+// c'est lui qui désigne le code du build courant.
+app.use('/snake2vk/assets',
+  express.static(path.join(__dirname, 'public', 'snake2vk', 'assets'), CACHE_ARTEFACTS));
 
 // ─────────────────────────────────────────────
 // Serve static files AFTER API routes so our endpoints take priority
