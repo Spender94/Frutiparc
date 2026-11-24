@@ -28095,8 +28095,28 @@ const INVITE_MODES = [
   [8, 'Refuser, me demander pour mes contacts'],
 ];
 
+// LE SALON PAR DÉFAUT, en choix et non plus en chiffre nu. Les numéros sont
+// ceux de `listener/main.as` (table `channels`, indices 2 à 11) : 0 tire un
+// salon au hasard parmi ces dix (`random(10)+2`), et 13 n'en rejoint aucun —
+// le SWF ouvrait alors la liste des salons, le bureau light aussi. Ni le quizz
+// (12) ni rencontre (14), que le light ne sait pas ouvrir : une valeur de
+// l'époque restée en base n'en est pas effacée, le light retombe alors sur le
+// premier salon.
+const SALONS_DEFAUT = [
+  [0, 'Au hasard'],
+  [13, 'Aucun salon'],
+  [2, 'Salon Anim\'s'], [3, 'Temple du Grand Piquant'], [4, 'Montagne des Loups-Garous'],
+  [5, 'Fruti-Théâtre'], [6, 'Marais d\'Ornegon'], [7, 'Laboratoire KiwiX'],
+  [8, 'Plage Banana-Nuit'], [9, 'Taverne Far-Zest'], [10, 'Île olympique de Môh'],
+  [11, 'Forêt Enchantée'],
+];
+
 const PREF_LABELS = {
-  default_channel:         { label: 'Salon par défaut',                desc: 'Identifiant du salon rejoint automatiquement à la connexion.' },
+  // `liste` : onze choix, c'est trop pour des boutons radio — la fenêtre du
+  // bureau light en fait une liste déroulante (le formulaire Flash garde ses
+  // radios, il ne connaît rien d'autre).
+  default_channel:         { label: 'Salon par défaut',                desc: 'Le salon qui s\'ouvre tout seul à la connexion.',
+                             choices: SALONS_DEFAUT, liste: true },
   dsp_newmail_alert:       { label: 'Alerte nouveau message',          desc: 'Afficher une alerte à la réception d\'un nouveau mail.' },
   invite_channel_behavior: { label: 'Invitation salon',                desc: 'Comportement lors de la réception d\'une invitation de salon.',
                              choices: INVITE_MODES },
@@ -28262,6 +28282,7 @@ function prefsEnJson(user) {
         def: def.def,
         label: meta.label,
         desc: meta.desc || '',
+        liste: !!meta.liste,
         // Une valeur de choix voyage en base 62, comme dans la chaîne stockée :
         // le client compare des chaînes, jamais des nombres. L'accessoire par
         // défaut fait exception — sa valeur EST déjà une chaîne de neuf

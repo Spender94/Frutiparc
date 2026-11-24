@@ -5569,6 +5569,23 @@ window.BureauFrutiz = (function () {
     var choix = p.choices && p.choices.length
       ? p.choices
       : (p.type === 'b' ? [{ v: 'Y', label: 'Oui' }, { v: 'N', label: 'Non' }] : null);
+    // Une longue liste (le salon par défaut : onze choix) se replie en liste
+    // déroulante ; le serveur le dit par `liste`.
+    if (choix && p.liste) {
+      var s = document.createElement('select');
+      s.className = 'pf-liste';
+      s.setAttribute('aria-label', p.label || '');
+      choix.forEach(function (c) {
+        var o = document.createElement('option');
+        o.value = c.v;
+        o.textContent = c.label;
+        o.selected = (c.v === valeur);
+        s.appendChild(o);
+      });
+      s.addEventListener('change', function () { prefEtat.brouillon[p.name] = s.value; });
+      boite.appendChild(s);
+      return boite;
+    }
     if (choix) {
       choix.forEach(function (c) {
         var l = document.createElement('label');
@@ -5664,7 +5681,8 @@ window.BureauFrutiz = (function () {
 
      Les autres restent servies et enregistrées — le SWF s'en sert, et un
      réglage posé ici doit le suivre là-bas — mais le light ne les consulte
-     pas encore : `default_channel` et `cl_open` touchent au démarrage,
+     pas ici : `default_channel` est lu par light.html à la première
+     connexion (`salonParDefaut`), `cl_open` touche au démarrage,
      `cache_length` au cache du lecteur Flash, `wallpaper` passe par
      l'inventaire, et les deux comportements d'invitation par le serveur. */
   function appliquerPrefsLocales(valeurs) {
@@ -7226,9 +7244,10 @@ window.BureauFrutiz = (function () {
     if (!S) return null;
     var id = S.courant && S.courant();
     if (id) return id;
-    // Plus une seule conversation ouverte (on les a toutes fermées) : on
-    // retombe sur le premier salon public, celui que le light rejoint au
-    // démarrage.
+    // Aucune conversation ouverte : le « Salon par défaut » des préférences
+    // (lu par le light au démarrage), puis le premier salon public.
+    var depart = S.depart && S.depart();
+    if (depart) return depart;
     var l = (S.liste && S.liste()) || [];
     return l.length ? l[0].id : null;
   }
