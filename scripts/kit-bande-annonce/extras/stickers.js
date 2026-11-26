@@ -147,7 +147,8 @@ function entreesDe(p) {
   // Un personnage dont toutes les émotes ne sont pas encore rendues le dit
   // dans le titre de son groupe (rendu interrompu, à reprendre).
   const faites = EMOTES.filter((x, n) => n > 0 && dejaFaite(p, n)).length;
-  const groupe = 'Stickers — ' + p.affiche + (faites < EMOTES.length - 1 ? ' (partiel : ' + faites + '/' + (EMOTES.length - 1) + ' émotes)' : '');
+  const groupe = 'Stickers — ' + p.affiche + (faites === 0 ? ' (humeurs seulement, émotes à rendre)'
+    : faites < EMOTES.length - 1 ? ' (partiel : ' + faites + '/' + (EMOTES.length - 1) + ' émotes)' : '');
   const els = [];
   if (fs.existsSync(path.join(C.SORTIE, relD, p.pseudo + '-humeurs.png'))) {
     els.push({ fichier: relD + p.pseudo + '-humeurs.png', type: 'image', groupe,
