@@ -187,7 +187,8 @@ async function attendre(page, condition, opts) {
 
 // ─── Le tuyau vers ffmpeg ──────────────────────────────────────────────────
 
-const MP4 = ['-c:v', 'libx264', '-preset', 'slow', '-crf', '16', '-pix_fmt', 'yuv420p', '-movflags', '+faststart'];
+// Trois fils d'encodage : la machine est partagée, et chaque fil de plus coûte de la mémoire.
+const MP4 = ['-c:v', 'libx264', '-preset', 'slow', '-crf', '16', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-threads', '3'];
 
 /** Un encodeur ffmpeg qui lit des PNG sur son entrée standard. */
 function encodeur(fichier, opts) {
@@ -378,25 +379,28 @@ function copierSons(jeu, sons) {
 }
 
 /** La jaquette du disque (SVG des sprites du bureau Frutiz) rendue en PNG transparent. */
-async function jaquette(nav, jeu, svg, fichier, hauteurPx) {
-  const src = path.join(RACINE, 'public/frutiz/sprites', svg);
-  const texte = fs.readFileSync(src, 'utf8');
-  const m = texte.match(/viewBox="([-\d.\s]+)"/);
-  const vb = m ? m[1].trim().split(/\s+/).map(Number) : [0, 0, 100, 100];
-  const h = hauteurPx || 1080;
-  const w = Math.round(h * vb[2] / vb[3]);
-  const ctx = await nav.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 1 });
-  const page = await ctx.newPage();
-  await page.setContent(`<!doctype html><html><head><style>html,body{margin:0;background:transparent}img{display:block;width:${w}px;height:${h}px}</style></head>` +
-    `<body><img src="${BASE}/frutiz/sprites/${svg}"></body></html>`);
-  await page.waitForFunction(() => { const i = document.querySelector('img'); return i && i.complete && i.naturalWidth > 0; });
+/*
+ * La jaquette du disque. Le sprite du bureau Frutiz (disc_jaquette_*.svg)
+ * n'est qu'une enveloppe : il porte UNE image PNG de 61 × 61 pixels, en ligne
+ * (data:). Rendre le SVG en grand l'aurait agrandie en flou. On en sort donc
+ * les pixels d'origine tels quels (`<fichier>`, 61 × 61, transparence
+ * comprise), plus un agrandissement ×16 au plus proche voisin
+ * (`<fichier sans .png>-x16.png`, 976 × 976) : des pixels nets, pas de flou.
+ */
+async function jaquette(nav, jeu, svg, fichier) {
+  const { execFileSync } = require('child_process');
+  const texte = fs.readFileSync(path.join(RACINE, 'public/frutiz/sprites', svg), 'utf8');
+  const m = texte.match(/href="data:image\/png;base64,([^"]+)"/);
+  if (!m) throw new Error('jaquette sans image PNG : ' + svg);
   const dest = path.join(SORTIE, jeu, fichier);
   fs.mkdirSync(path.dirname(dest), { recursive: true });
-  await page.screenshot({ path: dest, omitBackground: true });
-  await ctx.close();
-  console.log('  ✔ ' + fichier + ` (${w}×${h})`);
-  return { fichier, type: 'image', largeur: w, hauteur: h, alpha: true };
+  fs.writeFileSync(dest, Buffer.from(m[1], 'base64'));
+  const grand = dest.replace(/\.png$/, '-x16.png');
+  execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', dest, '-vf', 'scale=iw*16:ih*16:flags=neighbor', '-pix_fmt', 'rgba', grand]);
+  console.log('  ✔ ' + fichier + ' (pixels d\'origine) et ' + path.basename(grand) + ' (×16, plus proche voisin)');
+  return { fichier };
 }
+
 
 /*
  * Le manifeste d'un jeu, refait à partir de ce qui EXISTE sur le disque :
@@ -423,7 +427,15 @@ function finirJeu(jeu, d) {
     if (!fs.existsSync(f)) continue;
     const { execFileSync } = require('child_process');
     const dim = execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'stream=width,height', '-of', 'csv=p=0', f], { encoding: 'utf8' }).trim().split(',').map(Number);
-    elements.push(Object.assign({ fichier, type: 'image', largeur: dim[0], hauteur: dim[1], alpha: !!infos.alpha || /jaquette/.test(fichier) }, infos));
+    const e = Object.assign({ fichier, type: 'image', largeur: dim[0], hauteur: dim[1], alpha: !!infos.alpha || /jaquette/.test(fichier) }, infos);
+    if (/jaquette/.test(fichier)) {
+      // Voir jaquette() : les pixels d'origine, et l'agrandissement net en variante.
+      e.description = `La jaquette du disque telle que le bureau Frutiz la montre : l'image d'origine du sprite, ${dim[0]} × ${dim[1]} pixels, PNG transparent. ` +
+        'Variante -x16 : la même agrandie seize fois au plus proche voisin (pixels nets, aucun flou d\'agrandissement).';
+      const x16 = fichier.replace(/\.png$/, '-x16.png');
+      if (fs.existsSync(path.join(dossier, x16))) e.variantes = [x16];
+    }
+    elements.push(e);
   }
   if (d.sons && d.sons.length) elements.push(...copierSons(jeu, d.sons));
   ecrireManifesteJeu(jeu, elements);

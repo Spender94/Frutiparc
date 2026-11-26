@@ -70,9 +70,11 @@ async function sauter(page, n) {
   }, n);
 }
 
+// Le plan, en 60 i/s (maître) et — sauf pour les longs plans maîtres, coûteux à encoder — en 40 i/s natifs.
 function cut(inter, nom, debut, duree, affiche) {
+  const variante = !/-maitre$/.test(nom);
   K.couper(inter, debut, duree, path.join(DOSSIER, nom + '.mp4'), 60);
-  K.couper(inter, debut, duree, path.join(DOSSIER, nom + '-40ips.mp4'), null);
+  if (variante) K.couper(inter, debut, duree, path.join(DOSSIER, nom + '-40ips.mp4'), null);
   K.image(inter, debut + (affiche !== undefined ? affiche : duree / 2), path.join(DOSSIER, nom + '.png'));
   console.log(`  ✔ ${nom} : ${debut.toFixed(2)} s → +${duree.toFixed(2)} s`);
 }
@@ -148,7 +150,15 @@ async function titre(nav) {
   await K.attendre(page, () => !!(window.__frutisnake && window.__frutisnake.mode), { nom: 'menu snake3', images: 0 });
   const inter = path.join(K.DOSSIER_TEMP, 'snake3-titre.mp4');
   const enc = K.encodeur(inter, { fps: 40, codec: K.INTERMEDIAIRE });
-  await filmerPas(page, enc, 40 * 8);
+  // Le carrousel tourne, comme sous les clics d'un joueur qui hésite : deux
+  // crans à droite, un à gauche — de vrais clics sur les flèches jaunes de la
+  // scène (Menu.presser : x < 70 ou x > 630, à mi-hauteur).
+  const ech = 1080 / 480, gauche = (1920 - 700 * ech) / 2;
+  const fleche = (x) => ({ x: gauche + x * ech, y: 540 });
+  const crans = { 90: fleche(672), 170: fleche(672), 250: fleche(28) };
+  await filmerPas(page, enc, 40 * 8, async (i) => {
+    if (crans[i]) { await page.mouse.move(crans[i].x, crans[i].y); await page.mouse.down(); await page.mouse.up(); }
+  });
   await enc.fermer();
   await page.close();
   return inter;
@@ -176,7 +186,7 @@ async function principal() {
   try {
     if (veut('titre')) {
       const inter = await titre(nav);
-      cut(inter, 'snake3-titre', 1.5, 5, 3.5);
+      cut(inter, 'snake3-titre', 0.2, 7.5, 2);
     }
     if (veut('solo')) {
       const r = await solo(nav);

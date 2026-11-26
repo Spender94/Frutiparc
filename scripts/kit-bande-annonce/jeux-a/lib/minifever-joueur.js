@@ -52,7 +52,7 @@ function installerJoueur() {
             if (y < rb || y > H - rb) { vy = -vy; y = Math.max(rb, Math.min(H - rb, y)); }
           }
           const cible = vx < 0 ? y : H / 2 + (b.y - H / 2) * 0.3;
-          return { x: r.x - 26, y: cible, bas: false };
+          return { x: r.x - 26, y: cible, bas: false, vite: true };
         }
         case 'gameHammer': {
           if (!j.flReady || !j.bList) return null;

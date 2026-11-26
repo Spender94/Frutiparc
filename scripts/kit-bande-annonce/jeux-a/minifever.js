@@ -32,7 +32,7 @@ const JEU = 'minifever';
 const DOSSIER = path.join(K.SORTIE, JEU);
 const PAS = 25;
 const CSS = '#bandeau{display:none !important}';
-const LISTE = ['gamePong', 'gameHammer', 'gameGobelet', 'gameSpaceDodge', 'gameHammer', 'gameGobelet', 'gamePong', 'gameSpaceDodge'];
+const LISTE = ['gameHammer', 'gameGobelet', 'gameSpaceDodge', 'gamePong', 'gameHammer', 'gameGobelet', 'gameSpaceDodge', 'gameHammer', 'gameGobelet'];
 
 // Les crochets de la capture, posés avant les scripts de la page : on garde
 // une poignée sur le socle (nouvellePartie), et le tirage des épreuves du
@@ -146,9 +146,11 @@ async function titre(nav) {
   return inter;
 }
 
+// Le plan, en 60 i/s (maître) et — sauf pour les longs plans maîtres, coûteux à encoder — en 40 i/s natifs.
 function cut(inter, nom, debut, duree, affiche) {
+  const variante = !/-maitre$/.test(nom);
   K.couper(inter, debut, duree, path.join(DOSSIER, nom + '.mp4'), 60);
-  K.couper(inter, debut, duree, path.join(DOSSIER, nom + '-40ips.mp4'), null);
+  if (variante) K.couper(inter, debut, duree, path.join(DOSSIER, nom + '-40ips.mp4'), null);
   K.image(inter, debut + (affiche !== undefined ? affiche : duree / 2), path.join(DOSSIER, nom + '.png'));
   console.log(`  ✔ ${nom} : ${debut.toFixed(2)} s → +${duree.toFixed(2)} s`);
 }
@@ -184,9 +186,9 @@ async function principal() {
   K.finirJeu(JEU, {
     videos: {
       'minifever-titre': { titre: 'Mini-Fever — écran d\'accueil', description: 'L\'écran d\'accueil (Menu.mt reconstruit) : le titre qui jaillit sur son ressort, les bulles qui l\'entourent, puis les cases des modes qui glissent.', usage: 'Carton d\'ouverture du segment Mini-Fever.', variantes: v40('minifever-titre') },
-      'minifever-fever-maitre': { titre: 'Mini-Fever — le mode Fever (plan maître)', description: 'Les épreuves s\'enchaînent sans répit, de plus en plus dures : renvoi (pong), maillet, bonneteau, esquive… chacune gagnée à la souris, fondu blanc à chaque victoire.', usage: 'Plan maître à découper : une épreuve = un plan de 3 à 5 s.', variantes: v40('minifever-fever-maitre') },
-      'minifever-epreuves-a': { titre: 'Mini-Fever — renvoi et maillet', description: 'Les deux premières épreuves du Fever : tenir la balle au pong jusqu\'au bout du chrono, puis assommer les bestioles au maillet.', usage: 'Rythme, « mini-jeux en rafale ».', variantes: v40('minifever-epreuves-a') },
-      'minifever-epreuves-b': { titre: 'Mini-Fever — bonneteau et esquive', description: 'Suivre la bille sous les gobelets qui se mélangent et cliquer le bon ; puis esquiver les tirs des tourelles.', usage: 'Rythme, réflexes.', variantes: v40('minifever-epreuves-b') },
+      'minifever-fever-maitre': { titre: 'Mini-Fever — le mode Fever (plan maître)', description: 'Les épreuves s\'enchaînent sans répit, de plus en plus dures : maillet, bonneteau, esquive, renvoi (pong)… chacune gagnée à la souris, fondu blanc à chaque victoire.', usage: 'Plan maître à découper : une épreuve = un plan de 3 à 5 s.', variantes: v40('minifever-fever-maitre') },
+      'minifever-epreuves-a': { titre: 'Mini-Fever — maillet et bonneteau', description: 'Les deux premières épreuves du Fever : assommer les bestioles au maillet dès qu\'elles sortent de leur terrier, puis suivre la bille sous les gobelets qui se mélangent et cliquer le bon.', usage: 'Rythme, « mini-jeux en rafale ».', variantes: v40('minifever-epreuves-a') },
+      'minifever-epreuves-b': { titre: 'Mini-Fever — esquive et renvoi', description: 'Esquiver les tirs des tourelles jusqu\'au bout du chrono, puis tenir la balle au pong.', usage: 'Rythme, réflexes.', variantes: v40('minifever-epreuves-b') },
       'minifever-epreuves-c': { titre: 'Mini-Fever — la suite, plus vite', description: 'Les mêmes épreuves, la difficulté montée de quarante : plus de bestioles, plus de gobelets, plus de tirs.', usage: 'Accélération, montée en tension.', variantes: v40('minifever-epreuves-c') },
     },
     images: {
@@ -196,5 +198,5 @@ async function principal() {
   });
 }
 
-module.exports = { principal };
+module.exports = { principal, scriptCrochets };
 if (require.main === module) principal().catch((e) => { console.error(e); process.exit(1); });

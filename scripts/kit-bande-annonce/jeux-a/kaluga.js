@@ -50,9 +50,11 @@ async function ouvrir(nav, graine) {
   return page;
 }
 
+// Le plan, en 60 i/s (maître) et — sauf pour les longs plans maîtres, coûteux à encoder — en 40 i/s natifs.
 function cut(inter, nom, debut, duree, affiche) {
+  const variante = !/-maitre$/.test(nom);
   K.couper(inter, debut, duree, path.join(DOSSIER, nom + '.mp4'), 60);
-  K.couper(inter, debut, duree, path.join(DOSSIER, nom + '-40ips.mp4'), null);
+  if (variante) K.couper(inter, debut, duree, path.join(DOSSIER, nom + '-40ips.mp4'), null);
   K.image(inter, debut + (affiche !== undefined ? affiche : duree / 2), path.join(DOSSIER, nom + '.png'));
   console.log(`  ✔ ${nom} : ${debut.toFixed(2)} s → +${duree.toFixed(2)} s`);
 }
@@ -106,13 +108,43 @@ async function titre(nav) {
   await K.attendre(page, () => !!(window.KalugaJeu && KalugaJeu.manager), { nom: 'kaluga', images: 1 });
   const inter = path.join(K.DOSSIER_TEMP, 'kaluga-titre.mp4');
   const enc = K.encodeur(inter, { fps: 40, codec: K.INTERMEDIAIRE });
+  // La souris descend le long des planches du menu (elles s'allument au
+  // survol), comme un joueur qui choisit son mode — de vrais événements.
+  const planches = [258, 323, 388, 453, 518, 583];
   for (let i = 0; i < 40 * 8; i++) {
+    if (i >= 40) {
+      const t = Math.min(1, (i - 40) / (40 * 6));
+      const y = planches[0] + (planches[planches.length - 1] - planches[0]) * t;
+      await page.mouse.move(470 + Math.sin(i / 9) * 25, y);
+    }
     await page.evaluate((ms) => window.__horloge.avancer(ms), PAS);
     await enc.ecrire(await K.capture(page));
   }
   await enc.fermer();
   await page.close();
   return inter;
+}
+
+// La séquence d'intro du jeu (anim/intro.swf, entrée « intro » du menu).
+async function intro(nav) {
+  const page = await ouvrir(nav, 0);
+  await K.attendre(page, menuPret, { nom: 'menu kaluga', images: 4 });
+  await K.avancer(page, 20, PAS);
+  await page.evaluate(() => KalugaJeu.manager.current.selectSlot(60));
+  // La séquence se charge (réseau réel) avant de jouer.
+  await K.attendre(page, () => { const c = KalugaJeu.manager.current; return !!c && c.constructor && !c.launchGame; }, { nom: 'intro', images: 1 });
+  await K.avancer(page, 4, PAS);
+  const inter = path.join(K.DOSSIER_TEMP, 'kaluga-intro.mp4');
+  const enc = K.encodeur(inter, { fps: 40, codec: K.INTERMEDIAIRE });
+  let n = 0;
+  for (; n < 40 * 40; n++) {
+    await page.evaluate((ms) => window.__horloge.avancer(ms), PAS);
+    await enc.ecrire(await K.capture(page));
+    if (n > 80 && n % 20 === 0 && await page.evaluate(() => !!(KalugaJeu.manager.current && KalugaJeu.manager.current.launchGame))) break;
+  }
+  await enc.fermer();
+  await page.close();
+  return { inter, n };
 }
 
 async function principal() {
@@ -125,7 +157,13 @@ async function principal() {
   try {
     if (veut('titre')) {
       const inter = await titre(nav);
-      cut(inter, 'kaluga-titre', 1.0, 6, 4);
+      cut(inter, 'kaluga-titre', 1.0, 6.5, 4);
+    }
+    if (veut('intro')) {
+      const r = await intro(nav);
+      const s = r.n * PAS / 1000;
+      cut(r.inter, 'kaluga-intro-maitre', 0, s, Math.min(6, s / 2));
+      cut(r.inter, 'kaluga-intro', 0.5, Math.min(8, s - 0.5), Math.min(4, s / 3));
     }
     if (veut('classic')) {
       const r = await partie(nav, 'classic', 'gameClassic', {}, 60, 2026);
@@ -148,6 +186,8 @@ async function principal() {
   K.finirJeu(JEU, {
     videos: {
       'kaluga-titre': { titre: 'Kaluga — le menu', description: 'Le menu de Kaluga Transport Inc. : le logo, la tzongre aux grands yeux et les modes de jeu (essais, olympique, chrono, survie, invasion, piste…).', usage: 'Carton d\'ouverture du segment Kaluga.', variantes: v40('kaluga-titre') },
+      'kaluga-intro': { titre: 'Kaluga — la séquence d\'intro', description: 'Le début de la séquence d\'intro du jeu (anim/intro.swf, rejouée par le lecteur du portage), lancée depuis le menu.', usage: 'Ouverture du segment, plan d\'ambiance.', variantes: v40('kaluga-intro') },
+      'kaluga-intro-maitre': { titre: 'Kaluga — la séquence d\'intro complète (plan maître)', description: 'Toute la séquence d\'intro du jeu, jusqu\'au retour au menu.', usage: 'À découper.', variantes: v40('kaluga-intro-maitre') },
       'kaluga-envol': { titre: 'Kaluga — l\'envol', description: 'Début de partie : la tzongre décolle, file vers la première pomme et la cueille au bout de son fil.', usage: 'Présentation du jeu.', variantes: v40('kaluga-envol') },
       'kaluga-pommes': { titre: 'Kaluga — les pommes au panier', description: 'La tzongre transporte les pommes au fil et les lâche dans le panier : le moment de la partie qui rapporte le plus de points.', usage: 'Le geste du jeu, en un plan.', variantes: v40('kaluga-pommes') },
       'kaluga-partie-maitre': { titre: 'Kaluga — une minute de partie (plan maître)', description: 'Mode Essais, la carte de la clairière : une minute de vol, de pommes cueillies, portées et déposées.', usage: 'Plan maître à découper.', variantes: v40('kaluga-partie-maitre') },

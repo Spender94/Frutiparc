@@ -136,11 +136,28 @@ async function filmerPlan(nav, plan, choix) {
     console.log(`  ✔ ${choix.nom}.mp4 — ${n} images`);
   } else {
     await entrerDansLArbre(page, plan.graine);
-    // Jusqu'au début du plan, sans dessiner : le journal au clavier, pas à pas.
-    await page.evaluate(() => { window.__dessiner = window.__client.dessiner; window.__client.dessiner = () => {}; });
-    let k = 0, garde = 0;
-    while (k < choix.debut && garde++ < 200000) { k = await poser(); if (k >= choix.debut) break; await K.avancer(page, 1); }
-    await page.evaluate(() => { window.__client.dessiner = window.__dessiner; });
+    /*
+     * Jusqu'au début du plan, sans dessiner ni filmer. Ici, et ici seulement,
+     * les commandes du journal sont posées directement dans l'état des touches
+     * du client (`entree`, celui que les écouteurs du clavier remplissent) :
+     * ce passage n'est pas filmé, et passer par le clavier à chaque image
+     * coûtait un aller-retour au navigateur par pas. Le résultat est le même
+     * — c'est ce que fait le rejeu du serveur. La garde des entrées n'est pas
+     * touchée : aucun événement n'est fabriqué. Dès que l'on filme, c'est de
+     * nouveau le vrai clavier (Playwright).
+     */
+    await page.evaluate(([bits, jusqua]) => {
+      const c = window.__client;
+      const d = c.dessiner;
+      c.dessiner = () => {};
+      for (let garde = 0; garde < 400000 && window.__pasArbre < jusqua; garde++) {
+        const b = parseInt(bits[window.__pasArbre] || '0', 16);
+        c.entree.gauche = !!(b & 1); c.entree.droite = !!(b & 2); c.entree.bas = !!(b & 4); c.entree.tourner = !!(b & 8);
+        window.__horloge.avancer(1000 / 60);
+      }
+      c.entree.gauche = c.entree.droite = c.entree.bas = c.entree.tourner = false;
+      c.dessiner = d;
+    }, [plan.bits, choix.debut]);
     const scoreDebut = await page.evaluate(() => window.__client.lieu.score);
     let meilleure = { i: Math.round(choix.duree * 0.65), v: -1 };
     await K.filmer(page, path.join(DOSSIER, choix.nom + '.mp4'), choix.duree, {

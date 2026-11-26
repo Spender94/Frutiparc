@@ -142,9 +142,11 @@ async function filmerTitre(nav) {
   return inter;
 }
 
+// Le plan, en 60 i/s (maître) et — sauf pour les longs plans maîtres, coûteux à encoder — en 40 i/s natifs.
 function cut(inter, nom, debut, duree, affiche) {
+  const variante = !/-maitre$/.test(nom);
   K.couper(inter, debut, duree, path.join(DOSSIER, nom + '.mp4'), 60);
-  K.couper(inter, debut, duree, path.join(DOSSIER, nom + '-40ips.mp4'), null);
+  if (variante) K.couper(inter, debut, duree, path.join(DOSSIER, nom + '-40ips.mp4'), null);
   K.image(inter, debut + (affiche !== undefined ? affiche : duree / 2), path.join(DOSSIER, nom + '.png'));
   console.log(`  ✔ ${nom} : ${debut.toFixed(2)} s → +${duree.toFixed(2)} s`);
 }
