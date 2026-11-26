@@ -64,6 +64,8 @@ function lireSections() {
   for (const nom of fs.readdirSync(KIT)) {
     const f = path.join(KIT, nom, 'manifest.json');
     if (!fs.existsSync(f)) continue;
+    // Les sections d'essai (zz-essai-…) ne paraissent jamais dans l'index.
+    if (/^zz-essai/.test(nom)) continue;
     try {
       const m = JSON.parse(fs.readFileSync(f, 'utf8'));
       m.dossier = nom;

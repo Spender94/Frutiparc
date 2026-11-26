@@ -2,7 +2,7 @@
 /*
  * KIT BANDE-ANNONCE / EXTRAS — « CRÉE TA BOUILLE ».
  *
- *   node scripts/kit-bande-annonce/extras/editeur.js [--apercu]
+ *   node scripts/kit-bande-annonce/extras/editeur.js [--apercu] [--sans-morph]
  *
  * 1. LE VRAI ÉDITEUR (extras/cree-ta-bouille/editeur-ma-frutibouille.mp4)
  *    La fenêtre « Ma Frutibouille » du light — celle qui s'ouvre d'elle-même à
@@ -79,9 +79,15 @@ async function editeurReel(nav, cible) {
   await S.prechauffer(cap, 5);
   await cap.page.waitForSelector('#fb-editor.show', { timeout: 20000 });
   await C.attendre(600);
-  const b = await cap.page.locator('#fb-editor').boundingBox();
-  const hClip = Math.round(b.height * 1.1), lClip = Math.round(hClip * 16 / 9);
-  const clip = { x: Math.round(b.x + b.width / 2 - lClip / 2), y: Math.round(b.y + b.height / 2 - hClip / 2),
+  // La fenêtre est en position fixe au centre de l'écran (translate −50 %) :
+  // on cadre sur le centre de la fenêtre du navigateur et sur sa taille de mise
+  // en page (offsetWidth/Height, que la transition d'ouverture ne déforme pas).
+  const dim = await cap.page.evaluate(() => {
+    const e = document.querySelector('#fb-editor');
+    return { w: e.offsetWidth, h: e.offsetHeight, vw: innerWidth, vh: innerHeight };
+  });
+  const hClip = Math.round(dim.h * 1.1), lClip = Math.round(hClip * 16 / 9);
+  const clip = { x: Math.round(dim.vw / 2 - lClip / 2), y: Math.round(dim.vh / 2 - hClip / 2),
     width: lClip, height: hClip };
   const etatApercu = () => cap.page.evaluate(() => {
     const c = document.querySelector('#fb-editor-preview canvas.fp-bvig');
@@ -195,7 +201,11 @@ async function main() {
   try {
     releve = await editeurReel(nav, cible);
     console.log('éditeur filmé :', releve.etats.length, 'images, état final', releve.fin, '(visé', cible.slice(0, 14) + ')');
-    base = await morph(nav, releve, cible);
+    // --sans-morph : seul le plan de l'éditeur est refait ; la version isolée
+    // déjà rendue reste valable (même plan de clics → mêmes états, mêmes instants).
+    base = process.argv.includes('--sans-morph')
+      ? path.join(C.SORTIE, 'cree-ta-bouille', 'morph-bouille' + (APERCU ? '-apercu' : ''))
+      : await morph(nav, releve, cible);
   } finally { await nav.close(); srv.arreter(); }
   if (APERCU) return;
   const rel = (f) => path.relative(C.SORTIE, f);

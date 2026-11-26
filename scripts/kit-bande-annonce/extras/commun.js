@@ -224,7 +224,9 @@ class Capture {
   /** Une image : PNG (alpha si `transparent`), optionnellement recadrée. */
   async image(clip) {
     const p = { format: 'png', optimizeForSpeed: true, captureBeyondViewport: false };
-    if (clip) p.clip = Object.assign({ scale: 1 }, clip);
+    // Recadrée, CDP rend la zone à l'échelle `scale` et non à celle de l'écran :
+    // on lui redonne la densité de la page, sinon l'image sortirait en pixels CSS.
+    if (clip) p.clip = Object.assign({ scale: this.opts.echelle || 1 }, clip);
     const r = await this.cdp.send('Page.captureScreenshot', p);
     return Buffer.from(r.data, 'base64');
   }
