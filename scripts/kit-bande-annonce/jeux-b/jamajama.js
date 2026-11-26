@@ -90,6 +90,9 @@ async function allerAuNiveau(page, pack, index) {
   await C.avancer(page, 10);
   await cliquer(page, 192, 50 + pack * 60);      // le pack
   await C.avancer(page, 10);
+  // Le parchemin vient de la bibliothèque du jeu : attendre qu'elle connaisse
+  // son symbole (sous forte charge, il arrivait après le clic).
+  await C.patienter(page, () => { try { window.JamaEcrans.cadreEnfant('jama_gui_AdventureSelect', 1, 'next'); return true; } catch (e) { return false; } }, null, 60000);
   const zones = await page.evaluate(() => {
     const E = window.JamaEcrans;
     return { next: E.cadreEnfant('jama_gui_AdventureSelect', 1, 'next'), play: E.cadreEnfant('jama_gui_AdventureSelect', 1, 'btnPlay') };
