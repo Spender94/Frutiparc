@@ -394,7 +394,23 @@ async function jaquette(nav, jeu, svg, fichier) {
   const { execFileSync } = require('child_process');
   const texte = fs.readFileSync(path.join(RACINE, 'public/frutiz/sprites', svg), 'utf8');
   const m = texte.match(/href="data:image\/png;base64,([^"]+)"/);
-  if (!m) throw new Error('jaquette sans image PNG : ' + svg);
+  if (!m) {
+    // Une jaquette VECTORIELLE (Kaluga, MiniPixiz : un SVG dans le SVG) : là,
+    // le navigateur la trace nette à toute taille — 1080 px, sans agrandissement.
+    const propre = !nav;
+    const n = nav || await navigateur();
+    const ctx = await n.newContext({ viewport: { width: 1080, height: 1080 }, deviceScaleFactor: 1 });
+    const page = await ctx.newPage();
+    await page.setContent(`<!doctype html><html><head><style>html,body{margin:0;background:transparent}img{display:block;width:1080px;height:1080px}</style></head><body><img src="${BASE}/frutiz/sprites/${svg}"></body></html>`);
+    await page.waitForFunction(() => { const i = document.querySelector('img'); return i && i.complete && i.naturalWidth > 0; });
+    const dest = path.join(SORTIE, jeu, fichier);
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    await page.screenshot({ path: dest, omitBackground: true });
+    await ctx.close();
+    if (propre) await n.close();
+    console.log('  ✔ ' + fichier + ' (vectorielle, 1080 × 1080)');
+    return { fichier, vectorielle: true };
+  }
   const dest = path.join(SORTIE, jeu, fichier);
   fs.mkdirSync(path.dirname(dest), { recursive: true });
   fs.writeFileSync(dest, Buffer.from(m[1], 'base64'));

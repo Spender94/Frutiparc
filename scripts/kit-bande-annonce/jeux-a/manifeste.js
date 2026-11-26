@@ -126,10 +126,17 @@ async function principal() {
       }
       elements.push(e);
     }
-    await K.jaquette(null, jeu, d.jaquette, jeu + '-jaquette.png');
-    elements.push({ fichier: jeu + '-jaquette.png', type: 'image', titre: `${K.TITRES_JEUX[jeu]} — jaquette du disque`,
-      description: 'La jaquette du disque telle que le bureau Frutiz la montre : l\'image d\'origine du sprite, 61 × 61 pixels, PNG transparent. Variante -x16 : agrandie seize fois au plus proche voisin (976 × 976, pixels nets).',
-      usage: 'Incrustation, carton de fin du segment.', largeur: 61, hauteur: 61, alpha: true, variantes: [jeu + '-jaquette-x16.png'] });
+    const j = await K.jaquette(null, jeu, d.jaquette, jeu + '-jaquette.png');
+    if (j.vectorielle) {
+      fs.rmSync(path.join(dossier, jeu + '-jaquette-x16.png'), { force: true });
+      elements.push({ fichier: jeu + '-jaquette.png', type: 'image', titre: `${K.TITRES_JEUX[jeu]} — jaquette du disque`,
+        description: 'La jaquette du disque du bureau Frutiz : un dessin vectoriel, tracé net à 1080 × 1080, PNG transparent.',
+        usage: 'Incrustation, carton de fin du segment.', largeur: 1080, hauteur: 1080, alpha: true });
+    } else {
+      elements.push({ fichier: jeu + '-jaquette.png', type: 'image', titre: `${K.TITRES_JEUX[jeu]} — jaquette du disque`,
+        description: 'La jaquette du disque telle que le bureau Frutiz la montre : l\'image d\'origine du sprite, 61 × 61 pixels, PNG transparent. Variante -x16 : agrandie seize fois au plus proche voisin (976 × 976, pixels nets).',
+        usage: 'Incrustation, carton de fin du segment.', largeur: 61, hauteur: 61, alpha: true, variantes: [jeu + '-jaquette-x16.png'] });
+    }
     if (d.sons.length) {
       elements.push(...K.copierSons(jeu, d.sons.map(([source, nom, titre, description, usage, boucle]) => ({ source, nom, titre, description, usage, boucle: !!boucle }))));
     }
