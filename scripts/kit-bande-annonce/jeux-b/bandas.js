@@ -79,6 +79,9 @@ async function filmer(page, enc, n, journal) {
 async function ouvrir(nav, sid) {
   const page = await C.nouvellePage(nav, { css: CSS, graine: 1313 });
   await page.goto(C.BASE + '/bandas/?sid=' + sid);
+  // L'IA du serveur s'appuie sur la logique de partie (game.js), que la page
+  // de jeu ne charge pas : on pose les deux.
+  await page.addScriptTag({ url: '/bandas/game.js' });
   await page.addScriptTag({ url: '/bandas/server/bot.js' });
   await page.addScriptTag({ content: decisionBandas.toString() });
   await C.patienter(page, () => document.querySelector('#screen-mode.on') && window.Bandas && window.Bandas.bot, null, 30000);
@@ -150,7 +153,7 @@ async function genererPartie(nav) {
       marques.cartes.push({ image: enc.images, carte: d.carte });
       await filmer(page, enc, 10, journal);
     } else if (d.etat === 'coup') {
-      await filmer(page, enc, 22 + (tours * 5) % 14, journal);
+      await filmer(page, enc, 14 + (tours * 5) % 10, journal);
       await page.keyboard.press(d.touche);
       tours++;
       await filmer(page, enc, 6, journal);

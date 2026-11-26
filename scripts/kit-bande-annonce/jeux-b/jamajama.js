@@ -11,6 +11,7 @@
  *     règles du site, vérifiée par son propre rejeu anti-triche), touche par
  *     touche, au clavier de Playwright, dans la vraie page — du lever de
  *     rideau à l'iris de victoire ;
+ *   · niveau-<n>-gros-plan.mp4 — la même partie, cadrée serré sur le plateau ;
  *   · les affiches, la jaquette, la musique et les bruitages d'origine
  *     (Games/poulpi/sound/).
  *
@@ -19,9 +20,14 @@
  * celle d'un joueur qui a fini les niveaux précédents, pour que le parchemin
  * ouvre le niveau voulu. Le parcours des menus se fait à la souris.
  *
- * Le canevas se peint à une échelle ENTIÈRE (echelleDuCanevas, jeu.js) : sur
- * une page de 1080 px de haut, la scène de 384 est peinte à l'échelle 3
- * (1152 px) puis RÉDUITE à 1080 par le navigateur — net, jamais agrandi.
+ * Le canevas se peint à une échelle ENTIÈRE (echelleDuCanevas, jeu.js). Pour
+ * les niveaux, la page (1920×1080) est rendue à deviceScaleFactor 2 : la
+ * scène de 384 est peinte à l'échelle 6 (2304 px) ; le plan large est réduit
+ * à 1080 de haut par ffmpeg, le gros plan est recadré dans l'image pleine
+ * définition — net dans les deux cas, jamais agrandi.
+ *
+ * JAMA_CLIPS=n (3 par défaut) : nombre de niveaux filmés ;
+ * JAMA_NIVEAUX=louki,aimants : seulement ces niveaux (noms de NIVEAUX).
  */
 'use strict';
 
@@ -194,6 +200,8 @@ async function genererNiveaux(nav, sid, elements) {
   let faits = 0;
   for (const cible of NIVEAUX) {
     if (faits >= maxClips) break;
+    // JAMA_NIVEAUX=louki,aimants : ne refaire que ces niveaux-là.
+    if (process.env.JAMA_NIVEAUX && !process.env.JAMA_NIVEAUX.split(',').includes(cible.nom)) continue;
     const n = tous.find((x) => x.section === 'aventure' && cible.motif.test(x.titre));
     if (!n) { console.warn('  niveau introuvable :', cible.motif); continue; }
     console.log(`  niveau « ${n.titre} » : recherche de la solution…`);

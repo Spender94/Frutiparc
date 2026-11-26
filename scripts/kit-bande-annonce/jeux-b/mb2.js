@@ -294,7 +294,11 @@ async function genererExtras(nav, elements) {
     description: 'La jaquette du disque MotionBall (disc_jaquette_mb2.svg du bureau Frutiz), rendue en PNG transparent.',
     usage: 'Carton de présentation du jeu.', largeur: j.largeur, hauteur: j.hauteur, alpha: true });
   const sons = [
-    ['public/mb2/sons/loop$1.mp3', 'musique-boucle-1.ogg', 'MotionBall 2 — musique de jeu (boucle 1)', 'La première boucle musicale des salles.'],
+    ['public/mb2/sons/loop$1.mp3', 'musique-couche-1.ogg', 'MotionBall 2 — musique de jeu, couche 1', 'La première des cinq couches de la musique des salles (1,8 s, en boucle).'],
+    ['public/mb2/sons/loop$2.mp3', 'musique-couche-2.ogg', 'MotionBall 2 — musique de jeu, couche 2', 'Deuxième couche de la musique des salles.'],
+    ['public/mb2/sons/loop$3.mp3', 'musique-couche-3.ogg', 'MotionBall 2 — musique de jeu, couche 3', 'Troisième couche de la musique des salles.'],
+    ['public/mb2/sons/loop$4.mp3', 'musique-couche-4.ogg', 'MotionBall 2 — musique de jeu, couche 4', 'Quatrième couche de la musique des salles.'],
+    ['public/mb2/sons/loop$5.mp3', 'musique-couche-5.ogg', 'MotionBall 2 — musique de jeu, couche 5', 'Cinquième couche de la musique des salles.'],
     ['public/mb2/sons/menu.mp3', 'musique-menu.ogg', 'MotionBall 2 — musique du menu', 'La musique du menu.'],
     ['public/mb2/sons/boss_loop.mp3', 'musique-boss.ogg', 'MotionBall 2 — musique du boss', 'La boucle des salles de boss.'],
     ['public/mb2/sons/bumper_metal.mp3', 'bumper.ogg', 'MotionBall 2 — bumper', 'La bille qui frappe un bumper.'],
@@ -308,6 +312,24 @@ async function genererExtras(nav, elements) {
     const duree = C.copierSon(src, f);
     elements.push(C.elementSon(JEU, f, duree, { titre, description: desc + ' Fichier du site (' + src + '), converti en OGG.', usage: 'Bande son du segment MotionBall.' }));
   }
+  /*
+   * La musique des salles n'est pas UN fichier : le jeu fait tourner cinq
+   * boucles de 1,8 s ensemble, chacune sur sa voie, et en règle les volumes
+   * (Sound.startMix / nextMix). Pour le montage, les cinq couches
+   * superposées à plein volume, répétées sur 30 s — un dérivé, signalé
+   * comme tel ; les couches d'origine sont fournies à côté.
+   */
+  const couches = [1, 2, 3, 4, 5].map((i) => path.join(C.RACINE, 'public/mb2/sons/loop$' + i + '.mp3'));
+  const mix = path.join(DOSSIER, 'sons', 'musique-mix-30s.ogg');
+  const args = ['-y', '-loglevel', 'error'];
+  for (const c of couches) args.push('-stream_loop', '16', '-i', c);
+  args.push('-filter_complex', couches.map((_, i) => `[${i}:a]`).join('') + `amix=inputs=${couches.length}:normalize=0,volume=0.6,atrim=0:30`, '-c:a', 'libvorbis', '-q:a', '6', mix);
+  require('child_process').execFileSync('ffmpeg', args);
+  elements.push(C.elementSon(JEU, mix, 30, {
+    titre: 'MotionBall 2 — musique de jeu (les cinq couches mêlées, 30 s)',
+    description: 'Les cinq boucles de la musique des salles (loop$1 à loop$5) jouées ensemble, comme le jeu les superpose, répétées sur 30 s. Fichier DÉRIVÉ par mixage des originaux (aucun son ajouté).',
+    usage: 'Fond musical du segment MotionBall.',
+  }));
 }
 
 async function generer(nav, quoi) {

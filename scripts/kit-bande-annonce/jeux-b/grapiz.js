@@ -32,7 +32,10 @@ const C = require('./commun');
 
 const JEU = 'grapiz';
 const DOSSIER = path.join(C.SORTIE, JEU);
-const CSS = 'html,body{background:' + C.VERT_SITE + '!important}#fp-fd-badge{display:none!important}';
+// La page de jeu, mise en scène : la fenêtre centrée dans l'image, sans la
+// ligne d'état ni le badge des parties du jour.
+const CSS = '#fp-fd-badge,#status{display:none!important}'
+  + '#screen-game.on{height:100vh;box-sizing:border-box;align-items:center!important}';
 const PSEUDO = 'grenadix';
 
 // Lit la position sur le plateau (DOM) et rend le coup de l'IA du jeu.
@@ -73,12 +76,27 @@ function choisirCoup(moi, ply) {
   return { de: ecran(m.from.x, m.from.y), vers: ecran(m.target.x, m.target.y) };
 }
 
+/*
+ * Le plateau de Grapiz n'a AUCUNE animation (les billes sautent de case en
+ * case, seules les pendules changent, à la seconde) : on capture une image
+ * sur six et on la répète — la vidéo reste à 60 i/s, identique à l'œil,
+ * et la partie va six fois plus vite en temps réel. C'est ce qui compte
+ * ici : les pendules du serveur, elles, tournent en temps réel.
+ */
+let derniere = null, compteur = 0;
 async function filmer(page, enc, n) {
-  for (let i = 0; i < n; i++) { await C.avancer(page, 1); await enc.ecrire(await C.capturer(page)); }
+  for (let i = 0; i < n; i++) {
+    await C.avancer(page, 1);
+    if (!derniere || compteur++ % 6 === 0) derniere = await C.capturer(page);
+    await enc.ecrire(derniere);
+  }
 }
+function oublierCapture() { derniere = null; compteur = 0; }
 
 async function ouvrir(nav, sid) {
-  const page = await C.nouvellePage(nav, { css: CSS, graine: 777 });
+  // 1280×720 rendu à l'échelle 1,5 : la fenêtre de jeu (≈ 930×650) occupe
+  // l'image, nette, en 1920×1080.
+  const page = await C.nouvellePage(nav, { css: CSS, graine: 777, largeur: 1280, hauteur: 720, echelle: 1.5 });
   await page.goto(C.BASE + '/grapiz/?sid=' + sid);
   // L'IA du jeu, et nos deux fonctions de lecture, posées dans la page.
   await page.addScriptTag({ url: '/grapiz/server/bot.js' });
@@ -120,7 +138,7 @@ async function genererPartie(nav, elements) {
   await C.avancer(page, 10);
   await page.mouse.down(); await page.mouse.up();
   await C.patienter(page, () => document.querySelector('#screen-game.on') && document.querySelectorAll('#pieces-layer .ball').length > 0, null, 30000);
-  await page.mouse.move(1919, 1079);
+  await page.mouse.move(1279, 719);
 
   console.log('  partie…');
   const maitre = path.join(DOSSIER, 'partie-maitre.mp4');
@@ -136,13 +154,15 @@ async function genererPartie(nav, elements) {
     }, [PSEUDO, ply]).catch(() => null) : null;
     if (coup && coup.de && coup.vers) {
       // Le geste : un temps de réflexion, la bille, un temps, la case.
-      await filmer(page, enc, 25 + (ply * 7) % 20);
+      await filmer(page, enc, 20 + (ply * 7) % 16);
       await page.mouse.move(coup.de[0], coup.de[1], { steps: 4 });
       await page.mouse.down(); await page.mouse.up();
-      await filmer(page, enc, 28);
+      oublierCapture();
+      await filmer(page, enc, 24);
       await page.mouse.move(coup.vers[0], coup.vers[1], { steps: 4 });
       await page.mouse.down(); await page.mouse.up();
-      await page.mouse.move(1919, 1079);
+      await page.mouse.move(1279, 719);
+      oublierCapture();
       marques.coups.push(enc.images);
       ply += 2;
       // Le temps que le serveur valide et que le bot réponde (au plus 15 s réelles).
@@ -157,6 +177,9 @@ async function genererPartie(nav, elements) {
       await filmer(page, enc, 1);
     }
   }
+  marques.issue = await page.evaluate(() => document.getElementById('g-end').textContent || '').catch(() => '');
+  marques.victoire = /Victoire/.test(marques.issue);
+  console.log('  issue :', marques.issue);
   await enc.fermer();
   await page.close();
   return { maitre, marques, adversaire: adversaire.trim() };
@@ -195,8 +218,10 @@ async function genererTout(nav, elements) {
     const f2 = path.join(DOSSIER, 'victoire.mp4');
     C.couper(r.maitre, f2, debut, Math.min(12, info.duree - debut));
     elements.push(C.elementVideo(JEU, f2, {
-      titre: 'Grapiz — le coup gagnant',
-      description: 'Les derniers coups de la partie : la bille qui relie enfin tous les jetons du même camp, puis le panneau « Victoire ! +1 à ta série ».',
+      titre: r.marques.victoire ? 'Grapiz — le coup gagnant' : 'Grapiz — la fin de partie',
+      description: r.marques.victoire
+        ? 'Les derniers coups de la partie : la bille qui relie enfin tous les jetons du même camp, puis le panneau « Victoire ! +1 à ta série ».'
+        : `Les derniers coups de la partie, jusqu'au panneau de fin (« ${r.marques.issue} »).`,
       usage: 'Plan « victoire » ; fin du segment Grapiz.',
       affiche: C.affiche(f2, path.join(DOSSIER, 'victoire.png'), Math.min(10.5, info.duree - debut - 0.5)),
     }));

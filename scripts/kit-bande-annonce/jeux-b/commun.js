@@ -43,6 +43,7 @@ const SORTIE = process.env.KIT_SORTIE || '/home/user/Frutiparc/kit-bande-annonce
 const PORT = Number(process.env.KIT_PORT || 4300);
 const BASE = `http://127.0.0.1:${PORT}`;
 const VERT_SITE = '#ADE76B';
+const CLE_ADMIN = process.env.KIT_ADMIN_KEY || 'kitjeuxb';
 
 const attendre = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -61,10 +62,27 @@ async function demarrerServeur() {
   if (await repond(BASE + '/miniwave/')) return BASE;
   const env = Object.assign({}, process.env, {
     PORT: String(PORT), DATABASE_URL: '', REGISTER_MAX: '1000', REGISTER_DAILY_MAX: '1000',
-    ADMIN_KEY: process.env.KIT_ADMIN_KEY || 'kit-jeux-b',
+    ADMIN_KEY: CLE_ADMIN,
     XMLSOCKET_PORT: String(PORT + 1), FRUTISCORE_PORT: String(PORT + 2),
   });
-  serveur = spawn(process.execPath, ['server.js'], { cwd: RACINE, env, stdio: ['ignore', 'ignore', 'inherit'] });
+  /*
+   * Un dépôt rangé sous un dossier caché (une copie de travail sous
+   * .claude/worktrees/…) : res.sendFile refuse tout chemin qui traverse un
+   * « dotfile » et répond 404 — les familles de frutibouilles
+   * (/fbouille/famille0.swf) disparaissent, et les vignettes des joueurs
+   * restent vides. On lance alors le serveur depuis un lien symbolique sans
+   * point, en gardant ce chemin (--preserve-symlinks-main).
+   */
+  let cwd = RACINE;
+  const nodeArgs = ['server.js'];
+  if (/[\/]\./.test(RACINE)) {
+    const lien = path.join(require('os').tmpdir(), 'kit-jeux-b-depot');
+    try { if (fs.readlinkSync(lien) !== RACINE) fs.unlinkSync(lien); } catch (e) { /* absent */ }
+    if (!fs.existsSync(lien)) fs.symlinkSync(RACINE, lien);
+    cwd = lien;
+    nodeArgs.splice(0, 1, '--preserve-symlinks', '--preserve-symlinks-main', path.join(lien, 'server.js'));
+  }
+  serveur = spawn(process.execPath, nodeArgs, { cwd, env, stdio: ['ignore', 'ignore', 'inherit'] });
   for (let i = 0; i < 120; i++) {
     await attendre(500);
     if (await repond(BASE + '/miniwave/')) return BASE;
@@ -84,12 +102,22 @@ async function posterJson(chemin, corps, entetes) {
   });
   return r.json().catch(() => ({}));
 }
-/** Crée (si besoin) le compte et rend son sid. */
+/**
+ * Crée (si besoin) le compte et rend son sid. Le personnage reçoit la
+ * frutibouille que lui donne casting.json (enregistrée comme le fait
+ * l'éditeur de bouille du site, /do/eb), pour que sa vignette apparaisse
+ * dans les jeux en ligne.
+ */
 async function compte(pseudo) {
   const mdp = 'bande-annonce-' + pseudo;
   await posterJson('/api/auth/register', { username: pseudo, password: mdp });
   const l = await posterJson('/api/auth/login', { username: pseudo, password: mdp });
   if (!l.sid) throw new Error('connexion impossible pour ' + pseudo + ' : ' + JSON.stringify(l));
+  const c = casting();
+  const fiche = [c.spectateur].concat(c.casting).find((x) => x && x.pseudo === pseudo);
+  if (fiche && fiche.bouille) {
+    await fetch(BASE + '/do/eb?sid=' + encodeURIComponent(l.sid) + '&b=' + encodeURIComponent(fiche.bouille)).catch(() => null);
+  }
   return l.sid;
 }
 
@@ -244,11 +272,15 @@ async function nouvellePage(navigateur, opts) {
     }, opts.css);
   }
   const page = await contexte.newPage();
+  // La capture CDP rend la page en pixels CSS : on retient l'échelle pour
+  // demander les pixels physiques (clip × échelle) quand elle dépasse 1.
+  formatParPage.set(page, { l: opts.largeur || 1920, h: opts.hauteur || 1080, e: opts.echelle || 1 });
   page.on('pageerror', (e) => console.warn('  [page] erreur :', e.message));
   page.on('console', (m) => { if (m.type() === 'error' && !/favicon|404|net::ERR/.test(m.text())) console.warn('  [page]', m.text().slice(0, 200)); });
   return page;
 }
 
+const formatParPage = new WeakMap();
 const IMAGE = 1000 / 60;
 /** Avance d'une image (1/60 s) dans la page. */
 function avancer(page, n) {
@@ -301,11 +333,14 @@ class Encodeur {
 }
 
 /** Capture d'écran de la page entière (PNG, rapide). */
-let cdpParPage = new WeakMap();
+const cdpParPage = new WeakMap();
 async function capturer(page) {
   let cdp = cdpParPage.get(page);
   if (!cdp) { cdp = await page.context().newCDPSession(page); cdpParPage.set(page, cdp); }
-  const r = await cdp.send('Page.captureScreenshot', { format: 'png', optimizeForSpeed: true });
+  const fmt = formatParPage.get(page);
+  const args = { format: 'png', optimizeForSpeed: true };
+  if (fmt && fmt.e !== 1) args.clip = { x: 0, y: 0, width: fmt.l, height: fmt.h, scale: fmt.e };
+  const r = await cdp.send('Page.captureScreenshot', args);
   return Buffer.from(r.data, 'base64');
 }
 
