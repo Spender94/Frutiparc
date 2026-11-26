@@ -43,7 +43,7 @@ function ecrire(sortie, plans) {
   }
   const manifeste = {
     section: 'chat',
-    titre: 'Le chat en vrai : des bouilles en scène',
+    titre: 'Le chat — des bouilles en scène',
     texte: 'Des scènes de salon jouées pour de bon : le site tourne en local, les personnages du casting '
       + '(comptes fictifs, bouilles posées par l’éditeur) entrent dans un salon et y parlent le vrai protocole '
       + 'du chat, et l’on filme le vrai client du spectateur (Pomelo) en mode bureau Frutiz — la colonne des '

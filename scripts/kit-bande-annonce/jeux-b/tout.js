@@ -45,7 +45,7 @@ function ecrireManifeste() {
       elements.push(e);
     }
   }
-  const manifeste = { section: 'jeux-b', titre: 'Jeux (2/2) — Mini-Wave, MotionBall 2, JamaJama, Grapiz, Frutibandas', texte: TEXTE, elements };
+  const manifeste = { section: 'jeux-b', titre: 'Jeux 2 — Mini-Wave, MotionBall 2, JamaJama, Grapiz, Frutibandas', texte: TEXTE, elements };
   fs.writeFileSync(path.join(C.SORTIE, 'manifest.json'), JSON.stringify(manifeste, null, 2) + '\n');
   console.log(`manifest.json : ${elements.length} éléments`);
 }

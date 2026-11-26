@@ -334,7 +334,7 @@ function refaireManifeste() {
   }
   const m = {
     section: 'jeux-a',
-    titre: 'Jeux (A) — Swapou, Frutisnake 3, Burning Kiwi, Kaluga, Mini-Fever, MiniPixiz',
+    titre: 'Jeux 1 — Swapou, Frutisnake 3, Burning Kiwi, Kaluga, Mini-Fever, MiniPixiz',
     texte: 'Séquences de jeu « attract mode » filmées dans les vraies pages du site (portages JS), image par image ' +
       'sur une horloge virtuelle (60 i/s exactes, aucune image perdue), cadrées en 1920×1080 sur le vert du parc ' +
       '#ADE76B. Pour chaque jeu : 2 à 3 plans de jeu, un plan de titre/menu, la jaquette du disque en PNG, la ' +
