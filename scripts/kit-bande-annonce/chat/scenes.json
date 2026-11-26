@@ -1,0 +1,153 @@
+{
+  "_aide": [
+    "LE SCÉNARIO DES SCÈNES DE CHAT — le fichier à modifier pour changer les répliques.",
+    "Les personnages (pseudo, nom affiché, bouille) viennent de kit-bande-annonce/casting.json ; ici on les nomme par leur pseudo en minuscules.",
+    "Chaque réplique a son instant « t » en secondes depuis le début du plan. Les types :",
+    "  { \"t\": 1.0, \"qui\": \"kiwinette\", \"dit\": \"Coucou !\" }      une ligne. Les émotes sont des lignes : « mdr », « lol », « bisou », « jutsu », « clin », « gumm », « :p », « siffle », « miam », « rougit », « question », « snif », « tousse », « beurk », « confus », « 67 »…",
+    "  Les commandes aussi : « /initpoint question », « /point pseudo 3 », « /showpoint », « /don pseudo 50 » (animatrice), « !texte » (cri rouge d’un membre de l’équipe).",
+    "  { \"t\": 2.0, \"qui\": \"prunox\", \"humeur\": \"joie\" }   humeurs : neutre, colere, triste, sourire, joie, determine, embarrasse.",
+    "  { \"t\": 3.0, \"qui\": \"citronade\", \"entre\": true }  /  { \"sort\": true }   entrer dans le salon, en sortir.",
+    "  { \"t\": 4.0, \"pnj\": \"Gaspard\" }   laisse passer la prochaine phrase que le serveur fait dire à Gaspard (ex. son accueil d’un nouveau).",
+    "  { \"t\": 5.0, \"qui\": \"litchiloo\", \"donne\": [\"Pomelo\", 50] }   /donne : des kikooz personnels (seul le destinataire voit la ligne).",
+    "Si « qui » est le spectateur (pomelo), sa ligne est TAPÉE dans son champ de saisie, lettre par lettre (« pas » = images entre deux lettres, 3 par défaut), puis envoyée.",
+    "« presents » : déjà dans le salon au début ; « avant » : ce qui s’est dit avant l’arrivée du spectateur (il le retrouve dans le fil) ;",
+    "« nouveaux » : comptes que Gaspard n’a pas encore accueillis (il les accueillera en les voyant entrer) ; « roles » : champs d’admin (animatrice…).",
+    "« feutres » : la couleur de chacun (0 orange, 1 bleu, 3 bordeaux, 8 bleu foncé, 9 marron, 12 bleu pétrole, 14 bleu pétrole foncé, 15 orange foncé, 16 violet…)."
+  ],
+  "feutres": {
+    "kiwinette": 0,
+    "prunox": 8,
+    "myrtillou": 16,
+    "citronade": 12,
+    "fraizou": 3,
+    "banagaga": 9,
+    "litchiloo": 1,
+    "grenadix": 15
+  },
+  "scenes": {
+    "aquarium": {
+      "salon": "pomme",
+      "duree": 29.5,
+      "graine": 11,
+      "pnj": ["gaspard"],
+      "nouveaux": ["citronade"],
+      "roles": { "litchiloo": { "is_animator": true, "kikooz": 5000 } },
+      "presents": ["kiwinette", "prunox", "myrtillou", "fraizou", "banagaga", "litchiloo", "grenadix"],
+      "heure": "17:45:00",
+      "avant": [
+        ["grenadix", "Bonsoir le parc !"],
+        ["banagaga", "Qui a vu le défi du jour ?"],
+        ["litchiloo", "C’est Swapou ce soir, mode Challenge !"],
+        ["fraizou", "Swapou ! Mon jeu préféré !"],
+        ["myrtillou", "Moi je préfère la sieste"],
+        ["prunox", "Je m’entraîne depuis ce matin…"]
+      ],
+      "repliques": [
+        { "t": 0.3, "qui": "kiwinette", "dit": "Coucou tout le monde !!!" },
+        { "t": 1.5, "qui": "grenadix", "humeur": "sourire" },
+        { "t": 1.6, "qui": "grenadix", "dit": "Salut Kiwinette !" },
+        { "t": 2.8, "qui": "prunox", "humeur": "joie" },
+        { "t": 2.9, "qui": "prunox", "dit": "Record battu sur Swapou : 52 340 points !" },
+        { "t": 4.3, "qui": "fraizou", "humeur": "colere" },
+        { "t": 4.4, "qui": "fraizou", "dit": "QUOI ?! C’était MON record !" },
+        { "t": 5.7, "qui": "myrtillou", "dit": "mdr" },
+        { "t": 7.6, "qui": "citronade", "entre": true },
+        { "t": 8.4, "qui": "citronade", "dit": "Bonjour ! Je suis nouvelle ici" },
+        { "t": 9.6, "pnj": "Gaspard" },
+        { "t": 10.8, "qui": "kiwinette", "dit": "Bienvenue Citronade !!" },
+        { "t": 11.6, "qui": "pomelo", "dit": "Bienvenue, tu vas adorer !", "pas": 2 },
+        { "t": 13.4, "qui": "citronade", "dit": "bisou" },
+        { "t": 15.2, "qui": "banagaga", "dit": "Pfff, encore Swapou…" },
+        { "t": 16.4, "qui": "grenadix", "dit": "En 2005 j’y jouais déjà !" },
+        { "t": 17.6, "qui": "litchiloo", "dit": "/don Citronade 50" },
+        { "t": 18.8, "qui": "citronade", "humeur": "joie" },
+        { "t": 18.9, "qui": "citronade", "dit": "Merci Litchiloo !!" },
+        { "t": 20.1, "qui": "prunox", "dit": ": p" },
+        { "t": 21.6, "qui": "fraizou", "humeur": "determine" },
+        { "t": 21.7, "qui": "fraizou", "dit": "Revanche ce soir, Prunox !" },
+        { "t": 23, "qui": "kiwinette", "dit": "clin" },
+        { "t": 24.6, "qui": "myrtillou", "dit": "jutsu" }
+      ]
+    },
+    "multi": {
+      "salon": "kiwi",
+      "duree": 15,
+      "graine": 5,
+      "heure": "16:58:00",
+      "presents": ["kiwinette", "myrtillou", "fraizou"],
+      "avant": [
+        ["myrtillou", "Coucou les copains"],
+        ["fraizou", "Salut Myrtillou !"],
+        ["kiwinette", "On se fait un Swapou ?"]
+      ],
+      "repliques": [
+        { "t": 0.4, "qui": "fraizou", "humeur": "joie" },
+        { "t": 0.5, "qui": "fraizou", "dit": "Ouiii ! Je suis chaud !" },
+        { "t": 1.8, "qui": "myrtillou", "dit": "Moi je regarde…" },
+        { "t": 2.6, "qui": "myrtillou", "humeur": "embarrasse" },
+        { "t": 3.2, "qui": "kiwinette", "dit": "mdr" },
+        { "t": 5, "qui": "pomelo", "dit": "J’arrive !", "pas": 3 },
+        { "t": 6.8, "qui": "kiwinette", "humeur": "joie" },
+        { "t": 7, "qui": "fraizou", "dit": "bisou" },
+        { "t": 8.8, "qui": "myrtillou", "humeur": "determine" },
+        { "t": 9, "qui": "myrtillou", "dit": "Bon d’accord, je joue !" },
+        { "t": 10.2, "qui": "fraizou", "dit": "clin" },
+        { "t": 11.4, "qui": "kiwinette", "dit": "jutsu" }
+      ]
+    },
+    "arrivee": {
+      "salon": "pomme",
+      "duree": 15.5,
+      "graine": 9,
+      "heure": "17:31:00",
+      "pnj": ["gaspard"],
+      "presents": ["kiwinette", "prunox", "myrtillou", "fraizou", "banagaga", "grenadix"],
+      "avant": [
+        ["prunox", "Quelqu’un pour un Swapou ?"],
+        ["banagaga", "Pas maintenant, je suis nul"],
+        ["myrtillou", "mdr"]
+      ],
+      "repliques": [
+        { "t": 6.8, "qui": "kiwinette", "dit": "Coucou Pomelo !!!" },
+        { "t": 8, "qui": "grenadix", "humeur": "sourire" },
+        { "t": 8.1, "qui": "grenadix", "dit": "Salut Pomelo !" },
+        { "t": 9.3, "qui": "fraizou", "dit": "bisou" },
+        { "t": 11.1, "qui": "prunox", "dit": "Tu viens faire un Swapou ?" },
+        { "t": 12.3, "qui": "pomelo", "dit": "Ouiii, j’arrive !", "pas": 2 },
+        { "t": 13.9, "qui": "myrtillou", "dit": "clin" }
+      ]
+    },
+    "quiz": {
+      "salon": "pomme",
+      "duree": 15,
+      "graine": 3,
+      "heure": "18:12:00",
+      "pnj": [],
+      "roles": { "litchiloo": { "is_animator": true, "kikooz": 5000 } },
+      "presents": ["kiwinette", "prunox", "myrtillou", "fraizou", "banagaga", "litchiloo", "grenadix", "citronade"],
+      "avant": [
+        ["litchiloo", "Petit quiz dans une minute !"],
+        ["kiwinette", "Ouiii !"],
+        ["prunox", "Je suis prêt !"],
+        ["citronade", "C’est quoi un quiz ?"],
+        ["grenadix", "Tu vas voir, c’est trop bien"],
+        ["banagaga", "Pourvu que ce soit facile…"]
+      ],
+      "repliques": [
+        { "t": 0.3, "qui": "litchiloo", "dit": "/initpoint Combien de couleurs dans un arc-en-ciel ?" },
+        { "t": 1.9, "qui": "kiwinette", "dit": "7 !" },
+        { "t": 2.8, "qui": "prunox", "dit": "Sept !!" },
+        { "t": 3.7, "qui": "myrtillou", "dit": "question" },
+        { "t": 5.3, "qui": "litchiloo", "dit": "/point Kiwinette 3" },
+        { "t": 6.2, "qui": "kiwinette", "humeur": "joie" },
+        { "t": 6.3, "qui": "kiwinette", "dit": "Ouiii !!!" },
+        { "t": 7.3, "qui": "litchiloo", "dit": "/point Prunox 1" },
+        { "t": 8.3, "qui": "litchiloo", "dit": "/showpoint" },
+        { "t": 9.9, "qui": "prunox", "humeur": "colere" },
+        { "t": 10.0, "qui": "prunox", "dit": "Grrr, à une seconde près !" },
+        { "t": 11.2, "qui": "litchiloo", "donne": ["Pomelo", 50, "merci d’être là"] },
+        { "t": 12.4, "qui": "pomelo", "dit": "Merci Litchiloo !!", "pas": 2 }
+      ]
+    }
+  }
+}
