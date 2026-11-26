@@ -3636,6 +3636,64 @@
   ];
   var ROOM_LABELS = {};
   ROOMS.forEach(function (r) { ROOM_LABELS[r[0]] = r[1]; });
+
+  /*
+   * LE SALON PAR DÉFAUT (`default_channel`, préférence n° 1).
+   *
+   * Les numéros sont ceux du bureau Flash (`listener/main.as`, table
+   * `channels`) : 2 pomme… 11 banane, et 0 un salon tiré au hasard parmi ces
+   * dix (`random(10)+2`). 13, « Aucun salon », n'en rejoint aucun : le SWF
+   * ouvrait la liste des salons, le bureau ouvre « Salons publics », le mobile
+   * reste sur son menu — et le salon choisi dans la liste du haut se rejoint
+   * en ouvrant « Salon ». Le résultat vaut alors SALON_AUCUN (""). Une valeur
+   * que le light ne sait pas ouvrir (12 quizz, 14 rencontre) ou une lecture
+   * ratée retombe sur le premier salon.
+   */
+  var SALON_AUCUN = "";
+  var SALONS_PAR_NUMERO = [null, null, "pomme", "abricot", "poire", "fraise",
+    "citron", "kiwi", "raisin", "orange", "cerise", "banane"];
+  function salonDuNumero(n, hasard) {
+    if (n === 0) n = 2 + Math.floor((hasard === undefined ? Math.random() : hasard) * 10);
+    if (n === 13) return SALON_AUCUN;
+    return SALONS_PAR_NUMERO[n] || ROOMS[0][0];
+  }
+  // La valeur stockée est en base 62, comme toute la chaîne des préférences.
+  function decode62Light(s) {
+    var B = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    var r = 0, t = String(s == null ? "" : s);
+    for (var i = 0; i < t.length; i++) { var v = B.indexOf(t.charAt(i)); r = r * 62 + (v < 0 ? 0 : v); }
+    return r;
+  }
+  // Lu UNE fois par démarrage (`oublierSalonParDefaut` dans startApp) : le
+  // bureau, qui ouvre sa fenêtre de salon avant la connexion, et la première
+  // identification doivent tomber sur le même salon — un « au hasard » tiré
+  // deux fois en ouvrirait deux.
+  var salonDefaut = { connu: null, attente: null };
+  function oublierSalonParDefaut() { salonDefaut = { connu: null, attente: null }; }
+  function salonDeDepart() { return salonDefaut.connu; }
+  function salonParDefaut(suite) {
+    if (salonDefaut.connu !== null) { suite(salonDefaut.connu); return; }
+    if (salonDefaut.attente) { salonDefaut.attente.push(suite); return; }
+    var lecture = salonDefaut;
+    lecture.attente = [suite];
+    function rendre(id) {
+      if (lecture.connu !== null || lecture !== salonDefaut) return;
+      lecture.connu = id;
+      var l = lecture.attente; lecture.attente = null;
+      l.forEach(function (f) { f(id); });
+    }
+    // Le serveur ne répond pas vite : on n'attend pas plus de 3 s pour entrer.
+    var garde = setTimeout(function () { rendre(ROOMS[0][0]); }, 3000);
+    if (!state.sid) { clearTimeout(garde); rendre(ROOMS[0][0]); return; }
+    fetch("/api/light/prefs?sid=" + encodeURIComponent(state.sid), { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        var brut = j && j.ok && j.values ? j.values.default_channel : "";
+        rendre(brut === undefined || brut === "" ? ROOMS[0][0] : salonDuNumero(decode62Light(brut)));
+      })
+      .catch(function () { rendre(ROOMS[0][0]); })
+      .then(function () { clearTimeout(garde); });
+  }
   // Display name for a room id: prefer the live admin label (from the
   // channellist), then the built-in label above, then a capitalised id (so a
   // private "pm_a_b" room never shows a raw id).
@@ -4150,6 +4208,8 @@
         }).then(function (id) { ouvrirSalon(id); return id; });
       },
       courant: function () { return state.room; },
+      // Le « Salon par défaut » de ce démarrage, une fois lu (null avant).
+      depart: function () { return salonDeDepart(); },
       // « Rejoindre » depuis la fenêtre « Salons publics » : le salon prend SA
       // fenêtre. `box.join` d'époque instancie une `box.Chat` de plus.
       rejoindre: function (id) { ouvrirSalon(id); },
@@ -4257,7 +4317,27 @@
       },
     };
     if (isDesktop() && window.BureauFrutiz) BureauFrutiz.demarrer();
-    activateTab("chat");
+    oublierSalonParDefaut();
+    if (window.BureauFrutiz && BureauFrutiz.actif && BureauFrutiz.actif()) {
+      // Sur le bureau, « le chat » est la fenêtre d'UN salon, ouverte dès
+      // ici : il faut donc connaître le « Salon par défaut » avant — sans quoi
+      // la fenêtre prenait le premier de la liste (pomme), et la connexion
+      // trouvait un salon déjà ouvert. Si une autre rubrique a pris la main
+      // entre-temps (`?ouvre=…`), le salon s'ouvre sans lui voler la place.
+      salonParDefaut(function (id) {
+        if (state.room) return;
+        // « Aucun salon » : comme le SWF (`uniqWinMng.open("roomList")`), la
+        // fenêtre « Salons publics » s'ouvre à la place, pour en choisir un.
+        if (id === SALON_AUCUN) {
+          if (!ongletCourant && BureauFrutiz.ouvrirSalonsPublics) BureauFrutiz.ouvrirSalonsPublics();
+          return;
+        }
+        if (!ongletCourant) activateTab("chat");
+        else if (BureauFrutiz.ouvrirSalonEnFond) BureauFrutiz.ouvrirSalonEnFond(id);
+      });
+    } else {
+      activateTab("chat");
+    }
     if (!isDesktop()) openMenu(true);
     loadHomeProfile();
     loadDailyStatus();
@@ -5612,6 +5692,14 @@
     if (ongletCourant && ongletCourant !== tab) lacherCommandes(ongletCourant);
     ongletCourant = tab;
     if (CADRES_JEU[tab]) dechargerLesAutresJeux(tab);
+    // « Aucun salon » à la connexion (mobile) : on n'est dans aucun salon tant
+    // qu'on n'ouvre pas « Salon » — et l'ouvrir rejoint celui de la liste du
+    // haut. Pas avant que la connexion ait tranché, pour ne pas devancer le
+    // salon par défaut.
+    if (tab === "chat" && !state.room && state.connected && salonDeDepart() === SALON_AUCUN
+        && !(window.BureauFrutiz && BureauFrutiz.actif && BureauFrutiz.actif())) {
+      ouvrirSalon($("#room-select").value || ROOMS[0][0]);
+    }
     $("#chat-panel").classList.toggle("active", tab === "chat");
     $("#forum-panel").classList.toggle("active", tab === "forum");
     $("#grapiz-panel").classList.toggle("active", tab === "grapiz");
@@ -8185,7 +8273,16 @@
         // courant, les discussions privées, et toutes les fenêtres de
         // conversation restées ouvertes (cf. `rejoindreLesPrives`).
         if (!state.room) {
-          ouvrirSalon($("#room-select").value || ROOMS[0][0]);
+          // Le salon choisi dans « Mes préférences » (`default_channel`) : il
+          // faut le lire avant d'ouvrir quoi que ce soit. Une seule ouverture,
+          // même si une deuxième identification arrive pendant la lecture.
+          if (!state.ouvertureDefaut) {
+            state.ouvertureDefaut = true;
+            salonParDefaut(function (id) {
+              state.ouvertureDefaut = false;
+              if (!state.room) ouvrirSalon(id);
+            });
+          }
         } else {
           // Le serveur rejoue les dernières minutes au join : on vide le fil
           // d'abord, sinon on lirait deux fois la même chose. Et l'on réécrit

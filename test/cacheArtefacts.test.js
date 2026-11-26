@@ -46,6 +46,10 @@ test('les dossiers d’artefacts se gardent une semaine', () => {
     // et 8,5 s avant l'arène, à froid comme à chaud — puis, une fois gardés
     // sept jours, 1 176 servis du cache et l'arène en 1,8 s.
     ["'/snake3/sprites'", "'public', 'snake3', 'sprites'"],
+    // Frutisnake 2 VK : 112 fichiers et 13 Mo redemandés à chaque lancement du
+    // disque. Son code porte son empreinte dans son nom, ses ressources un `?v=`
+    // (test suivant).
+    ["'/snake2vk/assets'", "'public', 'snake2vk', 'assets'"],
   ]) {
     const re = new RegExp('app\\.use\\(' + route.replace(/[/]/g, '\\/')
       + ',\\s*\\n?\\s*express\\.static\\(path\\.join\\(__dirname, ' + dossier
@@ -57,6 +61,20 @@ test('les dossiers d’artefacts se gardent une semaine', () => {
   assert.match(SERVEUR,
     /app\.use\('\/fb', express\.static\(path\.join\(__dirname, 'public', 'fb'\), \{\s*\n\s*\.\.\.CACHE_ARTEFACTS,/,
     'les dessins du forum gardent leur semaine');
+});
+
+test('Frutisnake 2 VK demande ses ressources avec la version du build', () => {
+  // Gardées une semaine sans revalidation, elles ne se renouvellent qu'en
+  // changeant d'adresse : le jeu y ajoute `?v=` et l'empreinte des ressources
+  // du build (Frutiback, src/game/assetUrl.ts). Sans elle, un dessin corrigé
+  // n'arriverait pas aux joueurs qui ont déjà l'ancien.
+  const dossier = path.join(ROOT, 'public', 'snake2vk', 'assets');
+  const code = fs.readdirSync(dossier).filter((f) => /^index-.*\.js$/.test(f));
+  assert.strictEqual(code.length, 1, 'un seul point d’entrée du jeu');
+  assert.match(fs.readFileSync(path.join(dossier, code[0]), 'utf8'), /v=[0-9a-f]{10}/);
+  // La page, elle, désigne le code du build courant : elle reste hors du cache.
+  const page = fs.readFileSync(path.join(ROOT, 'public', 'snake2vk', 'index.html'), 'utf8');
+  assert.ok(page.includes(`/snake2vk/assets/${code[0]}`), 'la page charge ce code-là');
 });
 
 test('… sauf ce que public/fb contient d’ENGENDRÉ : le forum et sa feuille de nuit', () => {
@@ -108,7 +126,7 @@ test('la page et ses scripts, eux, restent frais', () => {
     assert.ok(!/'public'\)/.test(m), 'le dossier public entier ne doit pas être figé');
     assert.ok(!/light\.html|bureau-frutiz/.test(m), 'ni la page ni ses scripts : ' + m);
   }
-  assert.strictEqual(montages.length, 5, 'cinq dossiers, pas un de plus');
+  assert.strictEqual(montages.length, 6, 'six dossiers, pas un de plus');
 });
 
 test('la compression des textes est toujours là', () => {
