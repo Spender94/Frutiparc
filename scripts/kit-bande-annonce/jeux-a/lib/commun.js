@@ -343,6 +343,9 @@ function refaireManifeste() {
     jeux: TITRES_JEUX,
     elements,
   };
+  // Ce qui manque encore, dit franchement dans le manifeste.
+  const sansVideo = Object.keys(TITRES_JEUX).filter((j) => !elements.some((e) => e.jeu === j && e.type === 'video'));
+  if (sansVideo.length) m.texte += ` Premier kit, incomplet : pas encore de vidéo pour ${sansVideo.map((j) => TITRES_JEUX[j]).join(', ')} (jaquette seulement).`;
   fs.writeFileSync(path.join(SORTIE, 'manifest.json'), JSON.stringify(m, null, 2) + '\n');
 }
 
