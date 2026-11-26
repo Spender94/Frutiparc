@@ -93,6 +93,13 @@ canvas{display:block}</style></head>
     },
 
     png: function () { return kit.canvas.toDataURL('image/png').slice(22); },
+
+    /* Une image vidéo en un seul aller-retour : avance jusqu'au battement
+       \`cible\`, rend le PNG s'il a changé (sinon null) et l'état de l'émote. */
+    image: function (cible, forcer) {
+      var bouge = kit.avancerA(cible);
+      return { png: (bouge || forcer) ? kit.png() : null, fin: kit.fin, ticks: kit.ticks };
+    },
     CADENCE: CADENCE,
     NOMS_HUMEURS: M.NOMS_HUMEURS, NOMS_ANIMATIONS: M.NOMS_ANIMATIONS,
   };

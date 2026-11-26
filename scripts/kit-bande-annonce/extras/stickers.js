@@ -16,8 +16,25 @@
  *       extras/stickers/<pseudo>/emotes/<pseudo>-<emote>.webm      transparent
  *       extras/stickers/<pseudo>/emotes/<pseudo>-<emote>-vert.mp4  fond vert
  *       extras/stickers/<pseudo>/emotes/<pseudo>-<emote>.png       affiche
- *     en 1024 × 1024, 60 i/s : un temps de repos, l'émote entière, un temps de
- *     repos.
+ *     en 768 × 768, 60 i/s : un temps de repos, l'émote entière, un temps de
+ *     repos. (768 et non 1024 : 189 vidéos, deux encodages chacune, sur une
+ *     machine partagée — une bouille d'émote s'incruste rarement à plus d'un
+ *     demi-écran, et les PNG des humeurs, eux, restent en 1024.)
+ *
+ * Le manifeste est mis à jour après CHAQUE personnage : un rendu interrompu
+ * laisse un kit cohérent avec ce qui est déjà fait. Le spectateur passe en
+ * dernier. `--sans-humeurs` saute les PNG (déjà faits).
+ *
+ * REPRISE : une émote dont les trois fichiers existent déjà, à la bonne
+ * taille, n'est pas refaite — relancer la commande reprend où l'on s'était
+ * arrêté. On peut aussi partager le travail entre plusieurs processus (un
+ * groupe de pseudos chacun), puis `--manifeste` réécrit les entrées de tous
+ * les personnages d'après les fichiers présents, sans rien rendre :
+ *
+ *   node stickers.js kiwinette prunox myrtillou &
+ *   node stickers.js citronade fraizou banagaga &
+ *   node stickers.js litchiloo grenadix pomelo &
+ *   wait; node stickers.js --manifeste
  *
  * Tout est rendu par le moteur JS du site (atelier-bouille.js), à la cadence du
  * parc (24 battements/s) : à 60 i/s une image de moteur tient 2 ou 3 images
@@ -32,7 +49,8 @@ const { chromium } = require('playwright');
 const C = require('./commun.js');
 const { ouvrirAtelier } = require('./atelier-bouille.js');
 
-const PX = 1024;
+const PX = 1024;               // les PNG des humeurs
+const PX_EMOTE = 768;          // les vidéos d'émotes
 const MARGE = 0.15;            // de l'air autour : chignons, fumée, étoiles
 const FPS = 60;
 const AVANT = 0.4, APRES = 0.7; // secondes de repos autour de l'émote
@@ -71,8 +89,8 @@ async function humeurs(page, perso, dos) {
 async function emote(page, perso, n, dos) {
   const nom = EMOTES[n];
   const base = path.join(dos, perso.pseudo + '-' + nom);
-  await page.evaluate(([e, px, m]) => kit.monter(e, px, m), [perso.bouille, PX, MARGE]);
-  const enc = C.encodeur({ webm: base + '.webm', vert: base + '-vert.mp4' }, { largeur: PX, hauteur: PX, fps: FPS });
+  await page.evaluate(([e, px, m]) => kit.monter(e, px, m), [perso.bouille, PX_EMOTE, MARGE]);
+  const enc = C.encodeur({ webm: base + '.webm', vert: base + '-vert.mp4' }, { largeur: PX_EMOTE, hauteur: PX_EMOTE, fps: FPS, vite: true });
   const cad = await page.evaluate(() => kit.CADENCE);
   let png = Buffer.from(await page.evaluate(() => kit.png()), 'base64');
   let lance = false, finImage = -1, affiche = null;
@@ -81,17 +99,16 @@ async function emote(page, perso, n, dos) {
   let debutTick = 0;
   for (let i = 0; i < max; i++) {
     if (!lance && i >= iAvant) {
-      debutTick = await page.evaluate(() => kit.ticks);
-      await page.evaluate((k) => kit.animer(k), n);
+      debutTick = await page.evaluate((k) => { kit.animer(k); return kit.ticks; }, n);
       lance = true;
     }
-    // Le battement visé : 24 par seconde depuis le début du clip.
+    // Le battement visé : 24 par seconde depuis le début du clip. Un seul
+    // aller-retour par image (avancer, photographier si ça a bougé, état).
     const cible = Math.floor((i / FPS) * cad);
-    const bouge = await page.evaluate((c) => kit.avancerA(c), cible);
-    if (bouge || i === iAvant) png = Buffer.from(await page.evaluate(() => kit.png()), 'base64');
+    const etat = await page.evaluate(([c, f]) => kit.image(c, f), [cible, i === iAvant]);
+    if (etat.png) png = Buffer.from(etat.png, 'base64');
     await enc.ecrire(png);
     if (lance && finImage < 0) {
-      const etat = await page.evaluate(() => ({ fin: kit.fin, ticks: kit.ticks }));
       const ecoule = (etat.ticks - debutTick) / cad;
       if (n === 1 && ecoule >= PARLE) await page.evaluate(() => kit.arreter());
       if (etat.fin || (n === 1 && ecoule >= PARLE)) finImage = i;
@@ -110,20 +127,69 @@ function estimer(n) {
   return { 1: 2.6, 7: 1.6, 8: 4.5, 14: 5.6, 16: 4.5, 19: 2.4, 20: 2.5, 21: 3 }[n] || 1.4;
 }
 
+// Les noms d'émotes tels que le parc les affiche, lus dans le moteur lui-même.
+const NOMS = require(path.join(C.RACINE, 'public/js/bouille-moteur.js')).NOMS_ANIMATIONS;
+
+function fichierEmote(p, n) {
+  return path.join(C.SORTIE, 'stickers', p.pseudo, 'emotes', p.pseudo + '-' + EMOTES[n]);
+}
+
+/** Une émote complète (les trois fichiers) et à la bonne taille. */
+function dejaFaite(p, n) {
+  const b = fichierEmote(p, n);
+  if (![b + '.webm', b + '-vert.mp4', b + '.png'].every((f) => fs.existsSync(f) && fs.statSync(f).size > 0)) return false;
+  try { return C.sonder(b + '.webm').largeur === PX_EMOTE && C.sonder(b + '-vert.mp4').largeur === PX_EMOTE; } catch (e) { return false; }
+}
+
+/** Les entrées de manifeste d'un personnage, d'après les fichiers présents. */
+function entreesDe(p) {
+  const relD = 'stickers/' + p.pseudo + '/';
+  const groupe = 'Stickers — ' + p.affiche;
+  const els = [];
+  if (fs.existsSync(path.join(C.SORTIE, relD, p.pseudo + '-humeurs.png'))) {
+    els.push({ fichier: relD + p.pseudo + '-humeurs.png', type: 'image', groupe,
+      titre: p.affiche + ' — les 8 humeurs', largeur: 1920, hauteur: 960, alpha: false,
+      description: 'Planche des huit humeurs de ' + p.affiche + ' (' + (p.role === 'spectateur' ? 'le spectateur' : p.caractere)
+        + '), rendues par le moteur JS du site. Bouille ' + p.bouille + '. Les huit PNG transparents 1024 px sont en variantes.',
+      usage: 'Réactions incrustées, vignettes de personnages, cartons « qui est qui ».',
+      variantes: HUMEURS.map((h) => relD + p.pseudo + '-' + h + '.png') });
+  }
+  for (let n = 1; n < EMOTES.length; n++) {
+    if (!dejaFaite(p, n)) continue;
+    const rel = relD + 'emotes/' + p.pseudo + '-' + EMOTES[n];
+    const s = C.sonder(path.join(C.SORTIE, rel + '.webm'));
+    els.push({ fichier: rel + '.webm', type: 'video', groupe,
+      titre: p.affiche + ' — ' + NOMS[n],
+      description: 'Émote « ' + NOMS[n] + ' » de ' + p.affiche
+        + ', telle que le chat la joue (moteur JS du site, cadence du parc). Repos, émote, repos.',
+      usage: 'À incruster (WebM transparent) ou détourer (MP4 fond vert).',
+      duree: s.duree, fps: s.fps, largeur: s.largeur, hauteur: s.hauteur, alpha: true, octets: s.octets,
+      affiche: rel + '.png', variantes: [rel + '-vert.mp4'] });
+  }
+  return els;
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const sansEmotes = args.includes('--sans-emotes');
+  const sansHumeurs = args.includes('--sans-humeurs');
   // --emotes=2,14,21 : seulement ces émotes (essais) — le manifeste n'est alors pas touché.
   const seules = (args.find((a) => a.startsWith('--emotes=')) || '').slice(9).split(',').filter(Boolean).map(Number);
   const filtre = args.filter((a) => !a.startsWith('--'));
   const cast = C.casting();
-  const persos = [Object.assign({ role: 'spectateur' }, cast.spectateur)].concat(cast.liste)
+  // Le casting d'abord, le spectateur en dernier.
+  const persos = cast.liste.concat([Object.assign({ role: 'spectateur' }, cast.spectateur)])
     .filter((p) => !filtre.length || filtre.includes(p.pseudo));
+  // --manifeste : rien à rendre, on réécrit les entrées d'après les fichiers
+  // présents (après un rendu interrompu, ou mené par plusieurs processus).
+  if (args.includes('--manifeste')) {
+    for (const p of persos) C.majManifeste(['stickers/' + p.pseudo + '/'], entreesDe(p));
+    return;
+  }
   const serveur = await C.demarrerServeur();
   const nav = await chromium.launch();
   const ctx = await nav.newContext({ deviceScaleFactor: 1 });
   const page = await ouvrirAtelier(ctx, C.BASE, PX);
-  const elements = [];
   try {
     for (const p of persos) {
       const t0 = Date.now();
@@ -133,40 +199,24 @@ async function main() {
       // des images : on les laisse arriver avant de filmer.
       await page.evaluate(([e, px]) => { kit.monter(e, px, 0); kit.animer(21); kit.avancerA(3); kit.animer(19); kit.avancerA(6); return true; }, [p.bouille, 64]);
       await page.waitForTimeout(1500);
-      const groupe = 'Stickers — ' + p.affiche;
-      const fh = await humeurs(page, p, dos);
-      const relD = 'stickers/' + p.pseudo + '/';
-      elements.push({ fichier: relD + p.pseudo + '-humeurs.png', type: 'image', groupe,
-        titre: p.affiche + ' — les 8 humeurs', largeur: 1920, hauteur: 960, alpha: false,
-        description: 'Planche des huit humeurs de ' + p.affiche + ' (' + (p.role === 'spectateur' ? 'le spectateur' : p.caractere)
-          + '), rendues par le moteur JS du site. Bouille ' + p.bouille + '. Les huit PNG transparents 1024 px sont en variantes.',
-        usage: 'Réactions incrustées, vignettes de personnages, cartons « qui est qui ».',
-        variantes: fh.map((f) => relD + path.basename(f)) });
+      if (!sansHumeurs) await humeurs(page, p, dos);
       if (!sansEmotes) {
         const dosE = C.dossier('stickers', p.pseudo, 'emotes');
         for (let n = 1; n < EMOTES.length; n++) {
           if (seules.length && !seules.includes(n)) continue;
-          const b = await emote(page, p, n, dosE);
-          const rel = relD + 'emotes/' + path.basename(b);
-          const s = C.sonder(b + '.webm');
-          elements.push({ fichier: rel + '.webm', type: 'video', groupe,
-            titre: p.affiche + ' — ' + await page.evaluate((k) => kit.NOMS_ANIMATIONS[k], n),
-            description: 'Émote « ' + await page.evaluate((k) => kit.NOMS_ANIMATIONS[k], n) + ' » de ' + p.affiche
-              + ', telle que le chat la joue (moteur JS du site, cadence du parc). Repos, émote, repos.',
-            usage: 'À incruster (WebM transparent) ou détourer (MP4 fond vert).',
-            duree: s.duree, fps: s.fps, largeur: s.largeur, hauteur: s.hauteur, alpha: true, octets: s.octets,
-            affiche: rel + '.png', variantes: [rel + '-vert.mp4'] });
+          if (dejaFaite(p, n)) continue;          // reprise d'un rendu interrompu
+          await emote(page, p, n, dosE);
           process.stdout.write('.');
         }
       }
       console.log('\n' + p.pseudo + ' fait en ' + Math.round((Date.now() - t0) / 1000) + ' s');
+      // Le manifeste, personnage par personnage (seul celui-ci est remplacé).
+      if (!seules.length) C.majManifeste(['stickers/' + p.pseudo + '/'], entreesDe(p));
     }
   } finally {
     await nav.close();
     serveur.arreter();
   }
-  // Seuls les personnages traités sont remplacés dans le manifeste.
-  if (!seules.length) C.majManifeste(persos.map((p) => 'stickers/' + p.pseudo + '/'), elements);
 }
 
 if (require.main === module) main().catch((e) => { console.error(e); process.exit(1); });

@@ -48,7 +48,7 @@ async function poserCurseur(page) {
 const DOIGT_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 44 44">'
   + '<circle cx="22" cy="22" r="19" fill="rgba(255,255,255,.45)" stroke="#fff" stroke-width="3"/></svg>';
 
-async function placerCurseur(page, x, y, enfonce, visible, doigt) {
+async function placerCurseur(page, x, y, enfonce, visible, doigt, echelle) {
   await page.evaluate(([x, y, k, v, svg, doigt]) => {
     let d = document.getElementById('kit-curseur');
     if (!d) {
@@ -63,7 +63,7 @@ async function placerCurseur(page, x, y, enfonce, visible, doigt) {
     }
     d.style.display = v ? 'block' : 'none';
     d.style.transform = 'translate(' + x.toFixed(1) + 'px,' + y.toFixed(1) + 'px) scale(' + k + ')';
-  }, [x, y, enfonce ? 0.82 : 1, visible !== false, doigt ? DOIGT_SVG : CURSEUR_SVG, !!doigt]);
+  }, [x, y, (enfonce ? 0.82 : 1) * (echelle || 1), visible !== false, doigt ? DOIGT_SVG : CURSEUR_SVG, !!doigt]);
 }
 
 async function centreDe(page, cible) {
@@ -132,7 +132,7 @@ async function tourner(cap, plans, opts) {
     await cap.avancer(1000 / fps);
     if (avecCurseur) {
       const visible = opts.doigt ? doigtVisible(t) : (opts.curseurVisible ? opts.curseurVisible(t) : true);
-      await placerCurseur(page, pos.x - 2, pos.y - 2, i < enfonceJusqua, visible, opts.doigt);
+      await placerCurseur(page, pos.x - 2, pos.y - 2, i < enfonceJusqua, visible, opts.doigt, opts.curseurEchelle);
     }
     const img = await cap.image(opts.clip);
     if (typeof opts.enc === 'function') await opts.enc(img, i);

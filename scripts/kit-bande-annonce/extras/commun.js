@@ -281,7 +281,11 @@ function encodeur(sorties, opts) {
   args.push('-filter_complex', filtres.join(';'));
   branches.forEach((b, i) => {
     args.push('-map', '[o' + i + ']', '-r', String(fps));
-    args.push(...(b.type === 'webm' ? VP9 : X264));
+    // `vite` (les 189 émotes des stickers) : x264 en « medium » et libvpx en
+    // cpu-used 6 — même crf, donc même qualité visée, deux fois moins de calcul.
+    let reglages = b.type === 'webm' ? VP9 : X264;
+    if (opts.vite) reglages = reglages.map((a) => (a === 'slow' ? 'medium' : a === '4' && b.type === 'webm' ? '6' : a));
+    args.push(...reglages);
     if (b.type === 'webm') args.push('-metadata:s:v:0', 'alpha_mode=1');
     args.push(b.fichier);
   });
@@ -336,7 +340,9 @@ const TEXTE_SECTION = 'Tout ce qui n’est ni le salon de chat ni les jeux : les
   + 'en stickers (8 humeurs, toutes les émotes du moteur JS), la séquence « Crée ta bouille », '
   + 'le logo, des moments de la vie du site (bureau Frutiz, accueil du light, pictos, classements, '
   + 'forum), les polices et la palette. Vidéos en 1920×1080 à 60 i/s ; les éléments à incruster '
-  + 'existent en WebM transparent et en MP4 fond vert.';
+  + 'existent en WebM transparent et en MP4 fond vert. Tout est fictif (comptes locaux, casting). '
+  + 'Absents du dépôt, donc absents ici : un logo animé (fcLogo.swf est un fichier vide), des sons '
+  + 'de site hors jeux (ni connexion, ni chat, ni jingle Frusion : aucun SWF ni dossier n’en contient).';
 
 function lireManifeste() {
   const f = path.join(SORTIE, 'manifest.json');

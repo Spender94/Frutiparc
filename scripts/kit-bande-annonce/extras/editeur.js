@@ -10,8 +10,9 @@
  *    casting) à la bouille par défaut, avec l'éditeur réclamé, et l'on filme :
  *    les flèches cliquées EN RYTHME font défiler yeux, iris, coiffures,
  *    bouche, couleur de peau et de cheveux, jusqu'à retomber exactement sur sa
- *    bouille du casting ; puis « valider ». 720 × 405 à l'échelle 8/3 : la
- *    fenêtre occupe presque toute la hauteur de l'image 1920 × 1080.
+ *    bouille du casting ; puis « valider ». Le bureau en 1280 × 720 à
+ *    l'échelle 3, recadré en 16:9 autour de la fenêtre : elle occupe presque
+ *    toute la hauteur de l'image 1920 × 1080.
  *
  * 2. LA MÊME SÉQUENCE, ISOLÉE ET EN GRAND (cree-ta-bouille/morph-*)
  *    On relève, image par image, l'état de la bouille de l'aperçu pendant le
@@ -70,10 +71,18 @@ async function editeurReel(nav, cible) {
   // Citronade repart de zéro : bouille par défaut, éditeur réclamé.
   await C.compte('citronade', { fbouille: DEFAUT, needs_bouille: true });
   const sid = await C.compte('citronade');
-  const cap = new C.Capture(nav, { largeur: 720, hauteur: 405, echelle: 8 / 3, fps: FPS });
+  // Le bureau (1280 × 720, où la fenêtre s'ouvre au centre) photographié à
+  // l'échelle 3, et recadré en 16:9 autour de la fenêtre : elle remplit
+  // presque toute la hauteur de l'image, le bureau assombri tout autour.
+  const cap = new C.Capture(nav, { largeur: 1280, hauteur: 720, echelle: 3, fps: FPS });
   await cap.ouvrir(C.BASE + '/light?sid=' + sid);
   await S.prechauffer(cap, 5);
   await cap.page.waitForSelector('#fb-editor.show', { timeout: 20000 });
+  await C.attendre(600);
+  const b = await cap.page.locator('#fb-editor').boundingBox();
+  const hClip = Math.round(b.height * 1.1), lClip = Math.round(hClip * 16 / 9);
+  const clip = { x: Math.round(b.x + b.width / 2 - lClip / 2), y: Math.round(b.y + b.height / 2 - hClip / 2),
+    width: lClip, height: hClip };
   const etatApercu = () => cap.page.evaluate(() => {
     const c = document.querySelector('#fb-editor-preview canvas.fp-bvig');
     return c ? c.getAttribute('data-s') : null;
@@ -99,7 +108,8 @@ async function editeurReel(nav, cible) {
   const etats = [];
   let affiche = null;
   const tAffiche = plans[Math.floor(plans.length * 0.55)].t;
-  await S.tourner(cap, plans, { duree, depart: { x: 560, y: 300 },
+  await S.tourner(cap, plans, { duree, clip, curseurEchelle: 0.62,
+    depart: { x: clip.x + clip.width * 0.82, y: clip.y + clip.height * 0.7 },
     enc: async (img, i) => {
       await enc.ecrire(img);
       etats.push(await etatApercu() || etats[etats.length - 1] || DEFAUT);
