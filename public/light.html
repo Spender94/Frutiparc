@@ -16,6 +16,11 @@
 <meta name="apple-mobile-web-app-title" content="Frutiparc">
 <link rel="apple-touch-icon" href="/images/appli/icone-180.png">
 <title>Frutiparc — Mobile</title>
+<!-- Les langues du parc (voir /js/i18n.js) : en anglais, les dictionnaires du
+     client arrivent pendant l'analyse de la page — commun, widgets partagés,
+     client light, bureau Frutiz ; en français, rien n'est chargé. -->
+<script src="/js/i18n.js"></script>
+<script>FPI18n.charger(['commun', 'widgets', 'light', 'bureau']);</script>
 <script>
 /*
  * ON NE MONTRE PAS LE FORMULAIRE À QUELQU'UN QUI ARRIVE DÉJÀ CONNECTÉ.
