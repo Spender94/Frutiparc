@@ -118,6 +118,94 @@ function carteNeuve(maintenant) {
   };
 }
 
+/*
+ * LA FICHE DU MODE INVITÉ (/js/invite.js).
+ *
+ * Un visiteur sans compte, lancé depuis l'accueil, joue la VERSION COMPLÈTE.
+ * Or tout Minipixiz se gagne en jouant, et surtout en REVENANT : la forêt
+ * ouvre ses relais vingt niveaux par vingt niveaux, le bassin donne la fée,
+ * les nuits bâtissent le donjon et font passer l'arc-en-ciel, Gromelin
+ * affiche ses missions au matin (nuit.js). Un invité, qui ne revient pas — sa
+ * fiche ne vit que dans la page —, ne verrait rien de tout cela. On lui pose
+ * donc une fiche d'habitué, faite de ce que le jeu donne lui-même, et rien
+ * de plus :
+ *
+ *   $bag 4, $key 9      le dernier sac (neuf places, PLACES_SAC) et le
+ *                       trousseau plein (Cm.incKey le borne à neuf) : neuf
+ *                       entrées au donjon, une clé chacune ;
+ *   $checkpoint 6       les sept relais de la forêt (RELAIS), donc tous les
+ *                       départs de 1 à 121 ; `$forestMax` les a atteints ;
+ *   $stat.$run 6000     les niveaux courus : au-delà des 5 000 qu'il faut pour
+ *                       bâtir la petite tour (Cm.upkeep), et des 1 000 sans
+ *                       lesquels Gromelin n'a pas de mission ;
+ *   $frog               Ornegon, que le deuxième donjon libère d'ordinaire ;
+ *   $dungeon.$f         la petite tour (rang 0) debout dans la clairière ;
+ *   $rainbow            un arc-en-ciel ce matin, et son lot — tiré comme la
+ *                       nuit le tire (objetArcEnCiel) ;
+ *   $pond               une lueur au fond du bassin : une seconde fée, née
+ *                       comme celles des nuits (genererGraine, qualité 0) ;
+ *   $faerie, $current 0 une fée EN MAIN, née au bassin (genererGraine) puis
+ *                       montée au niveau 8 par les vraies montées de niveau
+ *                       (Fee.monterNiveau) : quatre sorts tirés à sa portée
+ *                       (Spell.getRandomId), et quatre points de carac — deux
+ *                       de vie, un de mana, un d'intelligence —, pour qu'elle
+ *                       tienne la forêt et s'offre ses sorts. Repue, pleine de
+ *                       moral, ses cœurs et sa mana au plein ;
+ *   $mission            les six offres de Gromelin (genererMissions), qui
+ *                       d'ordinaire attendent une nuit.
+ *
+ * Rien qui ne soit à l'album ($stat.$item, les pictos), ni diamant, ni
+ * étoile : ce sont des souvenirs, pas des portes. Et l'horloge est celle de
+ * carteNeuve — maintenant —, si bien qu'aucune nuit ne passe d'ici la fin de
+ * la visite.
+ *
+ * @param {number} [maintenant]  l'heure de la fiche (les tests la fixent)
+ * @param {function} [alea]      le tirage, pour une fiche reproductible
+ */
+const FEE_INVITE_MONTEES = ['vie', 'sort', 'mana', 'sort', 'vie', 'sort', 'intelligence', 'sort'];
+
+function carteInvite(maintenant, alea) {
+  const sousNode = (typeof module !== 'undefined' && module.exports);
+  const F = sousNode ? require('./faerie.js') : racine.MinipixizFee;
+  const N = sousNode ? require('./nuit.js') : racine.MinipixizNuit;
+  const tirer = alea || Math.random;
+  const c = carteNeuve(maintenant);
+  c.$bag = PLACES_SAC.length - 1;
+  c.$key = 9;
+  c.$checkpoint = RELAIS.length - 1;
+  c.$stat.$forestMax = c.$checkpoint * PAS_CHECKPOINT + 1;     // cf. fusionner
+  c.$stat.$run = 6000;
+  c.$frog = true;
+  c.$dungeon = { $lvl: 0, $f: true, $day: 0, $loop: 0 };
+  c.$rainbow = { $f: true, $day: 0, $it: N.objetArcEnCiel(c, (n) => Math.floor(tirer() * n)) };
+  c.$pond = { $fs: F.genererGraine(tirer), $d: 0, $q: 0 };
+
+  const fs = F.genererGraine(tirer);
+  for (const montee of FEE_INVITE_MONTEES) {
+    const fi = new F.Fee(fs, tirer, c);
+    fs.$exp = fi.limiteExp();
+    if (montee === 'sort') {
+      fi.monterNiveau(1);
+    } else {
+      // La caractéristique de la montée se tire au hasard (setNextLevelUp) ;
+      // ici on la choisit, comme le joueur aurait choisi ses montées.
+      fs.$next[0] = F.CARAC[montee === 'vie' ? 'VIE' : montee === 'mana' ? 'MANA' : 'INTELLIGENCE'];
+      fi.monterNiveau(0);
+    }
+  }
+  const fi = new F.Fee(fs, tirer, c);
+  fs.$exp = 0;
+  fs.$hunger = 20;
+  fs.$moral = 20;
+  fs.$life = fi.vieMax();
+  fs.$mana = fi.manaMax();
+  c.$faerie = [fs];
+  c.$current = 0;
+
+  N.genererMissions(c, tirer);
+  return c;
+}
+
 const nombre = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 
 // Un tableau de compteurs d'au moins `n` cases. $game et $kill en ont toujours
@@ -457,8 +545,12 @@ function normaliserPref(o) {
 }
 
 class Plateforme {
-  constructor(sid) {
-    this.sid = sid || '';
+  constructor(sid, options) {
+    // LE MODE INVITÉ : jamais de sid — rien ne se lit ni ne s'écrit sur le
+    // serveur, pas même l'arbre creux, qui se joue sur une graine locale —,
+    // et la fiche d'habitué de carteInvite, en mémoire seulement.
+    this.invite = !!(options && options.invite);
+    this.sid = this.invite ? '' : (sid || '');
     this.carte = carteNeuve();
     this.pref = normaliserPref(null);
     this.charge = false;
@@ -466,7 +558,13 @@ class Plateforme {
   }
 
   // Sans session (le jeu ouvert hors du site), on joue sans rien enregistrer.
+  // L'invité aussi, sur sa fiche d'habitué ; `charge` reste faux. Pas de nuit
+  // à passer : l'horloge de la fiche est celle de maintenant.
   charger() {
+    if (this.invite) {
+      this.carte = carteInvite();
+      return Promise.resolve(this.carte);
+    }
     if (!this.sid) return Promise.resolve(this.carte);
     return fetch('/api/loadFrutiSlots?sid=' + encodeURIComponent(this.sid) + '&game=minipixiz',
       { cache: 'no-store' })
@@ -686,7 +784,7 @@ class Plateforme {
 }
 
 const API = {
-  Plateforme, carteNeuve, reparer, rendreLeCinquiemeDiamant, fusionner, ramasser, fiche,
+  Plateforme, carteNeuve, carteInvite, reparer, rendreLeCinquiemeDiamant, fusionner, ramasser, fiche,
   lireLoadVars, feeEnMain,
   normaliserPref, PREF_DEFAUT,
   nouveauxPictos, porteUneProgression, finDeCourse,
