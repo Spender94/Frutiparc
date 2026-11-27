@@ -127,6 +127,34 @@ function carteNeuve() {
   };
 }
 
+/*
+ * LA FICHE DU MODE INVITÉ (/js/invite.js) — un visiteur sans compte, lancé
+ * depuis l'accueil, joue la VERSION COMPLÈTE : tout ce que les crédits du jeu
+ * achètent au stand est déjà à lui. Les six vaisseaux, les cinq missions qui
+ * existent (levels.json n'en remplit que cinq des huit cases de $mode[1]), et
+ * les deux modes spéciaux — Letter Invader et Endurance ; la troisième case,
+ * « Time », n'a jamais eu de jeu derrière.
+ *
+ * Au stand, ces articles sont marqués acquis ($shop[i] = 0) pour qu'il ne les
+ * revende pas : c'est la BOUTIQUE qui dit lesquels — tout ce qui ouvre un
+ * vaisseau, une mission ou un mode spécial (articles 0 à 9, 15 et 16). Les
+ * smileys et les fonds d'écran (10 à 14), eux, sont des pictos Frutiparc :
+ * ils restent à vendre, et rien ne les donnerait de toute façon — la fiche
+ * d'un invité ne quitte jamais la page.
+ */
+function carteInvite() {
+  const c = carteNeuve();
+  for (const a of BOUTIQUE) {
+    const d = a.debloque;
+    if (d.ship === undefined && d.mission === undefined && d.special === undefined) continue;
+    c.$shop[a.id] = 0;
+    if (d.ship !== undefined) c.$ship[d.ship] = 1;
+    if (d.mission !== undefined) c.$mode[1][d.mission] = 1;
+    if (d.special !== undefined) c.$mode[2][d.special] = 1;
+  }
+  return c;
+}
+
 const nombre = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 
 function tableau(v, n, defaut) {
@@ -421,8 +449,11 @@ function nouveauxPictos(avant, apres) {
 }
 
 class Plateforme {
-  constructor(sid) {
-    this.sid = sid || '';
+  constructor(sid, options) {
+    // LE MODE INVITÉ : jamais de sid (rien ne part au serveur), et la fiche
+    // complète de carteInvite, en mémoire seulement.
+    this.invite = !!(options && options.invite);
+    this.sid = this.invite ? '' : (sid || '');
     this.carte = carteNeuve();
     // Tant que la fiche du serveur n'est pas là, on refuse d'enregistrer : on
     // n'a rien à quoi fusionner, et écrire écraserait tout.
@@ -444,7 +475,13 @@ class Plateforme {
   }
 
   // Sans session (le jeu ouvert hors du site), on joue sans rien enregistrer.
+  // L'invité aussi, mais avec tout le stand déjà acquis. `charge` reste faux :
+  // même un sid glissé plus tard n'écrirait rien.
   charger() {
+    if (this.invite) {
+      this.carte = carteInvite();
+      return Promise.resolve(this.carte);
+    }
     if (!this.sid) return Promise.resolve(this.carte);
     return fetch('/api/loadFrutiSlots?sid=' + encodeURIComponent(this.sid) + '&game=miniwave',
       { cache: 'no-store' })
@@ -554,7 +591,7 @@ class Plateforme {
 }
 
 const API = {
-  Plateforme, carteNeuve, normaliser, versTuyau, lireLoadVars, fusionner,
+  Plateforme, carteNeuve, carteInvite, normaliser, versTuyau, lireLoadVars, fusionner,
   acheter, estAchete, article, grade, majGrade, modesOuverts, nouveauxPictos, arcadeFinie,
   BOUTIQUE, VAISSEAUX, GRADES, NB_ENNEMIS, NB_VAISSEAUX, NB_ARTICLES, NB_MISSIONS, NB_NIVEAUX_ARCADE,
   VERSION,

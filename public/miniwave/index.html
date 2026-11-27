@@ -176,6 +176,8 @@
   #message.on { opacity: 1; }
 </style>
 <script src="/js/sid-discret.js"></script>
+<!-- Le mode invité (?invite=1, lancé depuis l'accueil) : voir le fichier. -->
+<script src="/js/invite.js"></script>
 </head>
 <body>
 
@@ -218,11 +220,15 @@
 <script>
 (function () {
   var $ = function (s) { return document.querySelector(s); };
-  var sid = (window.FPSid && FPSid.sid) || new URLSearchParams(location.search).get('sid') || '';
+  // LE MODE INVITÉ (/js/invite.js) : un visiteur sans compte, lancé depuis
+  // l'accueil. Pas de sid, jamais — et donc ni fiche lue ou écrite, ni score,
+  // ni voyant « en partie » —, mais tout le stand ouvert (P.carteInvite).
+  var invite = !!(window.FPInvite && FPInvite.actif);
+  var sid = invite ? '' : ((window.FPSid && FPSid.sid) || new URLSearchParams(location.search).get('sid') || '');
   var sons = new window.MiniwaveSons.Sons();
   var P = window.MiniwavePlateforme;
   var Menu = window.MiniwaveMenu;
-  var plateforme = new P.Plateforme(sid);
+  var plateforme = new P.Plateforme(sid, { invite: invite });
   var client = null, niveaux = null, ui = null;
   // Ce qui a été lancé en dernier : sert au bouton « Rejouer ».
   var enCours = null;
@@ -343,6 +349,9 @@
 
   // Ce que la partie (ou un achat) vient d'ouvrir, dit au joueur.
   function resumePictos(r) {
+    // L'invité n'a pas de compte à qui le dire : c'est le panneau de
+    // l'inscription (finDePartie, plus bas) qui en parle.
+    if (!r.enregistre && invite) return '';
     if (!r.enregistre) return sid ? 'Progression non enregistrée.' : 'Partie hors compte.';
     if (!r.gagnes.length) return 'Progression enregistrée.';
     var noms = r.gagnes.map(function (p) {
@@ -536,6 +545,18 @@
           + (l.mode === 'survival' ? ('palier ' + (info.level + 1)) : ('niveau ' + (info.level + 1)));
         $('#fin-pictos').textContent = '';
         $('#fin').classList.add('on');
+        // LE MODE INVITÉ : le panneau « Inscris-toi ! » vient se poser sur
+        // l'écran de fin, une fois que le joueur l'a vu — l'écran attend ses
+        // boutons Menu et Rejouer, rien ne repart sans lui. Si l'on a déjà
+        // relancé ou quitté entre-temps, on ne dit rien : jamais par-dessus
+        // une partie.
+        if (invite) {
+          setTimeout(function () {
+            if ($('#fin').classList.contains('on')) {
+              FPInvite.finDePartie({ score: info.score + ' points', libelle: 'Ton score' });
+            }
+          }, 700);
+        }
         // Le CHALLENGE est le mode classé : la map du jour est la même pour
         // tous, les scores se comparent. Son score part au classement à chaque
         // fin de partie, avec le NIVEAU atteint en donnée (le moteur compte
