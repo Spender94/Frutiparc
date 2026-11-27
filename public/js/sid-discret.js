@@ -24,6 +24,10 @@
   var sid = '';
   try {
     var p = new URLSearchParams(location.search);
+    // LE MODE INVITÉ (?invite=1, lancé depuis l'accueil) n'a JAMAIS de sid : ni
+    // celui de l'adresse, ni celui que l'onglet aurait gardé d'une partie
+    // connectée (voir /js/invite.js).
+    if (p.get('invite') === '1') { window.FPSid = { sid: '', invite: true }; return; }
     sid = p.get('sid') || '';
     if (sid) {
       var garde = '';

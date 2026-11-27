@@ -316,6 +316,48 @@
 
     .hidden { display: none !important; }
 
+    /* ── LE MODE INVITÉ : un jeu essayé sans compte, dans une fenêtre posée sur
+       l'accueil (voir ouvrirJeu). Plein écran sur téléphone. ── */
+    .games .games-astuce { text-align: center; color: #73B01E; font-size: 11px; margin: -2px 0 6px; }
+    .game-card:focus-visible { outline: 3px solid #4f7d1e; outline-offset: 1px; }
+    #jeu-invite {
+      position: fixed; inset: 0; z-index: 1000; background: rgba(30, 52, 8, .72);
+      display: flex; align-items: center; justify-content: center; padding: 12px;
+    }
+    #jeu-invite .ji-fenetre {
+      width: min(1200px, 100%); height: min(860px, 100%); display: flex; flex-direction: column;
+      background: #ADE76B; border: 3px solid #94DB39; border-radius: 12px; overflow: hidden;
+      box-shadow: 0 10px 40px rgba(0,0,0,.45);
+    }
+    #jeu-invite .ji-barre {
+      flex: none; display: flex; align-items: center; gap: 10px; padding: 6px 8px 6px 12px;
+      background: #E8F8D3; border-bottom: 2px solid #94DB39; color: #335511; font-size: 13px;
+    }
+    #jeu-invite .ji-titre { font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #jeu-invite .ji-note { color: #5A7D33; font-size: 11px; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #jeu-invite .ji-barre button {
+      flex: none; font: bold 12px Verdana, Geneva, sans-serif; border-radius: 12px; padding: 6px 12px;
+      cursor: pointer; min-height: 32px;
+    }
+    #jeu-invite .ji-inscrire { background: #73B01E; color: #fff; border: 2px solid #4f7d1e; }
+    #jeu-invite .ji-fermer { background: #fff; color: #335511; border: 2px solid #ADE76B; min-width: 36px; }
+    #jeu-invite iframe { flex: 1; width: 100%; border: 0; display: block; background: #ADE76B; }
+    #jeu-invite .ji-message {
+      flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 12px; padding: 24px; text-align: center; color: #2C4A0F; font-size: 15px;
+    }
+    #jeu-invite .ji-message img { width: 140px; height: 140px; object-fit: cover; border-radius: 12px; border: 2px solid #94DB39; }
+    #jeu-invite .ji-message button {
+      font: bold 14px Verdana, Geneva, sans-serif; border-radius: 14px; padding: 9px 18px; cursor: pointer;
+      background: #73B01E; color: #fff; border: 2px solid #4f7d1e;
+    }
+    body.jeu-ouvert { overflow: hidden; }
+    @media (max-width: 760px) {
+      #jeu-invite { padding: 0; }
+      #jeu-invite .ji-fenetre { width: 100%; height: 100%; border: 0; border-radius: 0; }
+      #jeu-invite .ji-note { display: none; }
+    }
+
     /* ────────── Mobile : la home était 100% desktop (logo absolu, grilles
        2 colonnes, largeurs/hauteurs fixes). Ici tout s'empile, et chaque bloc
        prend l'allure d'une appli : une scène fruitée en haut, une carte de
@@ -506,6 +548,7 @@
   <section id="main-content" class="layout">
     <aside class="games">
       <h3 id="game-title">Sélectionner un jeu</h3>
+      <p class="games-astuce">Clique pour essayer, sans inscription !</p>
       <div class="games-list" id="games-list"></div>
     </aside>
 
@@ -556,6 +599,20 @@
 
   <div class="status" id="status" aria-live="polite"></div>
 
+  <!-- Le jeu essayé en invité (ouvrirJeu) : une fenêtre sur l'accueil. -->
+  <div id="jeu-invite" class="hidden" role="dialog" aria-modal="true" aria-labelledby="ji-titre">
+    <div class="ji-fenetre">
+      <div class="ji-barre">
+        <span class="ji-titre" id="ji-titre"></span>
+        <span class="ji-note">Mode invité : version complète, scores non enregistrés.</span>
+        <button type="button" class="ji-inscrire" id="ji-inscrire">M’inscrire</button>
+        <button type="button" class="ji-fermer" id="ji-fermer" aria-label="Fermer le jeu">✕</button>
+      </div>
+      <iframe id="ji-cadre" title="Jeu" allow="autoplay; fullscreen; gamepad" referrerpolicy="no-referrer"></iframe>
+      <div class="ji-message hidden" id="ji-message"></div>
+    </div>
+  </div>
+
   <footer>
     <!-- Se connecter mène au portage natif ; le Flash reste à un clic, ici et
          dans le menu de l'onglet Bureau (« Mode Flash »). -->
@@ -582,17 +639,22 @@
   <script>
     const ASSET_BASE = '/images';
 
+    /* `page` : la page du jeu, ouverte en MODE INVITÉ (?invite=1) — version
+       complète, rien n'est lu ni écrit sur le serveur, et un panneau propose
+       l'inscription en fin de partie (voir /js/invite.js). Les jeux EN LIGNE
+       (Frutibandas, Grapiz) se jouent contre les autres frutiz : sans compte,
+       on invite à s'inscrire. */
     const games = [
-      { id: 'bk', name: 'Burning Kiwi', image: 'bk.png' },
-      { id: 'frutisnake', name: 'FrutiSnake 2', image: 'frutisnake.png' },
-      { id: 'mb', name: 'Motion Ball 2', image: 'mb.png' },
-      { id: 'fb', name: 'FrutiBandas', image: 'fb.png' },
-      { id: 'swapou', name: 'Swapou 2', image: 'swapou.png' },
-      { id: 'grapiz', name: 'Grapiz', image: 'grapiz.png' },
-      { id: 'kaluga', name: 'Kaluga', image: 'kaluga.png' },
-      { id: 'mwave', name: 'Mini-Wave', image: 'mwave.png' },
-      { id: 'jamajama', name: 'JamaJama', image: 'jamajama.png' },
-      { id: 'mpixiz', name: 'Mini-Pixiz', image: 'mpixiz.png' }
+      { id: 'bk', name: 'Burning Kiwi', image: 'bk.png', page: '/bkiwi/' },
+      { id: 'frutisnake', name: 'FrutiSnake', image: 'frutisnake.png', page: '/snake3/' },
+      { id: 'mb', name: 'Motion Ball 2', image: 'mb.png', page: '/mb2/' },
+      { id: 'fb', name: 'FrutiBandas', image: 'fb.png', enLigne: true },
+      { id: 'swapou', name: 'Swapou 2', image: 'swapou.png', page: '/swapou/' },
+      { id: 'grapiz', name: 'Grapiz', image: 'grapiz.png', enLigne: true },
+      { id: 'kaluga', name: 'Kaluga', image: 'kaluga.png', page: '/kaluga/' },
+      { id: 'mwave', name: 'Mini-Wave', image: 'mwave.png', page: '/miniwave/' },
+      { id: 'jamajama', name: 'JamaJama', image: 'jamajama.png', page: '/jamajama/' },
+      { id: 'mpixiz', name: 'Mini-Pixiz', image: 'mpixiz.png', page: '/minipixiz/' }
     ];
 
     const loginForm = document.getElementById('login-form');
@@ -688,6 +750,13 @@
         nom.className = 'game-name';
         nom.textContent = game.name;
         card.appendChild(nom);
+        card.setAttribute('role', 'button');
+        card.tabIndex = 0;
+        card.setAttribute('aria-label', game.enLigne ? game.name + ' (jeu en ligne)' : 'Essayer ' + game.name);
+        card.addEventListener('click', () => ouvrirJeu(game));
+        card.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ouvrirJeu(game); }
+        });
         card.addEventListener('mouseenter', () => {
           selectedGame = game.name;
           gameTitle.textContent = selectedGame;
@@ -790,7 +859,77 @@
       });
     }
 
+    /*
+     * LE JEU ESSAYÉ EN INVITÉ. La page du jeu tourne dans un cadre, avec
+     * `?invite=1` et SANS sid : elle ne connaît personne. Quand le visiteur
+     * veut s'inscrire — le bouton de la barre, ou le panneau de fin de partie
+     * du jeu (message `fp-invite`) —, on ferme le jeu et l'on ouvre le
+     * formulaire d'inscription de l'accueil.
+     */
+    const jeuInvite = document.getElementById('jeu-invite');
+    const jiCadre = document.getElementById('ji-cadre');
+    const jiMessage = document.getElementById('ji-message');
+    let focusAvantJeu = null;
+
+    function ouvrirJeu(game) {
+      focusAvantJeu = document.activeElement;
+      document.getElementById('ji-titre').textContent = game.name;
+      if (game.enLigne) {
+        jiCadre.classList.add('hidden');
+        jiCadre.src = 'about:blank';
+        jiMessage.classList.remove('hidden');
+        jiMessage.innerHTML = '';
+        const img = document.createElement('img');
+        img.src = `${ASSET_BASE}/${game.image}`; img.alt = '';
+        const p = document.createElement('p');
+        p.textContent = game.name + ' se joue en ligne, contre les autres frutiz : inscris-toi pour défier tout le parc !';
+        const b = document.createElement('button');
+        b.type = 'button'; b.textContent = 'M’inscrire';
+        b.addEventListener('click', inscriptionDepuisJeu);
+        jiMessage.append(img, p, b);
+      } else {
+        jiMessage.classList.add('hidden');
+        jiCadre.classList.remove('hidden');
+        jiCadre.title = game.name;
+        jiCadre.src = game.page + '?invite=1';
+      }
+      jeuInvite.classList.remove('hidden');
+      document.body.classList.add('jeu-ouvert');
+      setTimeout(() => {
+        try { (game.enLigne ? jiMessage.querySelector('button') : jiCadre).focus(); } catch (e) { /* rien */ }
+      }, 50);
+    }
+
+    function fermerJeu() {
+      if (jeuInvite.classList.contains('hidden')) return;
+      jeuInvite.classList.add('hidden');
+      document.body.classList.remove('jeu-ouvert');
+      jiCadre.src = 'about:blank';   // coupe le son et la boucle du jeu
+      if (focusAvantJeu && focusAvantJeu.focus) { try { focusAvantJeu.focus(); } catch (e) { /* rien */ } }
+    }
+
+    function inscriptionDepuisJeu() {
+      fermerJeu();
+      showRegister(true);
+      registerForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    document.getElementById('ji-fermer').addEventListener('click', fermerJeu);
+    document.getElementById('ji-inscrire').addEventListener('click', inscriptionDepuisJeu);
+    // Échap ferme le jeu — sauf si le jeu, qui a le focus, s'en sert : ses
+    // touches n'arrivent pas jusqu'ici.
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') fermerJeu(); });
+    window.addEventListener('message', (e) => {
+      if (e.origin !== location.origin) return;
+      const d = e.data;
+      if (d && d.type === 'fp-invite' && d.action === 'inscription') inscriptionDepuisJeu();
+    });
+
     renderGames();
+
+    // `/?inscription=1` : le panneau d'un jeu ouvert seul (hors de l'accueil)
+    // mène ici, formulaire d'inscription ouvert.
+    if (new URLSearchParams(location.search).get('inscription') === '1') showRegister(true);
   </script>
 </body>
 </html>
