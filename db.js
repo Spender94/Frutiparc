@@ -171,6 +171,9 @@ async function initSchema() {
         -- Le compte est inactif depuis longtemps et le joueur en a été averti
         -- par e-mail : la date du préavis. L'effacement attend trente jours.
         ALTER TABLE users ADD COLUMN IF NOT EXISTS inactivity_warned_at TIMESTAMPTZ;
+        -- La langue du joueur (« fr », « en ») : celle du site, des jeux, et des
+        -- répliques des PNJ qu'il reçoit (voir public/js/i18n.js).
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS lang TEXT DEFAULT 'fr';
         -- Une date de naissance INVENTÉE (1990-05-15) était posée d'office sur
         -- chaque compte : tout le monde avait « 36 ans » sur sa fiche sans
         -- l'avoir jamais dit. Elle est facultative et se renseigne dans la

@@ -5,6 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="icon" href="/favicon.ico" type="image/x-icon" />
   <title>Frutiparc : Des fruits, des jeux, du chat !</title>
+  <!-- Les langues du parc (voir /js/i18n.js) : en anglais, le dictionnaire de
+       l'accueil arrive pendant l'analyse de la page ; en français, rien. -->
+  <script src="/js/i18n.js"></script>
+  <script>FPI18n.charger(['commun', 'accueil']);</script>
   <style>
     :root {
       --green-bg: #aee868;
@@ -316,6 +320,27 @@
 
     .hidden { display: none !important; }
 
+    /* ── LES IMAGES QUI PORTENT DU FRANÇAIS (« NOM », « Bienvenue sur
+       Frutiparc », les boutons roses) restent en français ; en anglais, un
+       texte en CSS les remplace (`.txt-en`). <html lang> est posé par
+       /js/i18n.js dès le <head> : le bon des deux paraît au premier affichage. */
+    .txt-en { display: none !important; }
+    html[lang="en"] .img-fr { display: none !important; }
+    html[lang="en"] .txt-en { display: inline-block !important; }
+    .label-txt { font: 900 13px/1 'Arial Black', Arial, sans-serif; color: #fff; letter-spacing: .5px;
+      -webkit-text-stroke: 1px #4f7d1e; paint-order: stroke fill; text-shadow: 0 1px 0 #4f7d1e; vertical-align: middle; }
+    .welcome-title-txt { font: 900 26px/1.1 'Arial Rounded MT Bold', 'Trebuchet MS', Arial, sans-serif; color: #f05a8c;
+      -webkit-text-stroke: 1.5px #a8174a; paint-order: stroke fill; text-shadow: 2px 2px 0 #fff, 3px 3px 0 #a8174a;
+      margin: 0 0 8px; transform: rotate(-2deg); }
+    .cta-btn { font: 900 15px/1 'Arial Black', Arial, sans-serif; color: #fff; background: linear-gradient(#ff7fae, #e2367a);
+      border: 2px solid #a8174a; border-radius: 20px; padding: 10px 18px 10px 14px; cursor: pointer; letter-spacing: .5px;
+      box-shadow: 0 2px 0 #a8174a; }
+    .cta-btn::before { content: '\25B6\00A0'; font-size: 11px; vertical-align: 1px; }
+    .langues { position: absolute; top: 6px; right: 10px; font-size: 11px; z-index: 5; }
+    .langues a { color: #335511; text-decoration: none; background: rgba(255,255,255,.85); border: 1px solid #94DB39;
+      border-radius: 10px; padding: 2px 8px; margin-left: 4px; }
+    .langues a[aria-current="true"] { background: #73B01E; color: #fff; border-color: #4f7d1e; }
+
     /* ── LE MODE INVITÉ : un jeu essayé sans compte, dans une fenêtre posée sur
        l'accueil (voir ouvrirJeu). Plein écran sur téléphone. ── */
     .games .games-astuce { text-align: center; color: #73B01E; font-size: 11px; margin: -2px 0 6px; }
@@ -524,63 +549,70 @@
        MÈNE au portage natif, elle proposait donc d'aller là où l'on va
        déjà. Le Flash, lui, se rejoint par le lien du pied de page ou par
        « Mode Flash » dans le menu de l'onglet Bureau. -->
+  <!-- Le choix de la langue : retenu dans le navigateur (fp_lang), et par le
+       compte à la connexion (voir le formulaire plus bas). -->
+  <nav class="langues" aria-label="Langue / Language">
+    <a href="?lang=fr" data-lang="fr" lang="fr">Français</a><a href="?lang=en" data-lang="en" lang="en">English</a>
+  </nav>
   <header class="topbar" id="topbar">
     <img class="logo" src="/images/logo.png" alt="Frutiparc" />
     <form id="login-form" class="login-form" autocomplete="on">
-      <label for="username"><img class="label-img" src="/images/nom.png" alt="Nom" /></label>
+      <label for="username"><img class="label-img img-fr" src="/images/nom.png" alt="Nom" /><span class="label-txt txt-en">NAME</span></label>
       <input id="username" name="username" minlength="3" maxlength="20" required />
       <label for="password"><img class="label-img" src="/images/code.png" alt="Code" /></label>
       <input id="password" name="password" type="password" minlength="6" maxlength="80" required />
-      <label class="mode-inline"><span class="mode-check-wrap" id="mode-ring-wrap"><input type="checkbox" id="mode-frutiz" /><svg class="mode-ring" viewBox="0 0 30 30" aria-hidden="true"><circle cx="15" cy="15" r="10.5"></circle></svg></span>MODE FRUTIZ</label>
+      <label class="mode-inline"><span class="mode-check-wrap" id="mode-ring-wrap"><input type="checkbox" id="mode-frutiz" /><svg class="mode-ring" viewBox="0 0 30 30" aria-hidden="true"><circle cx="15" cy="15" r="10.5"></circle></svg></span><span data-i18n="accueil.modeFrutiz">MODE FRUTIZ</span></label>
       <button class="btn btn-primary" type="submit">OK</button>
-      <button class="btn btn-secondary" type="button" id="register-toggle">S'inscrire gratuitement</button>
+      <button class="btn btn-secondary" type="button" id="register-toggle" data-i18n="accueil.inscrireGratuit">S'inscrire gratuitement</button>
     </form>
   </header>
 
   <!-- Le formulaire d'inscription est désormais dans le bloc central (#main-content). -->
 
   <section id="loading" class="loading hidden">
-    <h2>Connexion en cours…</h2>
-    <p>Préparation de ton bureau Frutiz.</p>
+    <h2 data-i18n="accueil.connexionEnCours">Connexion en cours…</h2>
+    <p data-i18n="accueil.preparationBureau">Préparation de ton bureau Frutiz.</p>
     <div class="bar"></div>
   </section>
 
   <section id="main-content" class="layout">
     <aside class="games">
-      <h3 id="game-title">Sélectionner un jeu</h3>
-      <p class="games-astuce">Clique pour essayer, sans inscription !</p>
+      <h3 id="game-title" data-i18n="accueil.choisirJeu">Sélectionner un jeu</h3>
+      <p class="games-astuce" data-i18n="accueil.astuceEssai">Clique pour essayer, sans inscription !</p>
       <div class="games-list" id="games-list"></div>
     </aside>
 
     <article class="main">
       <div class="welcome-left">
-        <img class="welcome-title" src="/images/welcome_title.gif" alt="Bienvenue sur Frutiparc" />
+        <img class="welcome-title img-fr" src="/images/welcome_title.gif" alt="Bienvenue sur Frutiparc" />
+        <h1 class="welcome-title-txt txt-en">Welcome to Frutiparc!</h1>
 
         <!-- Accueil par défaut : texte + boutons (masqué pendant l'inscription) -->
         <div id="welcome-text">
-          <p><strong>Découvrez l'univers fruité de Frutiparc ! <span style="color:#d82222;">Inscrivez-vous</span></strong> et jouez à nos jeux fruités : réflexion, arcade et multijoueurs.</p>
-          <p>Chaque jour, profitez de plusieurs parties gratuites pour battre les autres joueurs et grimper au classement.</p>
-          <p>Frutiparc c'est aussi le mode Frutiz : e-mail, salons de discussions, forums et blog, dans une interface fruitée.</p>
+          <p data-i18n-html="accueil.texte1"><strong>Découvrez l'univers fruité de Frutiparc ! <span style="color:#d82222;">Inscrivez-vous</span></strong> et jouez à nos jeux fruités : réflexion, arcade et multijoueurs.</p>
+          <p data-i18n="accueil.texte2">Chaque jour, profitez de plusieurs parties gratuites pour battre les autres joueurs et grimper au classement.</p>
+          <p data-i18n="accueil.texte3">Frutiparc c'est aussi le mode Frutiz : e-mail, salons de discussions, forums et blog, dans une interface fruitée.</p>
 
           <div class="cta">
-            <img src="/images/decouvrir.gif" alt="Découvrir" />
-            <img src="/images/sinscrire.gif" alt="S'inscrire" id="cta-register" />
+            <img class="img-fr" src="/images/decouvrir.gif" alt="Découvrir" />
+            <img class="img-fr" src="/images/sinscrire.gif" alt="S'inscrire" id="cta-register" />
+            <button type="button" class="cta-btn txt-en" id="cta-register-en">SIGN UP</button>
           </div>
         </div>
 
         <!-- Formulaire simple : remplace le texte au clic sur « S'inscrire » -->
         <form id="register-form" class="register-simple hidden" autocomplete="on">
-          <label for="reg-username">Pseudo</label>
+          <label for="reg-username" data-i18n="accueil.pseudo">Pseudo</label>
           <input id="reg-username" name="username" minlength="3" maxlength="20" required autocapitalize="none" autocorrect="off" spellcheck="false" />
-          <label for="reg-password">Code secret</label>
+          <label for="reg-password" data-i18n="accueil.codeSecret">Code secret</label>
           <input id="reg-password" name="password" type="password" minlength="6" maxlength="80" required />
-          <label for="reg-email">E-mail <span class="opt">(facultatif)</span></label>
+          <label for="reg-email" data-i18n-html="accueil.email">E-mail <span class="opt">(facultatif)</span></label>
           <input id="reg-email" name="email" type="email" maxlength="120" autocomplete="email" />
-          <label for="reg-parrain">Nom du parrain <span class="opt">(facultatif)</span></label>
+          <label for="reg-parrain" data-i18n-html="accueil.parrain">Nom du parrain <span class="opt">(facultatif)</span></label>
           <input id="reg-parrain" name="parrain" type="text" maxlength="20" autocapitalize="none" autocorrect="off" spellcheck="false" />
           <div class="register-actions">
-            <button class="btn btn-primary" type="submit">Valider</button>
-            <button class="btn btn-secondary" type="button" id="register-cancel">Annuler</button>
+            <button class="btn btn-primary" type="submit" data-i18n="commun.valider">Valider</button>
+            <button class="btn btn-secondary" type="button" id="register-cancel" data-i18n="commun.annuler">Annuler</button>
           </div>
         </form>
       </div>
@@ -592,9 +624,9 @@
   </section>
 
   <section id="welcome-user" class="loading hidden">
-    <h2>Bienvenue sur le bureau Frutiz</h2>
+    <h2 data-i18n="accueil.bienvenueBureau">Bienvenue sur le bureau Frutiz</h2>
     <p id="welcome-user-text"></p>
-    <p><a href="/light">Entrer dans Frutiparc</a></p>
+    <p><a href="/light" data-i18n="accueil.entrer">Entrer dans Frutiparc</a></p>
   </section>
 
   <div class="status" id="status" aria-live="polite"></div>
@@ -604,9 +636,9 @@
     <div class="ji-fenetre">
       <div class="ji-barre">
         <span class="ji-titre" id="ji-titre"></span>
-        <span class="ji-note">Mode invité : version complète, scores non enregistrés.</span>
-        <button type="button" class="ji-inscrire" id="ji-inscrire">M’inscrire</button>
-        <button type="button" class="ji-fermer" id="ji-fermer" aria-label="Fermer le jeu">✕</button>
+        <span class="ji-note" data-i18n="accueil.inviteNote">Mode invité : version complète, scores non enregistrés.</span>
+        <button type="button" class="ji-inscrire" id="ji-inscrire" data-i18n="commun.minscrire">M’inscrire</button>
+        <button type="button" class="ji-fermer" id="ji-fermer" aria-label="Fermer le jeu" data-i18n-attr="aria-label:accueil.fermerJeu">✕</button>
       </div>
       <iframe id="ji-cadre" title="Jeu" allow="autoplay; fullscreen; gamepad" referrerpolicy="no-referrer"></iframe>
       <div class="ji-message hidden" id="ji-message"></div>
@@ -616,24 +648,24 @@
   <footer>
     <!-- Se connecter mène au portage natif ; le Flash reste à un clic, ici et
          dans le menu de l'onglet Bureau (« Mode Flash »). -->
-    <div class="footer-top">Aide (Gaspard) · <a href="#" id="forgot-link" style="color:inherit;text-decoration:underline">Oubli de code secret</a> · <a href="/legacy" style="color:inherit;text-decoration:underline">Version Flash</a></div>
+    <div class="footer-top"><span data-i18n="accueil.aideGaspard">Aide (Gaspard)</span> · <a href="#" id="forgot-link" style="color:inherit;text-decoration:underline" data-i18n="accueil.oubliCode">Oubli de code secret</a> · <a href="/legacy" style="color:inherit;text-decoration:underline" data-i18n="accueil.versionFlash">Version Flash</a></div>
 
     <!-- Forgot-password inline form (revealed by the footer link) -->
     <div id="forgot-box" class="hidden" style="max-width:360px;margin:10px auto 0;background:#fff;border:1px solid #5a8a20;border-radius:10px;padding:14px;text-align:left">
-      <strong style="display:block;margin-bottom:6px;color:#2C4A0F">Oubli de code secret</strong>
-      <p style="font-size:12px;color:#4f7b1f;margin:0 0 8px">Indique l'adresse e-mail de ton compte : on t'enverra un lien pour choisir un nouveau code secret.</p>
+      <strong style="display:block;margin-bottom:6px;color:#2C4A0F" data-i18n="accueil.oubliCode">Oubli de code secret</strong>
+      <p style="font-size:12px;color:#4f7b1f;margin:0 0 8px" data-i18n="accueil.oubliTexte">Indique l'adresse e-mail de ton compte : on t'enverra un lien pour choisir un nouveau code secret.</p>
       <form id="forgot-form" autocomplete="on">
-        <input id="forgot-email" type="email" placeholder="ton@email.com" autocomplete="email"
+        <input id="forgot-email" type="email" placeholder="ton@email.com" autocomplete="email" data-i18n-attr="placeholder:accueil.oubliPlaceholder"
           style="width:100%;padding:9px 10px;border:1px solid #5a8a20;border-radius:6px;font-size:15px;margin-bottom:8px" />
         <div style="display:flex;gap:8px">
-          <button class="btn" type="submit" id="forgot-submit">Envoyer le lien</button>
-          <button class="btn btn-secondary" type="button" id="forgot-cancel">Annuler</button>
+          <button class="btn" type="submit" id="forgot-submit" data-i18n="accueil.envoyerLien">Envoyer le lien</button>
+          <button class="btn btn-secondary" type="button" id="forgot-cancel" data-i18n="commun.annuler">Annuler</button>
         </div>
         <div id="forgot-msg" style="font-size:12px;margin-top:8px;min-height:14px"></div>
       </form>
     </div>
 
-    <div class="footer-bottom">Jeu original &copy; 2002-2007 Motion Twin · Frutiparc Revival, ré-adaptation non officielle par des fans, sans affiliation avec Motion Twin<br/>Partenaires (d'époque) : KadoKado · Dinoparc · Monlapin.net · Jeux Gratuits</div>
+    <div class="footer-bottom" data-i18n-html="accueil.mentions">Jeu original &copy; 2002-2007 Motion Twin · Frutiparc Revival, ré-adaptation non officielle par des fans, sans affiliation avec Motion Twin<br/>Partenaires (d'époque) : KadoKado · Dinoparc · Monlapin.net · Jeux Gratuits</div>
   </footer>
 
   <script>
@@ -693,7 +725,7 @@
       if (txt) txt.classList.toggle('hidden', !!show);
       registerForm.classList.toggle('hidden', !show);
       if (show) {
-        setStatus('Crée ton compte pour rejoindre Frutiparc !');
+        setStatus(T('accueil.creeCompte', 'Crée ton compte pour rejoindre Frutiparc !'));
         const u = document.getElementById('reg-username'); if (u) u.focus();
       } else {
         setStatus('');
@@ -713,7 +745,7 @@
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(data.message || `Erreur HTTP ${res.status}`);
+        throw new Error(data.message || T('commun.erreurHttp', 'Erreur HTTP {statut}', { statut: res.status }));
       }
       return data;
     }
@@ -723,7 +755,7 @@
       topbar.classList.toggle('hidden', visible);
       registerForm.classList.add('hidden');
       mainContent.classList.toggle('hidden', visible);
-      setStatus(visible ? 'Connexion en cours…' : '');
+      setStatus(visible ? T('accueil.connexionEnCours', 'Connexion en cours…') : '');
     }
 
     /* Les vignettes sont bâties UNE fois ; le survol ne fait que changer leurs
@@ -763,7 +795,9 @@
         card.appendChild(nom);
         card.setAttribute('role', 'button');
         card.tabIndex = 0;
-        card.setAttribute('aria-label', game.enLigne ? game.name + ' (jeu en ligne)' : 'Essayer ' + game.name);
+        card.setAttribute('aria-label', game.enLigne
+          ? T('accueil.jeuEnLigneLabel', '{jeu} (jeu en ligne)', { jeu: game.name })
+          : T('accueil.essayerLabel', 'Essayer {jeu}', { jeu: game.name }));
         card.addEventListener('click', () => ouvrirJeu(game));
         card.addEventListener('keydown', (e) => {
           if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ouvrirJeu(game); }
@@ -775,7 +809,7 @@
         });
         card.addEventListener('mouseleave', () => {
           selectedGame = null;
-          gameTitle.textContent = 'Sélectionner un jeu';
+          gameTitle.textContent = T('accueil.choisirJeu', 'Sélectionner un jeu');
           majCartes();
         });
         gamesList.appendChild(card);
@@ -786,19 +820,21 @@
     document.getElementById('register-toggle').addEventListener('click', () => showRegister(true));
     document.getElementById('register-cancel').addEventListener('click', () => showRegister(false));
     document.getElementById('cta-register').addEventListener('click', () => showRegister(true));
+    document.getElementById('cta-register-en').addEventListener('click', () => showRegister(true));
 
     registerForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       const body = Object.fromEntries(new FormData(registerForm).entries());
       body.device_token = getDeviceToken();
-      setStatus('Création du compte…');
+      body.lang = FPI18n.langue;
+      setStatus(T('accueil.creationCompte', 'Création du compte…'));
       try {
         await postJson('/api/auth/register', body);
         showRegister(false);
-        setStatus('Compte créé ! Tu peux maintenant te connecter en haut de page.', false);
+        setStatus(T('accueil.compteCree', 'Compte créé ! Tu peux maintenant te connecter en haut de page.'), false);
         registerForm.reset();
       } catch (error) {
-        setStatus(error.message || 'Inscription impossible.', true);
+        setStatus(error.message || T('accueil.inscriptionImpossible', 'Inscription impossible.'), true);
       }
     });
 
@@ -806,10 +842,21 @@
       event.preventDefault();
       const body = Object.fromEntries(new FormData(loginForm).entries());
       body.device_token = getDeviceToken();
-      setStatus('Connexion...');
+      setStatus(T('accueil.connexion', 'Connexion...'));
       try {
         const data = await postJson('/api/auth/login', body);
         localStorage.setItem('currentUser', JSON.stringify({ username: body.username }));
+        /* LA LANGUE : celle du compte suit le joueur d'un appareil à l'autre —
+           sauf s'il vient de la choisir ici (sélecteur ou ?lang=), auquel cas
+           c'est le compte qui l'adopte. */
+        if (data.sid && langueChoisieIci() && data.lang !== FPI18n.langue) {
+          await fetch('/api/light/langue', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sid: data.sid, lang: FPI18n.langue }),
+          }).catch(() => {});
+        } else if (data.lang) {
+          try { localStorage.setItem('fp_lang', data.lang); } catch (e) { /* pas de stockage */ }
+        }
         /* Le serveur renvoie `/light?sid=…` — la porte d'entrée. On n'en
            dévie que si l'on venait EXPRÈS du Flash : `/legacy` sans session
            renvoie ici avec `?vers=flash`, et c'est là qu'on finit le voyage
@@ -819,7 +866,7 @@
           ? '/legacy?sid=' + encodeURIComponent(data.sid)
           : (data.redirect || '/light');
       } catch (error) {
-        setStatus(error.message || 'Les identifiants sont incorrects.', true);
+        setStatus(error.message || T('accueil.identifiantsIncorrects', 'Les identifiants sont incorrects.'), true);
       }
     });
 
@@ -855,16 +902,16 @@
         const email = document.getElementById('forgot-email').value.trim();
         const btn = document.getElementById('forgot-submit');
         forgotMsg.style.color = '#4f7b1f';
-        if (!email) { forgotMsg.style.color = '#b31111'; forgotMsg.textContent = 'Indique ton adresse e-mail.'; return; }
-        btn.disabled = true; const prev = btn.textContent; btn.textContent = 'Envoi…';
+        if (!email) { forgotMsg.style.color = '#b31111'; forgotMsg.textContent = T('accueil.oubliIndiqueEmail', 'Indique ton adresse e-mail.'); return; }
+        btn.disabled = true; const prev = btn.textContent; btn.textContent = T('accueil.envoi', 'Envoi…');
         try {
           const data = await postJson('/api/auth/forgot', { email });
           forgotMsg.style.color = '#334a14';
-          forgotMsg.textContent = data.message || "Si un compte existe, un e-mail vient d'être envoyé.";
+          forgotMsg.textContent = data.message || T('accueil.oubliEnvoye', "Si un compte existe, un e-mail vient d'être envoyé.");
           document.getElementById('forgot-email').value = '';
         } catch (err) {
           forgotMsg.style.color = '#b31111';
-          forgotMsg.textContent = err.message || 'Erreur. Réessaie.';
+          forgotMsg.textContent = err.message || T('commun.erreurReessaie', 'Erreur. Réessaie.');
         } finally {
           btn.disabled = false; btn.textContent = prev;
         }
@@ -896,9 +943,9 @@
         const img = document.createElement('img');
         img.src = `${ASSET_BASE}/${game.image}`; img.alt = '';
         const p = document.createElement('p');
-        p.textContent = game.name + ' se joue en ligne, contre les autres frutiz : inscris-toi pour défier tout le parc !';
+        p.textContent = T('accueil.jeuEnLigne', '{jeu} se joue en ligne, contre les autres frutiz : inscris-toi pour défier tout le parc !', { jeu: game.name });
         const b = document.createElement('button');
-        b.type = 'button'; b.textContent = 'M’inscrire';
+        b.type = 'button'; b.textContent = T('commun.minscrire', 'M’inscrire');
         b.addEventListener('click', inscriptionDepuisJeu);
         jiMessage.append(img, p, b);
       } else {
@@ -938,6 +985,29 @@
       const d = e.data;
       if (d && d.type === 'fp-invite' && d.action === 'inscription') inscriptionDepuisJeu();
     });
+
+    /* ── LE SÉLECTEUR DE LANGUE. Le choix est retenu par le navigateur
+       (fp_lang, via FPI18n.changer) ; on note aussi qu'il a été fait ICI,
+       pour que la connexion le donne au compte plutôt que l'inverse. ── */
+    function langueChoisieIci() {
+      try {
+        if (new URLSearchParams(location.search).get('lang')) return true;
+        return sessionStorage.getItem('fp_lang_choisi') === '1';
+      } catch (e) { return false; }
+    }
+    document.querySelectorAll('.langues a[data-lang]').forEach((a) => {
+      if (a.dataset.lang === FPI18n.langue) a.setAttribute('aria-current', 'true');
+      a.addEventListener('click', (e) => {
+        e.preventDefault();
+        try { sessionStorage.setItem('fp_lang_choisi', '1'); } catch (err) { /* rien */ }
+        FPI18n.changer(a.dataset.lang);
+      });
+    });
+    if (new URLSearchParams(location.search).get('lang')) {
+      try { sessionStorage.setItem('fp_lang_choisi', '1'); } catch (e) { /* rien */ }
+    }
+    FPI18n.appliquer(document);
+    document.title = T('accueil.titrePage', document.title);
 
     renderGames();
 

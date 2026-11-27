@@ -3640,6 +3640,33 @@ loadChallengeMedals();
  */
 const KIKOOZ_INSCRIPTION = 200;
 
+/*
+ * LES LANGUES DU PARC. Le même module que le navigateur (public/js/i18n.js) :
+ * le français reste écrit dans le code, l'anglais vient des dictionnaires.
+ * Côté serveur il n'y a pas de langue « courante » : on la donne à chaque
+ * appel, car un même message part vers des joueurs de langues différentes.
+ *   langueDe(pseudo)      la langue du compte (« fr » par défaut)
+ *   langueDeRequete(req)  celle du compte si la requête porte un sid, sinon
+ *                         ?lang= / lang du corps / Accept-Language
+ */
+const FPI18n = require('./public/js/i18n.js');
+function langueDe(username) {
+  const u = username && users[String(username).toLowerCase()];
+  return (u && FPI18n.valide(u.lang)) || 'fr';
+}
+function langueDeRequete(req) {
+  const q = (req && req.query) || {};
+  const b = (req && req.body) || {};
+  const sid = q.sid || b.sid || '';
+  const u = sid ? resolveUsernameFromSid(sid) : null;
+  if (u) return langueDe(u);
+  const demandee = FPI18n.valide(q.lang || b.lang);
+  if (demandee) return demandee;
+  const entete = String((req && req.headers && req.headers['accept-language']) || '').toLowerCase();
+  if (!entete) return 'fr';
+  return entete.trim().indexOf('fr') === 0 ? 'fr' : (FPI18n.valide(entete) || 'fr');
+}
+
 function createDefaultUser(pass) {
   return {
     pass,
@@ -3679,6 +3706,7 @@ function createDefaultUser(pass) {
     referredBy: null,       // pseudo (lowercase) du parrain
     registerIp: '',         // IP d'inscription (anti multi-compte)
     deviceToken: '',        // jeton d'appareil (anti multi-compte)
+    lang: 'fr',             // langue du site, des jeux et des PNJ (fr | en)
     referralState: 'none',  // none | pending | rewarded | suspect | rejected
     referralFlag: '',       // raison du flag suspect (same_ip / same_device / cap_ip…)
   };
@@ -3752,6 +3780,7 @@ function dbUserToMemory(row) {
     referredBy: row.referred_by || null,
     registerIp: row.register_ip || '',
     deviceToken: row.device_token || '',
+    lang: FPI18n.valide(row.lang) || 'fr',
     referralState: row.referral_state || 'none',
     referralFlag: row.referral_flag || '',
     lastLoginXpDay: row.last_login_xp_day || '',
@@ -9917,6 +9946,8 @@ app.post('/api/auth/register', async (req, res) => {
   }
 
   const passwordHash = await hashPassword(password);
+  // La langue du formulaire (le sélecteur de l'accueil), sinon celle du navigateur.
+  const langueInscription = FPI18n.valide(req.body && req.body.lang) || langueDeRequete(req);
   try {
     const dbUser = await db.createUser(username, passwordHash, email, {
       referredBy: ref.referredBy, registerIp: ref.registerIp, deviceToken: ref.deviceToken, referralState: ref.referralState,
@@ -9934,9 +9965,10 @@ app.post('/api/auth/register', async (req, res) => {
     }
     users[username].displayName = rawName;
     users[username].email = email || '';
+    users[username].lang = langueInscription;
     Object.assign(users[username], { referredBy: ref.referredBy, registerIp: ref.registerIp, deviceToken: ref.deviceToken, referralState: ref.referralState, referralFlag: ref.referralFlag });
     await db.setUserItems(dbUser.id, users[username].items);
-    await db.updateUser(username, { display_name: rawName });
+    await db.updateUser(username, langueInscription === 'fr' ? { display_name: rawName } : { display_name: rawName, lang: langueInscription });
     if (ref.referralFlag) await db.updateUser(username, { referral_flag: ref.referralFlag }).catch(() => {});
     recordSuccessfulRegister(ip);
     journaliserConnexion(req, username, 'inscription', deviceToken);
@@ -9949,6 +9981,7 @@ app.post('/api/auth/register', async (req, res) => {
     users[username] = createDefaultUser(passwordHash);
     users[username].displayName = rawName;
     users[username].email = email || '';
+    users[username].lang = langueInscription;
     Object.assign(users[username], { referredBy: ref.referredBy, registerIp: ref.registerIp, deviceToken: ref.deviceToken, referralState: ref.referralState, referralFlag: ref.referralFlag });
     recordSuccessfulRegister(ip);
     return res.json({ ok: true, username: rawName });
@@ -10050,6 +10083,7 @@ app.post('/api/auth/login', async (req, res) => {
    * par ici. `/legacy` lit le même paramètre, à l'identique.
    */
   return res.json({ ok: true, sid, username: getDisplayName(username), redirect: `/light?sid=${encodeURIComponent(sid)}`,
+    lang: langueDe(username),
     ...(suppressionAnnulee ? { suppressionAnnulee: true } : {}) });
 });
 
@@ -28330,6 +28364,23 @@ app.get('/api/light/prefs', (req, res) => {
   res.json({ ok: true, ...prefsEnJson(users[username] || {}) });
 });
 
+/*
+ * LA LANGUE DU COMPTE. Le sélecteur (accueil, réglages) range la langue dans
+ * fp_lang pour le navigateur ; connecté, il la retient aussi ici, pour qu'elle
+ * suive le joueur sur ses autres appareils et que le serveur lui parle — PNJ,
+ * messages du chat, notifications — dans sa langue.
+ */
+app.post('/api/light/langue', (req, res) => {
+  const username = resolveUsernameFromSid((req.body && req.body.sid) || req.query.sid || '');
+  if (!username || !users[username]) return res.status(401).json({ ok: false, error: 'auth' });
+  const lang = FPI18n.valide(req.body && req.body.lang);
+  if (!lang) return res.status(400).json({ ok: false, error: 'lang' });
+  users[username].lang = lang;
+  for (const [, cl] of xmlSocketClients) if (cl && cl.username === username) cl.lang = lang;
+  if (users[username]._dbId) db.updateUser(username, { lang }).catch((e) => console.error('[DB] lang:', e.message));
+  res.json({ ok: true, lang });
+});
+
 app.post('/api/light/prefs', (req, res) => {
   const username = resolveUsernameFromSid(String((req.body && req.body.sid) || req.query.sid || ''));
   if (!username) return res.status(401).json({ ok: false, error: 'auth_required' });
@@ -39605,6 +39656,10 @@ async function handleCBeeMessage(socket, rawXml) {
       client.username = effectiveLogin;
       client.sid = sid;
       client.logged = true;
+      // La langue des messages que le serveur lui écrira (PNJ, système) : celle
+      // que la page annonce (`la`), sinon celle du compte. Le bureau Flash
+      // d'époque, tout en français, n'annonce rien : il suit le compte.
+      client.lang = FPI18n.valide(msg.attrs.la) || langueDe(effectiveLogin);
 
       // Once-per-day connection bonus, granted immediately (now that the socket
       // is registered, any level-up notification reaches the client).

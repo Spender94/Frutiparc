@@ -34,6 +34,28 @@
   try { actif = new URLSearchParams(global.location.search).get('invite') === '1'; } catch (e) { /* vieux navigateur */ }
   if (actif && global.FPSid) global.FPSid.sid = '';
 
+  /*
+   * LA LANGUE DU PANNEAU. Les pages des jeux ne chargent pas toutes le
+   * dictionnaire commun : le panneau porte donc son anglais lui-même. La langue
+   * vient de FPI18n quand la page l'a, sinon des mêmes sources que lui
+   * (fp_lang, puis le navigateur).
+   */
+  var langue = 'fr';
+  try {
+    if (global.FPI18n) langue = global.FPI18n.langue;
+    else {
+      var l = String(global.localStorage.getItem('fp_lang') || '');
+      if (!l) l = String((global.navigator.languages && global.navigator.languages[0]) || global.navigator.language || 'fr').toLowerCase().indexOf('fr') === 0 ? 'fr' : 'en';
+      langue = l === 'en' ? 'en' : 'fr';
+    }
+  } catch (e) { langue = 'fr'; }
+  var EN = {
+    titre: 'Game over!', score: 'Your score', appel: 'Want to save your scores?', appel2: 'Sign up!',
+    texte: "It's free: your next games will count in the rankings, with your bouille, your records and your medals.",
+    oui: 'Sign up', non: 'Play again',
+  };
+  function tr(cle, fr) { return langue === 'en' && EN[cle] ? EN[cle] : fr; }
+
   var dansCadre = false;
   try { dansCadre = global.parent && global.parent !== global; } catch (e) { dansCadre = true; }
 
@@ -106,13 +128,17 @@
     o.setAttribute('aria-modal', 'true');
     o.setAttribute('aria-labelledby', 'fpi-appel');
     var score = (opts.score === 0 || opts.score) ? String(opts.score) : '';
+    // Le libellé du score vient du jeu (« Ton temps »…) : en anglais, on garde
+    // « Your score » tant que le jeu n'est pas traduit.
+    var libelle = langue === 'en' ? (opts.libelleEn || tr('score', 'Ton score')) : (opts.libelle || 'Ton score');
     o.innerHTML = '<div class="fpi-carte">'
-      + '<p class="fpi-titre">' + echapper(opts.titre || 'Partie terminée !') + '</p>'
-      + (score ? '<p class="fpi-score">' + echapper(opts.libelle || 'Ton score') + ' : <b>' + echapper(score) + '</b></p>' : '')
-      + '<p class="fpi-appel" id="fpi-appel">Tu veux enregistrer tes scores ? <span class="fpi-insec">Inscris-toi !</span></p>'
-      + '<p class="fpi-texte">C’est gratuit : tes prochaines parties entreront au classement, avec ta bouille, tes records et tes médailles.</p>'
-      + '<div class="fpi-boutons"><button type="button" class="fpi-oui">M’inscrire</button>'
-      + '<button type="button" class="fpi-non">Rejouer</button></div></div>';
+      + '<p class="fpi-titre">' + echapper(langue === 'en' ? (opts.titreEn || tr('titre', '')) : (opts.titre || 'Partie terminée !')) + '</p>'
+      + (score ? '<p class="fpi-score">' + echapper(libelle) + (langue === 'en' ? ': ' : ' : ') + '<b>' + echapper(score) + '</b></p>' : '')
+      + '<p class="fpi-appel" id="fpi-appel">' + echapper(tr('appel', 'Tu veux enregistrer tes scores ?'))
+      + ' <span class="fpi-insec">' + echapper(tr('appel2', 'Inscris-toi !')) + '</span></p>'
+      + '<p class="fpi-texte">' + echapper(tr('texte', 'C’est gratuit : tes prochaines parties entreront au classement, avec ta bouille, tes records et tes médailles.')) + '</p>'
+      + '<div class="fpi-boutons"><button type="button" class="fpi-oui">' + echapper(tr('oui', 'M’inscrire')) + '</button>'
+      + '<button type="button" class="fpi-non">' + echapper(tr('non', 'Rejouer')) + '</button></div></div>';
     o._surRejouer = opts.surRejouer;
     o.querySelector('.fpi-oui').addEventListener('click', function () { inscrire(); });
     o.querySelector('.fpi-non').addEventListener('click', fermer);
