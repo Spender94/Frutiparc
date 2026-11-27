@@ -120,6 +120,7 @@
   #bk-multi .bkm-btn:not([disabled]):active { background: #f0813d; }
 </style>
 <script src="/js/sid-discret.js"></script>
+<script src="/js/invite.js"></script>
 </head>
 <body>
 <div id="tout">
@@ -470,7 +471,11 @@
   });
 
   adapter();
-  window.demarrerBurningKiwi({ canvas, sid: (window.FPSid && FPSid.sid) || params.get('sid') || '' }).then(function (r) {
+  // L'invité (?invite=1, /js/invite.js) n'a jamais de sid, même écrit à la
+  // main dans l'adresse : sa fruticard complète vit en mémoire (plateforme.js).
+  const invite = !!(window.FPInvite && FPInvite.actif);
+  const sid = invite ? '' : ((window.FPSid && FPSid.sid) || params.get('sid') || '');
+  window.demarrerBurningKiwi({ canvas, sid }).then(function (r) {
     window.__bkiwi = r;
     brancherPilotage(r.scene);
     document.getElementById('chargement').remove();

@@ -154,6 +154,32 @@ J.montrerPanneEtRelancer = function (message) {
   (document.body || document.documentElement).appendChild(boite);
 };
 
+/*
+ * LE MODE INVITÉ (?invite=1, /js/invite.js) : un visiteur sans compte, lancé
+ * depuis l'accueil, joue la VERSION COMPLÈTE — en mémoire seulement.
+ *
+ * Sa fruticard ouvre d'entrée tout ce que le jeu fait gagner en jouant :
+ *   · slot 0 : les quatre coupes ($ws/$wss, $wc/$wcs — les circuits 5 et 6,
+ *     les coupes XL, le Duel et le Survivor), les cinq écuries ($ac, que le
+ *     Duel gagné ouvre une à une), et les six records VIERGES ($ts, que
+ *     readFrutiCard exige dès que $ws est posé : un circuit jamais couru vaut
+ *     Infinity) ;
+ *   · slot 1 : rien — les préférences par défaut (initFrutiCardContent) ;
+ *   · slot 2 : les neuf modes (le Kiwi-Run compris).
+ * Le Challenge reste « essais » (Client.isRanked : pas de session, pas de
+ * classement) et la course en ligne grisée (multi.js : elle demande un sid).
+ */
+J.invite = () => !!(racine.FPInvite && racine.FPInvite.actif);
+J.carteInvite = function () {
+  const ts = [];
+  for (let i = 0; i < 6; i++) ts.push({ $fcLap: Infinity, $fcTotal: Infinity });
+  return [
+    { $ws: true, $wss: true, $wc: true, $wcs: true, $ac: [true, true, true, true, true], $ts: ts },
+    {},
+    [true, true, true, true, true, true, true, true, true],
+  ];
+};
+
 class Client {
   constructor(sid) {
     this.sid = sid || '';
@@ -271,6 +297,16 @@ class Client {
   serviceConnect() {
     this.fl_success = false;
     this.error = false;
+    // L'INVITÉ (?invite=1) : la fruticard COMPLÈTE, en mémoire. La course du
+    // jour est publique (/api/bkiwi/daily, sans sid) ; rien d'autre ne part,
+    // et `charge` reste faux : saveSlot n'écrira jamais.
+    if (J.invite()) {
+      this.sid = '';
+      this.slots = J.carteInvite();
+      this.charge = false;
+      this.chargerCourseDuJour().then(() => this.onServiceConnect());
+      return;
+    }
     if (!this.sid) {
       // Sans session (la page ouverte à la main) : pas de fruticard, mais la
       // course du jour reste celle du serveur.

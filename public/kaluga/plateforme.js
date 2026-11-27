@@ -43,9 +43,40 @@ function lireLoadVars(texte, slot) {
   return null;
 }
 
+/*
+ * LA FICHE DE L'INVITÉ (?invite=1, /js/invite.js) — la version complète :
+ * tout ce que le jeu ouvre en jouant est ouvert d'entrée. Les formes sont
+ * celles de Manager.formatCard, débloquées :
+ *   · $tz    les cinq tzongres ;
+ *   · $mode  Challenge, puis les neuf olympiques (triathlon et heptathlon
+ *            compris), et les quatre niveaux de Chrono, Survie, Invasion, Piste ;
+ *   · $seq   l'intro ET les crédits (gagnés au bout de l'heptathlon) ;
+ *   · $defi  les trois Épreuves.
+ * `$bonus` (les deux Titems d'écureuil) reste à zéro : un Titem n'est pas un
+ * déblocage, et l'invité n'en reçoit pas. `$makulo` à 1 : le Makulo est un
+ * accessoire du COMPTE, la victoire en Épreuve difficile ne l'annonce pas.
+ * Les records, eux, partent de zéro (Manager.reparerCard complète la fiche).
+ * `$vs` à la version du jeu : pas de patchFruticard.
+ */
+J.carteInvite = function () {
+  return {
+    $vs: 1.9,
+    $tz: [1, 1, 1, 1, 1],
+    $mode: [1, [1, 1, 1, 1, 1, 1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]],
+    $seq: [1, 1],
+    $bonus: [0, 0],
+    $defi: [1, 1, 1],
+    $makulo: 1,
+  };
+};
+
 class Client {
   constructor(sid) {
-    this.sid = sid || '';
+    // LE MODE INVITÉ (?invite=1, /js/invite.js) : un visiteur sans compte,
+    // lancé depuis l'accueil — la fiche complète en mémoire (serviceConnect),
+    // le panneau d'inscription en fin de partie (Game.finInvite).
+    this.invite = !!(racine.FPInvite && racine.FPInvite.actif);
+    this.sid = this.invite ? '' : (sid || '');
     this.mng = null;
     this.slots = [];
     this.lockList = [];
@@ -112,6 +143,15 @@ class Client {
   }
 
   serviceConnect() {
+    // L'INVITÉ (?invite=1) : la fiche COMPLÈTE, en mémoire, sans rien demander
+    // ni écrire au serveur (`charge` reste faux : saveSlot refuse).
+    if (this.invite) {
+      this.sid = '';
+      this.slots = [J.carteInvite()];
+      this.charge = false;
+      Promise.resolve().then(() => this.onServiceConnect());
+      return;
+    }
     if (!this.sid) {
       this.slots = [];
       this.charge = true;

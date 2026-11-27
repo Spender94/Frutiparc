@@ -210,8 +210,10 @@ J.installerFinal = function (M) {
             || (M.vs.selectedTrack == 6)) {                                   // eslint-disable-line eqeqeq
           M.vs.finalPhase = 30;
         } else {
-          J.gotoMenu();
+          // La course suivante du tournoi : le drapeau AVANT gotoMenu, qui le
+          // lit (J.finInvite — la partie continue, pas de panneau).
           M.skipToTrackPresent = true;
+          J.gotoMenu();
         }
         break;
 
@@ -548,6 +550,39 @@ J.installerFinal = function (M) {
     M.vs.finalPhase = -1;
     if (M.vs.gameMode == M.TUTORIAL || client().isWhite()) M.vs.mainPhase = 0;   // eslint-disable-line eqeqeq
     else client().closeService();
+    J.finInvite();
+  };
+
+  /*
+   * LE MODE INVITÉ — le panneau « Tu veux enregistrer tes scores ?
+   * Inscris-toi ! » (/js/invite.js), quand la partie est VRAIMENT finie : les
+   * écrans de fin du jeu sont passés (classement, stats, bilan, game over) et
+   * le menu revient, qui attend le joueur.
+   *
+   * gotoMenu sert aussi entre deux courses d'un tournoi (Fruticoupe,
+   * Survivor) : `skipToTrackPresent`, posé avant, dit alors que la partie
+   * continue — pas de panneau. J.gameEnded() ne peut pas trancher ici : le
+   * circuit a déjà avancé d'un cran quand le tournoi se clôt. Le tutoriel
+   * n'est pas une partie, la course en ligne n'est pas ouverte à l'invité.
+   *
+   * Le score, tel que le jeu l'a montré : les points du tournoi pour la
+   * Fruticoupe (le bilan du tournoi), le temps de la course sinon (les
+   * stats de course) ; un abandon n'en a pas.
+   */
+  J.finInvite = function () {
+    if (!(J.invite && J.invite()) || !racine.FPInvite) return false;
+    if (M.skipToTrackPresent || M.vs.gameMode == M.TUTORIAL) return false;   // eslint-disable-line eqeqeq
+    if (M.MULTI !== undefined && M.vs.gameMode == M.MULTI) return false;     // eslint-disable-line eqeqeq
+    const opts = {};
+    if (M.vs.giveUp) { /* abandon : pas de score */ }
+    else if (M.vs.gameMode == M.FRUTICUP) {                                   // eslint-disable-line eqeqeq
+      const moi = M.tournament && M.tournament.cars && M.tournament.cars[0];
+      if (moi && moi.totalPts != null) { opts.score = moi.totalPts + ' pts'; opts.libelle = 'Tes points'; }
+    } else if (M.race && M.race.raceTime > 0) {
+      opts.score = J.timeToString(M.race.raceTime);
+      opts.libelle = 'Ton temps';
+    }
+    return racine.FPInvite.finDePartie(opts);
   };
 
   // INIT DE LA PHASE FINALE

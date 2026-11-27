@@ -554,7 +554,13 @@ class Panel extends K.Clip {
   }
   setPage() {
     const page = this.list[this.pageNum];
-    if (page === 'menu') { this.game.mng.backToMenu(); return; }
+    if (page === 'menu') {
+      // L'INVITÉ, au bout d'un triathlon ou d'un heptathlon : le panneau
+      // d'inscription d'abord, le menu quand il se ferme.
+      const g = this.game;
+      if (g && g.finInvite && g.finInvite(() => g.mng.backToMenu())) return;
+      this.game.mng.backToMenu(); return;
+    }
     if (page === 'kill') { this.game.mng.client.closeService(); }
     if (page == null || typeof page !== 'object') return;
     this._parent.gotoAndStop(1);
@@ -564,6 +570,13 @@ class Panel extends K.Clip {
     let y = this.margin.y.min * this.margin.y.ratio;
     for (const part of page.list) y += this.setPart(part, y) || 0;
     this.nextBut._visible = (page.wait == null) && (this.pageNum < this.list.length - 1);
+    // L'INVITÉ, sur la dernière page d'une partie seule (« Rejouer ? ») : les
+    // pages du jeu sont passées, il attend le joueur — le panneau
+    // d'inscription se pose par-dessus, et le « Rejouer ? » du jeu reste
+    // dessous quand il se ferme.
+    if (this.pageNum === this.list.length - 1 && this.game && this.game.mode === 'single' && this.game.finInvite) {
+      this.game.finInvite();
+    }
   }
   setPart(part, y) {
     let d, mc;

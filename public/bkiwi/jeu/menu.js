@@ -138,7 +138,9 @@ J.installerMenu = function (M) {
           onEnd = function () { M.vs.menuPhase = 4; M.vs.gameMode = M.MULTI; };
         } else {
           skinBt = M.skinDisallow;
-          onPush = function () { refuser('CONNECTEZ-VOUS AU PARC'); };
+          // L'invité n'a pas de compte où se connecter : on l'invite à en créer un.
+          const motif = (J.invite && J.invite()) ? 'INSCRIVEZ-VOUS AU PARC' : 'CONNECTEZ-VOUS AU PARC';
+          onPush = function () { refuser(motif); };
           onEnd = undefined;
         }
         onOver = function () { M.menuMC.infoPanel.txt = 'Courez en ligne contre d\'autres pilotes du parc, avec la X Violet !'; };

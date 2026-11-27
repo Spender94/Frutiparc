@@ -1287,6 +1287,9 @@ class Trial extends J.Game {
       if (player.id === this.tzongreInfo.id) score = sum;
     }
     list.sort((a, b) => (a.sum > b.sum ? -1 : (a.sum < b.sum ? 1 : 0)));
+    // Le total du tournoi, pour le panneau de l'invité (Game.finInvite) —
+    // arrondi au dixième, comme chaque résultat (poserResultat).
+    this.scoreInvite = { score: (Math.round(score * 10) / 10) + ' pts', libelle: 'Ton total' };
     const flWin = list[0].id === this.tzongreInfo.id;
     const tz = this.mng.tzInfo;
     let text = tz[list[0].id].name + ' gagne facilement ce ' + this.mode + ' !!!\n';

@@ -274,6 +274,27 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
       .catch(function () {});
   };
   Client.prototype.isWhite = function () { return false; };
+
+  /*
+   * LE MODE INVITÉ (?invite=1, /js/invite.js) : un visiteur sans compte lancé
+   * depuis l'accueil. Il joue la VERSION COMPLÈTE — les neuf persos du Pot au
+   * feu, le mode Classique (ouvert par le sucre, case 6 des titems) —, mais en
+   * mémoire seulement : pas de sid, donc aucune lecture ni écriture de slot,
+   * aucun score envoyé. Les options de la boutique (le compteur de coups,
+   * `swapouMoves`) et l'analyse réservée à l'admin (`swapouAnalyse`) restent
+   * fermées : `features` reste vide, rien ne les demande sans session.
+   */
+  SW.invite = function () {
+    return !!(typeof window !== 'undefined' && window.FPInvite && window.FPInvite.actif);
+  };
+  SW.carteInvite = function () {
+    const items = [];
+    items[6] = true;                         // $sucre : le Classique s'ouvre
+    return {
+      $chars: [true, true, true, true, true, true, true, true, true],
+      $items: items, $record: 0, $classic_record: 0, $swap: 0, $combos: [],
+    };
+  };
   Client.prototype.serviceConnect = function (cb) {
     const me = this;
     function done() {
@@ -297,6 +318,15 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
       SW.Data.chars = s.$chars;
       me.connected = true;
       cb();
+    }
+    // L'invité : la fiche complète, sans rien demander au serveur — même si un
+    // sid traînait (il ne doit pas : index.html n'en donne pas), on l'oublie.
+    if (SW.invite()) {
+      this.sid = '';
+      this.standalone = true;
+      this.slots[0] = SW.carteInvite();
+      done();
+      return;
     }
     if (!this.sid) { this.standalone = true; done(); return; }
     this.loadFeatures();   // options de confort (compteur de coups…) en parallèle

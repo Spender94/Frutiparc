@@ -86,6 +86,7 @@
   #rotate-hint .ph { display: inline-block; transform: rotate(90deg); }
 </style>
 <script src="/js/sid-discret.js"></script>
+<script src="/js/invite.js"></script>
 </head>
 <body>
 <canvas id="stage" width="700" height="480"></canvas>
@@ -103,9 +104,13 @@
   var canvas = document.getElementById('stage');
   var rotateHint = document.getElementById('rotate-hint');
 
-  // sid : ?sid=… puis session /light en secours (même logique que Grapiz)
-  var sid = (window.FPSid && FPSid.sid) || new URLSearchParams(location.search).get('sid') || '';
-  if (!sid) {
+  // sid : ?sid=… puis session /light en secours (même logique que Grapiz).
+  // LE MODE INVITÉ (?invite=1, lancé depuis l'accueil) n'en a AUCUN : ni
+  // celui de l'adresse, ni la session du light restée dans ce navigateur —
+  // celle d'un membre qui aurait joué avant sur la même machine.
+  var invite = !!(window.FPInvite && FPInvite.actif);
+  var sid = invite ? '' : ((window.FPSid && FPSid.sid) || new URLSearchParams(location.search).get('sid') || '');
+  if (!sid && !invite) {
     try { sid = (JSON.parse(localStorage.getItem('fp_light_session') || '{}') || {}).sid || ''; } catch (e) {}
   }
 
@@ -210,7 +215,15 @@
       if (e.changedTouches[i].identifier === doigt) return e.changedTouches[i];
     return null;
   }
+  // Le panneau du mode invité (/js/invite.js) se pose PAR-DESSUS la page :
+  // un doigt posé sur lui n'est pas au jeu. Les écouteurs ci-dessous sont sur
+  // la FENÊTRE et annulent l'action par défaut — un doigt levé sur un bouton
+  // du panneau n'en ferait plus un clic.
+  function surPanneauInvite(e) {
+    return !!(e.target && e.target.closest && e.target.closest('#fp-invite'));
+  }
   window.addEventListener('touchstart', function (e) {
+    if (surPanneauInvite(e)) return;
     lastTouchTs = Date.now();
     dismissHint();
     e.preventDefault();
@@ -221,6 +234,7 @@
     SW.handleTouchStart(p.x, p.y);
   }, { passive: false });
   window.addEventListener('touchmove', function (e) {
+    if (surPanneauInvite(e)) return;
     lastTouchTs = Date.now();
     e.preventDefault();
     var t = doigtSuivi(e);
@@ -229,6 +243,7 @@
     SW.handleMouseMove(p.x, p.y);
   }, { passive: false });
   window.addEventListener('touchend', function (e) {
+    if (surPanneauInvite(e)) return;
     lastTouchTs = Date.now();
     e.preventDefault();
     var t = doigtSuivi(e);
