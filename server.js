@@ -39468,7 +39468,6 @@ async function handleCBeeMessage(socket, rawXml) {
 
     // ── ident: login ──
     case 'ident': {
-      const login = msg.attrs.l || '';
       const sid = msg.attrs.s || '';
       // Une session que la base connaît et que le redémarrage a fait oublier
       // reprend sa place avant qu'on la lise (voir `sessionsDormantes`).
@@ -39480,23 +39479,29 @@ async function handleCBeeMessage(socket, rawXml) {
       if (msg.attrs.lc === '1') { client.wantsChatHistory = true; client.estLight = true; }
       const sessionUser = sid && sessions[sid] && sessions[sid].user ? sessions[sid].user : '';
 
-      // Priority: sid-bound user (real logged account) > explicit login.
-      // Always normalize to lowercase for storage; the original casing is
-      // preserved separately via users[].displayName.
-      const rawLogin = sessionUser || login;
-      const effectiveLogin = String(rawLogin || '').toLowerCase();
-      if (!effectiveLogin) {
+      /*
+       * L'IDENTITÉ VIENT DE LA SESSION, ET D'ELLE SEULE.
+       *
+       * On prenait jadis le pseudo annoncé (`l`) quand le sid ne disait rien —
+       * et l'on fabriquait même une session à ce nom avec le sid fourni. Il
+       * suffisait donc d'envoyer `<k l="quelqu'un" s="n'importe-quoi"/>` pour
+       * parler au chat sous son nom ET obtenir un sid que toutes les routes HTTP
+       * acceptaient comme le sien (profil, inventaire, kikooz…) — sans jamais
+       * donner son mot de passe. Un pseudo inconnu devenait même un compte en
+       * mémoire… modérateur.
+       *
+       * Tous les clients d'aujourd'hui s'identifient avec le sid de leur
+       * connexion (le light, le bureau, les jeux en ligne ; le bureau Flash
+       * d'époque n'est servi qu'avec une session, cf. /legacy, et envoie alors
+       * `l=""`). Sans session vivante — ou réveillée ci-dessus —, c'est non.
+       * Le `l` annoncé ne sert plus à rien : la casse d'affichage vient de
+       * users[].displayName.
+       */
+      if (!sessionUser) {
         sendToClient(socket, `<${CMD.ident} k="401" />`);
         break;
       }
-
-      // Auto-create session if needed
-      if (sid && !sessions[sid]) {
-        sessions[sid] = { user: null, createdAt: Date.now() };
-      }
-      if (sid && sessions[sid]) {
-        sessions[sid].user = effectiveLogin;
-      }
+      const effectiveLogin = String(sessionUser).toLowerCase();
 
       // Auto-create user if doesn't exist (check DB first)
       if (!users[effectiveLogin]) {
