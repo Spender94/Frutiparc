@@ -32,9 +32,9 @@ module.exports = {
     description: 'Seules les bouilles de l’aquarium, sur fond transparent (WebM VP9 alpha) et sur fond vert #00FF00 (MP4), au minutage du plan maître : elles entrent par le bord gauche, jouent leur émote et repartent.',
     usage: 'À incruster contre le bord gauche de l’image : les bouilles des habitués « entrent » dans la bande-annonce.',
   }),
-  'habitues-multi': comme('multi', {
-    scene: 'habitues-multi', titre: 'Les habitués — un écran chacun', affiche: 8.5,
-    description: 'Un petit salon (Kiwi) à quatre : Braxer, SNess et pattedecat avec kasparov. Chacun a SON écran dans la colonne des bouilles (mode MULTI) : humeurs qui changent, émotes jouées dans l’écran de qui les lance.',
-    usage: 'Contrepoint calme à l’aquarium : quatre têtes connues qui réagissent.',
+  'habitues-salon2': comme('multi', {
+    scene: 'habitues-salon2', titre: 'Les habitués — deuxième salon (aquarium)', affiche: 8.6,
+    description: 'Le salon Kiwi plein (7 frutiz) : revanche au Grapiz entre Braxer et SNess, commentée par pattedecat, AnanaX, Sandek, Lama1 et kasparov (qui tape sa ligne). Fenêtre plus grande que le plan maître : l’aquarium y est haut, les bouilles y entrent par la gauche et jouent leurs émotes (rire, bisou, sifflote, clin d’œil, jutsu).',
+    usage: 'Deuxième plan d’aquarium, cadré plus large : à alterner avec le plan maître.',
   }),
 };

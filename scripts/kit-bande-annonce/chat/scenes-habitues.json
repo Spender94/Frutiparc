@@ -185,16 +185,19 @@
         }
       ]
     },
-    "habitues-multi": {
+    "habitues-salon2": {
       "salon": "kiwi",
-      "duree": 14,
+      "duree": 17,
       "graine": 4,
       "pnj": [],
       "heure": "22:15:00",
       "presents": [
         "braxer",
         "sness",
-        "pattedecat"
+        "pattedecat",
+        "sandek",
+        "lama1",
+        "ananax"
       ],
       "avant": [
         [
@@ -208,6 +211,10 @@
         [
           "pattedecat",
           "Je compte les points"
+        ],
+        [
+          "ananax",
+          "Je parie sur SNess"
         ]
       ],
       "repliques": [
@@ -258,12 +265,27 @@
           "dit": "bisou"
         },
         {
-          "t": 10.2,
-          "qui": "pattedecat",
+          "t": 10.0,
+          "qui": "sandek",
+          "dit": "siffle"
+        },
+        {
+          "t": 11.6,
+          "qui": "ananax",
+          "humeur": "joie"
+        },
+        {
+          "t": 11.7,
+          "qui": "ananax",
+          "dit": "Je l’avais dit !"
+        },
+        {
+          "t": 13.0,
+          "qui": "lama1",
           "dit": "clin"
         },
         {
-          "t": 11.8,
+          "t": 14.6,
           "qui": "braxer",
           "dit": "jutsu"
         }

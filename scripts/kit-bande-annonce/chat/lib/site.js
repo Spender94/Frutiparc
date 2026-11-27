@@ -140,6 +140,7 @@ class Site {
     }
     await this.libererPort();
     await this.baseNeuve();
+    const donnees = this.dossierDonnees();
     const sortie = fs.openSync(this.journal, 'w');
     this.proc = spawn(process.execPath,
       ['--preserve-symlinks', '--preserve-symlinks-main', path.join(racine, 'server.js')], {
@@ -147,7 +148,7 @@ class Site {
         env: Object.assign({}, process.env, {
           PORT: String(this.port), DATABASE_URL: this.bdd, REGISTER_MAX: '1000', REGISTER_DAILY_MAX: '1000',
           ADMIN_KEY: this.cle, XMLSOCKET_PORT: String(this.portXml), FRUTISCORE_PORT: String(this.portScore),
-        }),
+        }, donnees ? { FRUTI_DATA_DIR: donnees } : {}),
         stdio: ['ignore', sortie, sortie],
       });
     this.proc.on('exit', (code) => { this.proc = null; if (code) console.error(`[site] serveur arrêté (code ${code}) — voir ${this.journal}`); });
@@ -159,6 +160,37 @@ class Site {
       await attendre(250);
     }
     throw new Error('le serveur ne répond pas — voir ' + this.journal);
+  }
+
+  /*
+   * LES VARIANTES D'ACCESSOIRE DU SITE EN LIGNE.
+   *
+   * Beaucoup de joueurs portent une variante créée par l'équipe (admin →
+   * Variantes) : son DESSIN vit dans la base de production, pas dans le dépôt.
+   * Sans elle, la variante tombe hors du rouleau d'époque : le chapeau ne
+   * dessine rien, mais il masque toujours la coiffure — la bouille paraît
+   * CHAUVE (Braxer, SNess…).
+   *
+   * KIT_VARIANTES désigne le catalogue tel que le site le sert à tous
+   * (GET /api/light/variantes, public). On le verse dans un dossier de données
+   * à part (FRUTI_DATA_DIR, copie de data/) sous la forme que le serveur relit
+   * au démarrage (variantes-accessoire.json) — L'ORDRE est gardé : c'est lui,
+   * avec `index`, qui donne son numéro à chaque variante.
+   */
+  dossierDonnees() {
+    const f = process.env.KIT_VARIANTES;
+    if (!f) return null;
+    if (!fs.existsSync(f)) { console.warn('[site] KIT_VARIANTES introuvable : ' + f); return null; }
+    const brut = JSON.parse(fs.readFileSync(f, 'utf8'));
+    const liste = (Array.isArray(brut) ? brut : (brut.liste || [])).map((v, i) => Object.assign({ id: 'v' + (i + 1) }, v));
+    const dossier = path.join(os.tmpdir(), 'kit-chat-donnees-' + this.port);
+    fs.rmSync(dossier, { recursive: true, force: true });
+    fs.mkdirSync(dossier, { recursive: true });
+    const data = path.join(RACINE, 'data');
+    for (const n of fs.readdirSync(data)) if (n.endsWith('.json')) fs.copyFileSync(path.join(data, n), path.join(dossier, n));
+    fs.writeFileSync(path.join(dossier, 'variantes-accessoire.json'), JSON.stringify({ seq: liste.length, liste }));
+    console.log(`[site] ${liste.length} variante(s) d'accessoire du site en ligne`);
+    return dossier;
   }
 
   // Un serveur d'une génération précédente (interrompue) tiendrait encore le port.
