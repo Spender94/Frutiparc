@@ -55,6 +55,7 @@
     + '#fp-invite .fpi-score{margin:0 0 10px;font-size:13px;color:#4f7d1e}'
     + '#fp-invite .fpi-score b{font-size:18px;color:#2C4A0F}'
     + '#fp-invite .fpi-appel{margin:0 0 4px;font-size:16px;font-weight:bold;color:#d82222}'
+    + '#fp-invite .fpi-insec{white-space:nowrap}'
     + '#fp-invite .fpi-texte{margin:0 0 14px;font-size:12px;color:#4f6a2c}'
     + '#fp-invite .fpi-boutons{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}'
     + '#fp-invite button{font:bold 14px Verdana,Geneva,sans-serif;border-radius:14px;padding:9px 16px;cursor:pointer;min-height:40px}'
@@ -68,7 +69,14 @@
   // une Entrée qui relancerait une partie, une flèche qui bougerait le perso…
   function bloquer(e) {
     if (!ouvert) return;
-    if (e.type === 'keydown' && e.key === 'Escape') { fermer(); }
+    // Échap ferme le panneau — et ne va pas plus loin : le jeu dessous s'en
+    // servirait pour sa pause ou son menu.
+    if (e.type === 'keydown' && e.key === 'Escape') {
+      e.stopPropagation();
+      if (e.cancelable) e.preventDefault();
+      fermer();
+      return;
+    }
     if (ouvert.contains(e.target)) return;
     e.stopPropagation();
     if (e.cancelable) e.preventDefault();
@@ -101,15 +109,20 @@
     o.innerHTML = '<div class="fpi-carte">'
       + '<p class="fpi-titre">' + echapper(opts.titre || 'Partie terminée !') + '</p>'
       + (score ? '<p class="fpi-score">' + echapper(opts.libelle || 'Ton score') + ' : <b>' + echapper(score) + '</b></p>' : '')
-      + '<p class="fpi-appel" id="fpi-appel">Tu veux enregistrer tes scores ? Inscris-toi !</p>'
+      + '<p class="fpi-appel" id="fpi-appel">Tu veux enregistrer tes scores ? <span class="fpi-insec">Inscris-toi !</span></p>'
       + '<p class="fpi-texte">C’est gratuit : tes prochaines parties entreront au classement, avec ta bouille, tes records et tes médailles.</p>'
       + '<div class="fpi-boutons"><button type="button" class="fpi-oui">M’inscrire</button>'
       + '<button type="button" class="fpi-non">Rejouer</button></div></div>';
     o._surRejouer = opts.surRejouer;
     o.querySelector('.fpi-oui').addEventListener('click', function () { inscrire(); });
     o.querySelector('.fpi-non').addEventListener('click', fermer);
-    // Un clic hors de la carte ne fait rien : le panneau se ferme par ses boutons.
-    ['pointerdown', 'mousedown', 'touchstart', 'click'].forEach(function (t) {
+    // Rien de ce qui se passe SUR le panneau ne remonte au jeu. Un clic hors de
+    // la carte ne fait rien (le panneau se ferme par ses boutons) ; et un jeu qui
+    // annule les touchers au niveau de la fenêtre (preventDefault sur touchend)
+    // rendait les boutons sourds au doigt. Les touches aussi s'arrêtent ici :
+    // Espace ou Entrée sur « Rejouer » ne doivent pas relancer le jeu deux fois.
+    ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'touchstart', 'touchmove', 'touchend', 'click',
+      'keydown', 'keyup', 'keypress'].forEach(function (t) {
       o.addEventListener(t, function (e) { e.stopPropagation(); }, false);
     });
     (document.body || document.documentElement).appendChild(o);

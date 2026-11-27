@@ -27,7 +27,17 @@
     // LE MODE INVITÉ (?invite=1, lancé depuis l'accueil) n'a JAMAIS de sid : ni
     // celui de l'adresse, ni celui que l'onglet aurait gardé d'une partie
     // connectée (voir /js/invite.js).
-    if (p.get('invite') === '1') { window.FPSid = { sid: '', invite: true }; return; }
+    if (p.get('invite') === '1') {
+      // Une adresse fabriquée `?invite=1&sid=…` ne doit rien laisser à lire aux
+      // scripts qui consultent encore l'adresse (fd-badge, eject-watch).
+      if (p.has('sid')) {
+        p.delete('sid');
+        var reste = p.toString();
+        history.replaceState(history.state, '', location.pathname + (reste ? '?' + reste : '') + location.hash);
+      }
+      window.FPSid = { sid: '', invite: true };
+      return;
+    }
     sid = p.get('sid') || '';
     if (sid) {
       var garde = '';
