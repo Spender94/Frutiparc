@@ -19963,6 +19963,33 @@ app.get('/api/jamajama/donnees', async (req, res) => {
   });
 });
 
+/*
+ * LE MODE INVITÉ (?invite=1, /js/invite.js) — de quoi jouer SANS COMPTE.
+ *
+ * Un visiteur lancé depuis l'accueil n'a pas de session, et /donnees ne lui
+ * rend rien : il ne restait qu'un pack de tutoriels vide. Cette route lui
+ * donne les packs de l'Aventure et les niveaux du TOURNOI gravés dans
+ * levels.xml — que express.static sert déjà tel quel sur
+ * /games/poulpi/levels.xml : rien ici n'est un secret.
+ *
+ * Elle est PUBLIQUE et ne touche à AUCUNE session : ni sid lu, ni
+ * getSidFromRequest — dont le repli « dernière session vue de cette adresse »
+ * donnerait à l'invité derrière la box d'un membre la sauvegarde de celui-ci —,
+ * ni cookie posé. Rien de personnel non plus : pas de statut (`moi` reste nul),
+ * et pas les niveaux validés par les joueurs (jamaNiveaux), qui portent le
+ * pseudo de leur auteur et ne se jouent qu'au classement des membres.
+ */
+app.get('/api/jamajama/niveaux', (req, res) => {
+  const lv = jamaLevels();
+  res.set('Cache-Control', 'public, max-age=300');
+  res.json({
+    ok: true,
+    packs: lv.packs.map((p) => ({ titre: p.titre, total: p.total,
+      niveaux: p.niveaux.map((n) => ({ titre: n.titre, contenu: n.contenu })) })),
+    tournoi: lv.tournoi.map((t) => jamaEntreeTournoi(t, null)),
+  });
+});
+
 // ── LES PICTOS (jamaPictos.js) ──
 // Les niveaux de l'Aventure que nomment les conditions (levels.xml ne change
 // qu'au déploiement : on les lit une fois).

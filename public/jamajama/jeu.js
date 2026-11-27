@@ -22,8 +22,12 @@
 
   const canvas = document.getElementById('jama');
   const ctx = canvas.getContext('2d');
-  const sid = (window.FPSid && FPSid.sid) || new URLSearchParams(location.search).get('sid') || '';
-  const plateforme = new window.JamaPlateforme.Plateforme(sid);
+  // LE MODE INVITÉ (/js/invite.js) : un visiteur sans compte, lancé depuis
+  // l'accueil. Pas de sid, jamais ; l'Aventure entière et les niveaux gravés
+  // du tournoi, en partie libre, tout en mémoire.
+  const invite = !!(window.FPInvite && FPInvite.actif);
+  const sid = invite ? '' : ((window.FPSid && FPSid.sid) || new URLSearchParams(location.search).get('sid') || '');
+  const plateforme = new window.JamaPlateforme.Plateforme(sid, { invite });
 
   // ── l'échelle : 384 logique, net sur tout écran ──
   let K = 1;
@@ -236,7 +240,9 @@
 
   // — le menu —
   function EtatMenu() {
-    const ecran = new Ecrans.EcranMenu();
+    // L'invité n'a ni éditeur (ses niveaux s'écrivent sur le serveur, à son
+    // nom) ni statistiques (celles d'un compte) : le menu ne les montre pas.
+    const ecran = new Ecrans.EcranMenu(invite ? [1, 2, 6, 7] : undefined);
     return {
       nom: 'menu',
       update(tmod) {
@@ -282,6 +288,9 @@
       moi.niveaux.forEach((n, i) => { if (n.complete) { faits += 1; dernier = i; } });
       moi.lastCompleted = dernier;
       moi.jokers = dernier > -1 ? 3 - (dernier - faits) : 3;
+      // L'invité a la version complète : des jokers sans fond, il va où il
+      // veut dans le pack (le parchemin montre ses trois flammes allumées).
+      if (invite) moi.jokers = Infinity;
       moi.index = 0;
       moi.ecran = null;
       moi.select = new Ecrans.EcranSelect();
@@ -544,7 +553,22 @@
         : Promise.resolve();
       Promise.resolve(p)
         .then(() => plateforme.envoyerScore(source, partie.getMovements()))
-        .then(puis, puis);
+        .then(() => finInvite(puis), () => finInvite(puis));
+    }
+    /*
+     * LE MODE INVITÉ (/js/invite.js) : la partie FINIE — gagnée ou perdue, pas
+     * abandonnée ni relancée en cours de route —, le panneau « Inscris-toi ! »
+     * se pose sur le plateau final. La suite du jeu (la liste, le « Perdu !
+     * Recommencer ? ») n'attend que lui : elle repart quand il se ferme. Une
+     * partie d'essai de l'éditeur n'en est pas une.
+     */
+    function finInvite(puis) {
+      if (invite && source.type !== 'essai' && partie.isEnded() && window.FPInvite
+        && window.FPInvite.finDePartie({
+          titre: partie.isVictorious() ? 'Niveau réussi !' : 'Perdu !',
+          score: partie.countMoves(), libelle: 'Coups joués', surRejouer: puis,
+        })) return;
+      puis();
     }
     function retour() {
       if (source.type === 'aventure') passer(EtatAventure(memoire));

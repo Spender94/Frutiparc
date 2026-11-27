@@ -80,9 +80,30 @@
       + ':' + (this.showInfoEsc ? 1 : 0) + ':' + this.listOrder;
   };
 
+  /*
+   * LE MODE INVITÉ (/js/invite.js) : ce qui se joue sans compte. levels.xml
+   * pose trois paliers d'attente — des packs à une seule entrée SANS contenu
+   * (« Aide-toi, le ciel t'aidera »…), là pour barrer la route au pack
+   * suivant. L'invité, qui a tout d'ouvert, n'a pas à buter dessus : on ne
+   * garde que les niveaux qui se jouent, et les packs qui en ont. `indice`
+   * retient la place du pack dans levels.xml : c'est elle qui choisit son
+   * dessin dans la liste (jama_gui_AdventurePack, une image par pack).
+   */
+  function packsDeLInvite(packs) {
+    const l = [];
+    (packs || []).forEach((p, indice) => {
+      const niveaux = (p.niveaux || []).filter((n) => n && n.contenu);
+      if (niveaux.length) l.push({ titre: p.titre, total: p.total, niveaux, indice });
+    });
+    return l;
+  }
+
   class Plateforme {
-    constructor(sid) {
-      this.sid = sid || '';
+    constructor(sid, options) {
+      // L'invité n'a JAMAIS de sid : sans lui, rien ne part au serveur — ni
+      // /donnees, ni l'aventure, ni les scores, ni l'éditeur.
+      this.invite = !!(options && options.invite);
+      this.sid = this.invite ? '' : (sid || '');
       this.user = '';
       this.packs = [];
       this.tournoi = [];
@@ -91,6 +112,19 @@
       this.pret = false;
     }
     charger() {
+      // L'invité lit la route PUBLIQUE des niveaux (aucune session derrière),
+      // et garde tout en mémoire : l'aventure qu'il avance, ses options.
+      if (this.invite) {
+        return fetch('/api/jamajama/niveaux')
+          .then((r) => r.json())
+          .then((d) => {
+            if (!d || !d.ok) throw new Error((d && d.error) || 'niveaux');
+            this.packs = packsDeLInvite(d.packs);
+            this.tournoi = Array.isArray(d.tournoi) ? d.tournoi : [];
+            this.pret = true;
+            return this;
+          });
+      }
       if (!this.sid) {
         // Hors du site : les tutoriels gravés dans le SWF, sans enregistrement.
         this.packs = [{ titre: 'Tutoriaux', total: -1, niveaux: [] }];
@@ -218,6 +252,8 @@
      * de sorte que les indices restent ceux de levels.xml.
      */
     packsOuverts() {
+      // L'invité a la version complète : tous les packs qui ont de quoi jouer.
+      if (this.invite) return this.packs.slice();
       const ouverts = [];
       for (let i = 0; i < this.packs.length; i++) {
         ouverts.push(this.packs[i]);
@@ -228,5 +264,5 @@
     }
   }
 
-  window.JamaPlateforme = { Plateforme, AventureData, Options };
+  window.JamaPlateforme = { Plateforme, AventureData, Options, packsDeLInvite };
 })();
