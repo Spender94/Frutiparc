@@ -726,13 +726,24 @@
       setStatus(visible ? 'Connexion en cours…' : '');
     }
 
+    /* Les vignettes sont bâties UNE fois ; le survol ne fait que changer leurs
+       classes. Les reconstruire à chaque survol (comme avant) détachait la
+       vignette sous la souris : depuis qu'un clic LANCE le jeu, il tombait
+       parfois dans le vide ou sur la voisine. */
+    function majCartes() {
+      gamesList.querySelectorAll('.game-card').forEach((card) => {
+        const nom = card.dataset.nom;
+        card.classList.toggle('active', selectedGame === nom);
+        card.classList.toggle('compact', !!selectedGame && selectedGame !== nom);
+      });
+    }
+
     function renderGames() {
       gamesList.innerHTML = '';
       games.forEach((game) => {
         const card = document.createElement('div');
         card.className = 'game-card';
-        if (selectedGame === game.name) card.classList.add('active');
-        if (selectedGame && selectedGame !== game.name) card.classList.add('compact');
+        card.dataset.nom = game.name;
 
         const img = document.createElement('img');
         img.src = `${ASSET_BASE}/${game.image}`;
@@ -760,15 +771,16 @@
         card.addEventListener('mouseenter', () => {
           selectedGame = game.name;
           gameTitle.textContent = selectedGame;
-          renderGames();
+          majCartes();
         });
         card.addEventListener('mouseleave', () => {
           selectedGame = null;
           gameTitle.textContent = 'Sélectionner un jeu';
-          renderGames();
+          majCartes();
         });
         gamesList.appendChild(card);
       });
+      majCartes();
     }
 
     document.getElementById('register-toggle').addEventListener('click', () => showRegister(true));
@@ -874,6 +886,8 @@
     function ouvrirJeu(game) {
       focusAvantJeu = document.activeElement;
       document.getElementById('ji-titre').textContent = game.name;
+      // La note « version complète » ne parle que des jeux qu'on essaie.
+      jeuInvite.querySelector('.ji-note').classList.toggle('hidden', !!game.enLigne);
       if (game.enLigne) {
         jiCadre.classList.add('hidden');
         jiCadre.src = 'about:blank';
