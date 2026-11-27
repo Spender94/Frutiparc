@@ -82,8 +82,22 @@ async function inscrire(pseudo) {
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
 }
 
+// Un vrai compte et sa session : le serveur n'identifie plus au chat que par
+// la session (un pseudo annoncé seul ne prend plus le compte de personne).
+async function sessionDe(pseudo) {
+  await inscrire(pseudo);   // déjà inscrit : le refus ne gêne pas
+  const r = await fetch(BASE + '/api/auth/login', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: pseudo, password: 'secret123' }),
+  });
+  const j = await r.json().catch(() => ({}));
+  assert.ok(j.sid, 'connexion de ' + pseudo + ' : ' + JSON.stringify(j));
+  return j.sid;
+}
+
 // ── Un client XMLSocket minimal (messages XML terminés par un octet nul) ─────
-function ouvrir(pseudo) {
+async function ouvrir(pseudo) {
+  const sid = await sessionDe(pseudo);
   return new Promise((resolve, reject) => {
     const sock = net.connect(SOCKET_PORT, '127.0.0.1');
     let tampon = '';
@@ -117,7 +131,7 @@ function ouvrir(pseudo) {
       fermer: () => sock.destroy(),
     };
     sock.on('connect', () => {
-      client.envoyer(`<ident l="${pseudo}" />`);
+      client.envoyer(`<ident l="${pseudo}" s="${sid}" />`);
       resolve(client);
     });
   });
