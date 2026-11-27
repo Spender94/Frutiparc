@@ -150,6 +150,7 @@ const Manager = {
   gotoMenu() { Manager.setNextMode(0); },
 
   gameFinished() {
+    Manager.direFinInvite();
     if (Manager.client.isWhite()) {
       Sound.stopMix();
       Sound.playMusic(Sound.MUSIC_MENU);
@@ -160,9 +161,36 @@ const Manager = {
     }
   },
 
+  /*
+   * LE MODE INVITÉ (/js/invite.js) — le panneau « Inscris-toi ! ».
+   *
+   * gameFinished ne passe qu'une fois par partie, quand le joueur a cliqué le
+   * panneau de fin (GameOver, GameOverCourse) ; le menu revient alors par la
+   * Transition et attend le joueur : c'est là qu'on le pose, par-dessus. Le
+   * score est celui que le panneau vient d'afficher, dans sa forme — le
+   * Challenge et l'Aventure en points (calcScore / 100), le Classique en
+   * niveau, la Course en temps. Le tutoriel ne finit pas par gameFinished :
+   * il n'a pas de panneau.
+   */
+  direFinInvite() {
+    const client = Manager.client;
+    if (!client || !client.invite || !racine.FPInvite) return;
+    const s = Manager.dernierScore;
+    let o = null;
+    switch (Manager.play_mode) {
+      case Const.MODE_CHALLENGE:
+      case Const.MODE_AVENTURE: o = { score: J.int(s / 100), libelle: 'Ton score' }; break;
+      case Const.MODE_CLASSIC: o = { score: 'niveau ' + s, libelle: 'Ton score' }; break;
+      case Const.MODE_COURSE: o = { score: J.Interf.makeTime(s), libelle: 'Ton temps' }; break;
+      default: return;
+    }
+    racine.FPInvite.finDePartie(o);
+  },
+
   gameOver(cause) {
     const client = Manager.client;
     const score = Manager.mode.calcScore(cause);
+    Manager.dernierScore = score;            // pour le panneau du mode invité
     switch (Manager.play_mode) {
       case Const.MODE_CHALLENGE:
         Manager.mode = new J.GameOver(Manager.mc, Manager.mode, cause);
@@ -223,7 +251,7 @@ racine.demarrerMotionBall = function (options) {
     const chargerSon = K.audio.charger.bind(K.audio);
     K.audio.charger = (nom, fichier) => (SONS.includes(nom) ? chargerSon(nom, fichier) : Promise.resolve(null));
     const scene = new K.Scene(canvas, biblio, { cadence: 40 });
-    const client = new J.Client(options.sid || '');
+    const client = new J.Client(options.sid || '', { invite: !!options.invite });
     J.client = client;
     // La racine : le clip 0 du SWF (cadre, `main`, cadre). Sa première image
     // pose `main`, dont le script d'image 1 appelle Manager.init.

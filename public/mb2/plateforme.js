@@ -46,8 +46,12 @@ function lireLoadVars(texte, slot) {
 }
 
 class Client {
-  constructor(sid) {
-    this.sid = sid || '';
+  constructor(sid, options) {
+    // LE MODE INVITÉ (/js/invite.js) : aucun sid, quoi qu'on ait passé — sans
+    // lui, rien ne part (profil, slots, quota FD, scores, quêtes) — et la
+    // fruticard s'ouvre en grand (onServiceConnect).
+    this.invite = !!(options && options.invite);
+    this.sid = this.invite ? '' : (sid || '');
     this.slots = [];
     this.fcard = null;
     this.ranking = null;
@@ -145,6 +149,16 @@ class Client {
       this.fcard = new J.Card();
       this.slots[0] = this.fcard;
     } else this.reparerCard(this.fcard);
+
+    // LE MODE INVITÉ : la version complète, d'entrée. Les sept courses (les
+    // boules 40 à 46 du menu) s'ouvrent d'ordinaire une à une, en battant les
+    // records de la précédente (GameOverCourse.saveRecords) ; le cinquième
+    // donjon (64), une fois les quatre premiers vaincus (Manager.gameOver).
+    // La fiche ne vit qu'en mémoire : sans sid, saveSlot ne part jamais.
+    if (this.invite) {
+      this.fcard.$courses = new Array(7).fill(true);
+      this.fcard.$dungeons = new Array(5).fill(true);
+    }
 
     const Prefs = J.Prefs;
     Prefs.challenge_mode_enabled = this.fcard.$challenge;

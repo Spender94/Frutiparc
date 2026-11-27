@@ -73,6 +73,8 @@
   }
 </style>
 <script src="/js/sid-discret.js"></script>
+<!-- Le mode invité (?invite=1, lancé depuis l'accueil) : voir le fichier. -->
+<script src="/js/invite.js"></script>
 </head>
 <body>
 <div id="tout">
@@ -206,7 +208,12 @@
   }
 
   adapter();
-  window.demarrerMotionBall({ canvas, sid: (window.FPSid && FPSid.sid) || params.get('sid') || '' }).then(function (r) {
+  // LE MODE INVITÉ (/js/invite.js) : un visiteur sans compte, lancé depuis
+  // l'accueil. Il n'a pas de sid — ni celui de l'adresse, ni un autre —, et la
+  // fruticard qu'il joue, toute ouverte, ne vit qu'en mémoire (plateforme.js).
+  const invite = !!(window.FPInvite && FPInvite.actif);
+  const sid = invite ? '' : ((window.FPSid && FPSid.sid) || params.get('sid') || '');
+  window.demarrerMotionBall({ canvas, sid, invite }).then(function (r) {
     window.__mb2 = r;
     document.getElementById('chargement').remove();
     adapter();
