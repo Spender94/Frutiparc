@@ -101,9 +101,15 @@
   const GROW = 1, GROW1 = 2, GROW2 = 3, SHRINK = 10, SHRINK1 = 11, SHRINK2 = 12, RIEN = 0;
 
   class EcranMenu {
-    constructor(peutCreer) {
+    /**
+     * `ids` : les articles du menu, dans l'ordre — par défaut ceux du fichier
+     * (1 tournoi, 2 aventure, 4 édition, 5 statistiques, 6 aide, 7 options).
+     * Le mode invité retire l'édition et les statistiques, qui vivent sur le
+     * serveur, au nom du joueur.
+     */
+    constructor(ids) {
       this.fond = new FondVagues();
-      this.items = [1, 2, 4, 5, 6, 7].map((id, pos) => ({
+      this.items = (Array.isArray(ids) ? ids : [1, 2, 4, 5, 6, 7]).map((id, pos) => ({
         id, x: Consts.WIDTH / 2, y: 150 + (pos + 1) * 30, echelle: 100, mode: RIEN, survole: false,
       }));
       this.choix = 0;
@@ -200,7 +206,10 @@
         ctx.save();
         ctx.translate(Consts.WIDTH / 2, 50 + i * 60);
         try {
-          Rendu.dessiner(ctx, 'jama_gui_AdventurePack', 1 + i,
+          // L'image du pack est celle de SA place dans levels.xml : l'invité,
+          // qui saute les paliers vides, garde ainsi le bon dessin (`indice`).
+          const rang = this.packs[i].indice === undefined ? i : this.packs[i].indice;
+          Rendu.dessiner(ctx, 'jama_gui_AdventurePack', 1 + rang,
             { champs: { title: this.packs[i].titre } });
         } catch (e) {}
         ctx.restore();

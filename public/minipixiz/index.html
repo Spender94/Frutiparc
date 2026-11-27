@@ -249,6 +249,8 @@
   }
 </style>
 <script src="/js/sid-discret.js"></script>
+<!-- Le mode invité (?invite=1, lancé depuis l'accueil) : voir le fichier. -->
+<script src="/js/invite.js"></script>
 </head>
 <body>
 
@@ -354,7 +356,12 @@
 (function () {
   var $ = function (s) { return document.querySelector(s); };
   var P = window.MinipixizPlateforme;
-  var sid = (window.FPSid && FPSid.sid) || new URLSearchParams(location.search).get('sid') || '';
+  // LE MODE INVITÉ (/js/invite.js) : un visiteur sans compte, lancé depuis
+  // l'accueil. Pas de sid, jamais — ni fiche lue ou écrite, ni arbre classé,
+  // ni voyant « en partie » —, et une fiche d'habitué en mémoire
+  // (P.carteInvite : la forêt, le donjon, l'arc-en-ciel, Ornegon, une fée).
+  var invite = !!(window.FPInvite && FPInvite.actif);
+  var sid = invite ? '' : ((window.FPSid && FPSid.sid) || new URLSearchParams(location.search).get('sid') || '');
   /*
    * L'ÉTAT DU JEU NE SE LIT PLUS DEPUIS LA PAGE. Le client, la plateforme,
    * l'inventaire… étaient posés sur `window` pour les vérifications
@@ -369,7 +376,7 @@
     window.GardeEntrees.surveiller({ jeu: 'minipixiz', sid: sid });
     if (!EN_LOCAL) window.GardeEntrees.piege(['__client', 'minipixizClient', '__plateforme', '__inventaire', '__menu']);
   }
-  var plateforme = new P.Plateforme(sid);
+  var plateforme = invite ? new P.Plateforme('', { invite: true }) : new P.Plateforme(sid);
   var client = null;
   // base/Forest : une COURSE est une suite de niveaux. On gagne, on passe au
   // suivant sans quitter ; on perd, ou on atteint le relais suivant, et la
@@ -430,7 +437,27 @@
   }
   window.addEventListener('pagehide', function () { direEnPartie(false); });
 
+  /*
+   * LE MODE INVITÉ — le panneau « Inscris-toi ! », une fois par partie.
+   *
+   * Il se pose sur la CLAIRIÈRE revenue : perdre ne pose pas de question dans
+   * ce jeu — l'écran vire au noir, le panneau « Game Over » se montre, puis
+   * `rideau` rouvre la clairière (Base.tryToClose) —, et c'est elle qui attend
+   * le joueur. On le dit donc juste après ouvrirMenu(), aux sorties de
+   * partie : les deux `rideau` (la forêt perdue ; le donjon, l'arbre creux et
+   * l'arc-en-ciel finis), et les sorties sans rideau — le relais de la forêt,
+   * l'arc-en-ciel gagné, le bassin. Chaque partie lève `finInviteAttendue` en
+   * commençant ; le premier qui la dit la baisse.
+   */
+  var finInviteAttendue = false;
+  function direFinInvite(o) {
+    if (!invite || !finInviteAttendue) return;
+    finInviteAttendue = false;
+    FPInvite.finDePartie(o || {});
+  }
+
   function nouvelleCourse(depart) {
+    finInviteAttendue = invite;
     direEnPartie(true);
     course = {
       depart: depart || 0, niveau: depart || 0, niveaux: [], objets: [], entree: true,
@@ -611,7 +638,7 @@
           }
           // Base.tryToClose : le panneau de fin s'est montré, la clairière
           // revient d'elle-même — dans le jeu, perdre ne pose pas de question.
-          if (nom === 'rideau') { ouvrirMenu(); return; }
+          if (nom === 'rideau') { ouvrirMenu(); direFinInvite(finInviteForet()); return; }
           if (nom !== 'finPartie') return;
 
           if (info.gagne) {
@@ -686,10 +713,11 @@
                 genre: 'relais',
                 numero: cpAvant + 2,
                 nom: (P.RELAIS || [])[cpAvant + 1] || '',
-                surFermer: function () { ouvrirMenu(); },
+                surFermer: function () { ouvrirMenu(); direFinInvite(finInviteForet('Relais atteint !')); },
               });
             } else {
               ouvrirMenu();
+              direFinInvite(finInviteForet('Relais atteint !'));
             }
             return;
           }
@@ -699,6 +727,12 @@
           terminer(info);
         }
       });
+
+      // Ce que le panneau de l'invité dit d'une course : le niveau atteint,
+      // compté à partir de un comme sur la carte des relais.
+      function finInviteForet(titre) {
+        return { titre: titre, score: (course ? course.niveau : 0) + 1, libelle: 'Niveau atteint' };
+      }
 
       // Fin de course — perdue ou menée jusqu'au relais. C'est le seul endroit
       // qui enregistre ; les écrans, eux, sont ceux du client.
@@ -993,6 +1027,7 @@
        * de suite.
        */
       function ouvrirBassin() {
+        finInviteAttendue = invite;
         direEnPartie(true);
         var bassin = client.nouveauBassin({
           carte: plateforme.carte,
@@ -1005,10 +1040,13 @@
             }
             // La grille a débordé : le client joue le panneau de fin, puis
             // `rideau` nous ramène. La fée qui s'envole, elle, ne perd pas.
-            if (nom === 'rideau') { ouvrirMenu(); return; }
-            if (nom === 'feeEnvolee') { setTimeout(function () { ouvrirMenu(); }, 600); return; }
+            if (nom === 'rideau') { ouvrirMenu(); direFinInvite(); return; }
+            if (nom === 'feeEnvolee') {
+              setTimeout(function () { ouvrirMenu(); direFinInvite({ titre: 'Une fée est libérée !' }); }, 600);
+              return;
+            }
             if (nom === 'finPartie' && info && info.gagne) {
-              setTimeout(function () { ouvrirMenu(); }, 600);
+              setTimeout(function () { ouvrirMenu(); direFinInvite(); }, 600);
             }
           },
         });
@@ -1071,10 +1109,23 @@
       }
 
       function ouvrirLieu(classe, partie) {
+        finInviteAttendue = invite;
         direEnPartie(true);
         var avant = JSON.parse(JSON.stringify(plateforme.carte));
         var enregistreur = null;
         var rentre = false;
+        // Ce que le panneau de l'invité dit du lieu : le score de l'arbre
+        // creux (celui de son tronc), l'étage du donjon, le lot de
+        // l'arc-en-ciel.
+        function finInviteLieu() {
+          var lieu = l || client.lieu;
+          if (classe === 'Arbre') return { score: lieu ? lieu.score : 0, libelle: 'Ton score' };
+          if (classe === 'Donjon') {
+            return { titre: lieu && lieu.gagne ? 'Donjon vaincu !' : undefined,
+              score: ((lieu ? lieu.level : 0) + 1) + ' / 10', libelle: 'Étage atteint' };
+          }
+          return { titre: lieu && lieu.gagne ? 'L’arc-en-ciel t’a donné son lot !' : undefined };
+        }
         var l = client.nouveauLieu(classe, {
           carte: plateforme.carte,
           // La même règle qu'en forêt : une fée en mission ou en bocal ne
@@ -1117,7 +1168,9 @@
             // Perdu : le client joue le fondu et le panneau, puis `rideau`.
             // Gagné (le donjon vaincu) : le client joue la chute du diamant et
             // l'éclair, puis `rideau` aussi — et la clairière dit la nouvelle.
-            if (nom === 'rideau') { rentre = true; ouvrirMenu(); direLesGainsDuDonjon(); direLeClassementDeLArbre(); return; }
+            // L'invité ne joue pas l'arbre au classement : à la place de ce que
+            // le serveur en dit, le panneau de l'inscription.
+            if (nom === 'rideau') { rentre = true; ouvrirMenu(); direLesGainsDuDonjon(); if (invite) direFinInvite(finInviteLieu()); else direLeClassementDeLArbre(); return; }
             if (nom !== 'finPartie') return;
             // L'ARBRE CREUX est le mode classé : son score part au challenge du
             // jour à CHAQUE fin de partie, et le serveur garde le meilleur.
@@ -1157,7 +1210,7 @@
               // le client joue la chute du diamant et enverra `rideau`. On ne
               // rentre tout de suite que s'il n'a rien à jouer.
               if (client.cine && client.cine.phase === 'diamant') return;
-              setTimeout(function () { ouvrirMenu(); }, 900);
+              setTimeout(function () { ouvrirMenu(); direFinInvite(finInviteLieu()); }, 900);
               return;
             }
             // Entre deux niveaux, la même halte qu'en forêt :
