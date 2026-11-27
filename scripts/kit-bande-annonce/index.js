@@ -32,7 +32,7 @@ const fs = require('fs');
 const path = require('path');
 
 const KIT = path.resolve(process.argv[2] || process.env.KIT_DIR || '/home/user/Frutiparc/kit-bande-annonce');
-const ORDRE = ['chat', 'jeux-a', 'jeux-b', 'extras'];
+const ORDRE = ['chat', 'salon-habitues', 'jeux-a', 'jeux-b', 'pictos-frutisnake', 'frusion-fd', 'extras'];
 
 const pluriel = (n, mot) => n + ' ' + mot + (n > 1 ? 's' : '');
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
