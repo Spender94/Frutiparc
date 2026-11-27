@@ -16,44 +16,173 @@
     "lama1": 16,
     "sandek": 0,
     "ananax": 12,
-    "pattedecat": 3
+    "pattedecat": 3,
+    "braxer": 15,
+    "sness": 1
   },
   "scenes": {
     "habitues": {
       "salon": "orange",
-      "duree": 27,
+      "duree": 30.5,
       "graine": 7,
       "pnj": [],
-      "presents": ["lama1", "sandek", "ananax"],
+      "presents": [
+        "lama1",
+        "sandek",
+        "ananax",
+        "braxer",
+        "sness"
+      ],
       "heure": "21:04:00",
       "avant": [
-        ["sandek", "Bonsoir tout le monde !"],
-        ["ananax", "Yo le parc"],
-        ["lama1", "Quelqu’un pour une partie de Grapiz ?"],
-        ["sandek", "Après le défi, promis"]
+        [
+          "sandek",
+          "Bonsoir tout le monde !"
+        ],
+        [
+          "ananax",
+          "Yo le parc"
+        ],
+        [
+          "braxer",
+          "Salut salut"
+        ],
+        [
+          "lama1",
+          "Quelqu’un pour une partie de Grapiz ?"
+        ],
+        [
+          "sness",
+          "Après le défi, promis"
+        ]
       ],
       "repliques": [
-        { "t": 0.3, "qui": "pattedecat", "entre": true },
-        { "t": 1.0, "qui": "pattedecat", "dit": "Coucou !!!" },
-        { "t": 2.2, "qui": "sandek", "humeur": "sourire" },
-        { "t": 2.3, "qui": "sandek", "dit": "Salut pattedecat !" },
-        { "t": 3.6, "qui": "ananax", "dit": "Alors, ce record de Swapou ?" },
-        { "t": 4.9, "qui": "pattedecat", "humeur": "joie" },
-        { "t": 5.0, "qui": "pattedecat", "dit": "45 855 points hier soir !" },
-        { "t": 6.4, "qui": "lama1", "dit": "mdr" },
-        { "t": 8.2, "qui": "lama1", "humeur": "determine" },
-        { "t": 8.3, "qui": "lama1", "dit": "Je le bats ce soir, tu vas voir" },
-        { "t": 9.7, "qui": "ananax", "dit": "siffle" },
-        { "t": 11.3, "qui": "kasparov", "dit": "Le défi du jour est en ligne !", "pas": 2 },
-        { "t": 14.0, "qui": "sandek", "dit": "Trop bien, c’est quel jeu ?" },
-        { "t": 15.3, "qui": "pattedecat", "dit": "miam" },
-        { "t": 16.9, "qui": "ananax", "humeur": "joie" },
-        { "t": 17.0, "qui": "ananax", "dit": "Frutisnake ! Mon jeu préféré !" },
-        { "t": 18.4, "qui": "lama1", "dit": "bisou" },
-        { "t": 20.0, "qui": "sandek", "dit": "clin" },
-        { "t": 21.6, "qui": "ananax", "dit": "Allez, tous sur le Snake !" },
-        { "t": 22.9, "qui": "pattedecat", "dit": "gumm" },
-        { "t": 24.6, "qui": "sandek", "dit": "jutsu" }
+        {
+          "t": 0.3,
+          "qui": "pattedecat",
+          "entre": true
+        },
+        {
+          "t": 1.0,
+          "qui": "pattedecat",
+          "dit": "Coucou !!!"
+        },
+        {
+          "t": 2.2,
+          "qui": "sandek",
+          "humeur": "sourire"
+        },
+        {
+          "t": 2.3,
+          "qui": "sandek",
+          "dit": "Salut pattedecat !"
+        },
+        {
+          "t": 3.5,
+          "qui": "braxer",
+          "dit": "Bonsoir la star du Swapou"
+        },
+        {
+          "t": 4.8,
+          "qui": "ananax",
+          "dit": "Alors, ce record ?"
+        },
+        {
+          "t": 6.0,
+          "qui": "pattedecat",
+          "humeur": "joie"
+        },
+        {
+          "t": 6.1,
+          "qui": "pattedecat",
+          "dit": "45 855 points hier soir !"
+        },
+        {
+          "t": 7.5,
+          "qui": "lama1",
+          "dit": "mdr"
+        },
+        {
+          "t": 9.2,
+          "qui": "lama1",
+          "humeur": "determine"
+        },
+        {
+          "t": 9.3,
+          "qui": "lama1",
+          "dit": "Je le bats ce soir, tu vas voir"
+        },
+        {
+          "t": 10.6,
+          "qui": "sness",
+          "dit": "siffle"
+        },
+        {
+          "t": 12.2,
+          "qui": "kasparov",
+          "dit": "Le défi du jour est en ligne !",
+          "pas": 2
+        },
+        {
+          "t": 14.8,
+          "qui": "sandek",
+          "dit": "Trop bien, c’est quel jeu ?"
+        },
+        {
+          "t": 16.1,
+          "qui": "pattedecat",
+          "dit": "miam"
+        },
+        {
+          "t": 17.7,
+          "qui": "ananax",
+          "humeur": "joie"
+        },
+        {
+          "t": 17.8,
+          "qui": "ananax",
+          "dit": "Frutisnake ! Mon jeu préféré !"
+        },
+        {
+          "t": 19.2,
+          "qui": "sness",
+          "humeur": "sourire"
+        },
+        {
+          "t": 19.3,
+          "qui": "sness",
+          "dit": "Moi je vise le podium !"
+        },
+        {
+          "t": 20.6,
+          "qui": "braxer",
+          "dit": "bisou"
+        },
+        {
+          "t": 22.2,
+          "qui": "lama1",
+          "dit": "clin"
+        },
+        {
+          "t": 23.8,
+          "qui": "ananax",
+          "dit": "Allez, tous sur le Snake !"
+        },
+        {
+          "t": 25.1,
+          "qui": "braxer",
+          "dit": "gumm"
+        },
+        {
+          "t": 26.7,
+          "qui": "sness",
+          "dit": "rougit"
+        },
+        {
+          "t": 28.2,
+          "qui": "sandek",
+          "dit": "jutsu"
+        }
       ]
     },
     "habitues-multi": {
@@ -62,24 +191,82 @@
       "graine": 4,
       "pnj": [],
       "heure": "22:15:00",
-      "presents": ["lama1", "sandek", "pattedecat"],
+      "presents": [
+        "braxer",
+        "sness",
+        "pattedecat"
+      ],
       "avant": [
-        ["lama1", "Revanche au Grapiz ?"],
-        ["sandek", "Quand tu veux"],
-        ["pattedecat", "Je compte les points"]
+        [
+          "braxer",
+          "Revanche au Grapiz ?"
+        ],
+        [
+          "sness",
+          "Quand tu veux"
+        ],
+        [
+          "pattedecat",
+          "Je compte les points"
+        ]
       ],
       "repliques": [
-        { "t": 0.4, "qui": "sandek", "humeur": "determine" },
-        { "t": 0.5, "qui": "sandek", "dit": "Prêt !" },
-        { "t": 1.8, "qui": "lama1", "dit": "mdr" },
-        { "t": 3.6, "qui": "pattedecat", "humeur": "joie" },
-        { "t": 3.7, "qui": "pattedecat", "dit": "Allez allez !" },
-        { "t": 5.0, "qui": "kasparov", "dit": "Je regarde aussi !", "pas": 3 },
-        { "t": 7.0, "qui": "lama1", "humeur": "embarrasse" },
-        { "t": 7.1, "qui": "lama1", "dit": "Oups…" },
-        { "t": 8.4, "qui": "sandek", "dit": "bisou" },
-        { "t": 10.2, "qui": "pattedecat", "dit": "clin" },
-        { "t": 11.8, "qui": "lama1", "dit": "jutsu" }
+        {
+          "t": 0.4,
+          "qui": "sness",
+          "humeur": "determine"
+        },
+        {
+          "t": 0.5,
+          "qui": "sness",
+          "dit": "C’est parti !"
+        },
+        {
+          "t": 1.8,
+          "qui": "braxer",
+          "dit": "mdr"
+        },
+        {
+          "t": 3.6,
+          "qui": "pattedecat",
+          "humeur": "joie"
+        },
+        {
+          "t": 3.7,
+          "qui": "pattedecat",
+          "dit": "Allez allez !"
+        },
+        {
+          "t": 5.0,
+          "qui": "kasparov",
+          "dit": "Je regarde aussi !",
+          "pas": 3
+        },
+        {
+          "t": 7.0,
+          "qui": "braxer",
+          "humeur": "embarrasse"
+        },
+        {
+          "t": 7.1,
+          "qui": "braxer",
+          "dit": "Oups…"
+        },
+        {
+          "t": 8.4,
+          "qui": "sness",
+          "dit": "bisou"
+        },
+        {
+          "t": 10.2,
+          "qui": "pattedecat",
+          "dit": "clin"
+        },
+        {
+          "t": 11.8,
+          "qui": "braxer",
+          "dit": "jutsu"
+        }
       ]
     }
   }

@@ -19,7 +19,7 @@ function comme(modele, propre) {
 module.exports = {
   'habitues-maitre': comme('aquarium-maitre', {
     scene: 'habitues', titre: 'Les habitués — plan maître', affiche: 17.4,
-    description: 'Le salon Orange avec des habitués bien connus du parc (kasparov, Lama1, Sandek, AnanaX, pattedecat), vu sur le bureau Frutiz de kasparov : la colonne des bouilles est en « aquarium », chaque bouille entre quand son frutiz parle, joue son émote (rire, sifflote, miam, bisou, clin d’œil, chewing-gum, jutsu) et repart. Arrivée de pattedecat, son record de Swapou, le défi du jour annoncé par kasparov (qui tape sa ligne), humeurs qui changent.',
+    description: 'Le salon Orange avec des habitués bien connus du parc (kasparov, Sandek, Braxer, Lama1, AnanaX, pattedecat, SNess), vu sur le bureau Frutiz de kasparov : la colonne des bouilles est en « aquarium », chaque bouille entre quand son frutiz parle, joue son émote (rire, sifflote, miam, bisou, clin d’œil, chewing-gum, jutsu) et repart. Arrivée de pattedecat, son record de Swapou salué par Braxer, le défi du jour annoncé par kasparov (qui tape sa ligne), humeurs qui changent.',
     usage: 'Plan long pour couper : « les vrais habitués du parc ». N’importe quelle tranche de 2 à 6 s montre des bouilles qui entrent et réagissent.',
   }),
   'habitues-gros-plan': comme('aquarium-gros-plan', {
@@ -34,7 +34,7 @@ module.exports = {
   }),
   'habitues-multi': comme('multi', {
     scene: 'habitues-multi', titre: 'Les habitués — un écran chacun', affiche: 8.5,
-    description: 'Un petit salon (Kiwi) à quatre : Lama1, Sandek et pattedecat avec kasparov. Chacun a SON écran dans la colonne des bouilles (mode MULTI) : humeurs qui changent, émotes jouées dans l’écran de qui les lance.',
+    description: 'Un petit salon (Kiwi) à quatre : Braxer, SNess et pattedecat avec kasparov. Chacun a SON écran dans la colonne des bouilles (mode MULTI) : humeurs qui changent, émotes jouées dans l’écran de qui les lance.',
     usage: 'Contrepoint calme à l’aquarium : quatre têtes connues qui réagissent.',
   }),
 };
