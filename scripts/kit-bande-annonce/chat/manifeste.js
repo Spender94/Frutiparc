@@ -24,7 +24,7 @@ function sonder(fichier) {
   };
 }
 
-function ecrire(sortie, plans) {
+function ecrire(sortie, plans, section) {
   const elements = [];
   for (const [nom, p] of Object.entries(plans)) {
     const principal = path.join(sortie, nom + (p.alpha ? '.webm' : '.mp4'));
@@ -53,6 +53,8 @@ function ecrire(sortie, plans) {
       + '« node scripts/kit-bande-annonce/chat/generer.js ».',
     elements,
   };
+  // Une autre série de scènes (le salon des habitués…) donne son propre titre.
+  if (section) Object.assign(manifeste, section);
   fs.writeFileSync(path.join(sortie, 'manifest.json'), JSON.stringify(manifeste, null, 2) + '\n');
   console.log(`manifest.json : ${elements.length} élément(s)`);
 }

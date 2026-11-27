@@ -1,0 +1,86 @@
+{
+  "_aide": [
+    "LE SALON DES HABITUÉS — même format que scenes.json (voir son « _aide »).",
+    "Les personnages sont de VRAIS joueurs du parc : leurs bouilles viennent de kit-bande-annonce/casting-habitues.json (hors dépôt, à remplir avec les codes copiés de la page admin, onglet Joueurs → Détail).",
+    "Les répliques sont INVENTÉES : des phrases neutres et bon enfant. À faire relire, et à montrer aux joueurs concernés avant toute diffusion publique.",
+    "Le spectateur (celui dont on filme l'écran et qui TAPE ses lignes) est « spectateur » dans casting-habitues.json.",
+    "Tourner : sh scripts/kit-bande-annonce/chat/habitues.sh   (ou un plan : sh …/habitues.sh habitues-multi)"
+  ],
+  "section": {
+    "section": "salon-habitues",
+    "titre": "Le salon des habitués — de vraies bouilles du parc",
+    "texte": "Les bouilles de joueurs bien connus du parc, en scène dans un vrai salon : même tournage que la section « Le chat » (le site tourne en local, chacun est un compte qui parle le vrai protocole du chat, on filme l’écran du spectateur sur son bureau Frutiz, image par image). Les bouilles sont les leurs ; les répliques sont inventées (scénario : scripts/kit-bande-annonce/chat/scenes-habitues.json). À montrer aux joueurs concernés avant une diffusion publique."
+  },
+  "feutres": {
+    "kasparov": 8,
+    "lama1": 16,
+    "sandek": 0,
+    "ananax": 12,
+    "pattedecat": 3
+  },
+  "scenes": {
+    "habitues": {
+      "salon": "orange",
+      "duree": 27,
+      "graine": 7,
+      "pnj": [],
+      "presents": ["lama1", "sandek", "ananax"],
+      "heure": "21:04:00",
+      "avant": [
+        ["sandek", "Bonsoir tout le monde !"],
+        ["ananax", "Yo le parc"],
+        ["lama1", "Quelqu’un pour une partie de Grapiz ?"],
+        ["sandek", "Après le défi, promis"]
+      ],
+      "repliques": [
+        { "t": 0.3, "qui": "pattedecat", "entre": true },
+        { "t": 1.0, "qui": "pattedecat", "dit": "Coucou !!!" },
+        { "t": 2.2, "qui": "sandek", "humeur": "sourire" },
+        { "t": 2.3, "qui": "sandek", "dit": "Salut pattedecat !" },
+        { "t": 3.6, "qui": "ananax", "dit": "Alors, ce record de Swapou ?" },
+        { "t": 4.9, "qui": "pattedecat", "humeur": "joie" },
+        { "t": 5.0, "qui": "pattedecat", "dit": "45 855 points hier soir !" },
+        { "t": 6.4, "qui": "lama1", "dit": "mdr" },
+        { "t": 8.2, "qui": "lama1", "humeur": "determine" },
+        { "t": 8.3, "qui": "lama1", "dit": "Je le bats ce soir, tu vas voir" },
+        { "t": 9.7, "qui": "ananax", "dit": "siffle" },
+        { "t": 11.3, "qui": "kasparov", "dit": "Le défi du jour est en ligne !", "pas": 2 },
+        { "t": 14.0, "qui": "sandek", "dit": "Trop bien, c’est quel jeu ?" },
+        { "t": 15.3, "qui": "pattedecat", "dit": "miam" },
+        { "t": 16.9, "qui": "ananax", "humeur": "joie" },
+        { "t": 17.0, "qui": "ananax", "dit": "Frutisnake ! Mon jeu préféré !" },
+        { "t": 18.4, "qui": "lama1", "dit": "bisou" },
+        { "t": 20.0, "qui": "sandek", "dit": "clin" },
+        { "t": 21.6, "qui": "ananax", "dit": "Allez, tous sur le Snake !" },
+        { "t": 22.9, "qui": "pattedecat", "dit": "gumm" },
+        { "t": 24.6, "qui": "sandek", "dit": "jutsu" }
+      ]
+    },
+    "habitues-multi": {
+      "salon": "kiwi",
+      "duree": 14,
+      "graine": 4,
+      "pnj": [],
+      "heure": "22:15:00",
+      "presents": ["lama1", "sandek", "pattedecat"],
+      "avant": [
+        ["lama1", "Revanche au Grapiz ?"],
+        ["sandek", "Quand tu veux"],
+        ["pattedecat", "Je compte les points"]
+      ],
+      "repliques": [
+        { "t": 0.4, "qui": "sandek", "humeur": "determine" },
+        { "t": 0.5, "qui": "sandek", "dit": "Prêt !" },
+        { "t": 1.8, "qui": "lama1", "dit": "mdr" },
+        { "t": 3.6, "qui": "pattedecat", "humeur": "joie" },
+        { "t": 3.7, "qui": "pattedecat", "dit": "Allez allez !" },
+        { "t": 5.0, "qui": "kasparov", "dit": "Je regarde aussi !", "pas": 3 },
+        { "t": 7.0, "qui": "lama1", "humeur": "embarrasse" },
+        { "t": 7.1, "qui": "lama1", "dit": "Oups…" },
+        { "t": 8.4, "qui": "sandek", "dit": "bisou" },
+        { "t": 10.2, "qui": "pattedecat", "dit": "clin" },
+        { "t": 11.8, "qui": "lama1", "dit": "jutsu" }
+      ]
+    }
+  }
+}

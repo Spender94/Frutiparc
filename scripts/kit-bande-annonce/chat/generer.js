@@ -44,7 +44,11 @@ const playwright = (() => {
 
 const SORTIE = process.env.KIT_CHAT_SORTIE || '/home/user/Frutiparc/kit-bande-annonce/chat';
 const CASTING = process.env.KIT_CASTING || path.join(path.dirname(SORTIE), 'casting.json');
-const SCENES = path.join(__dirname, 'scenes.json');
+// Le scénario et la liste des plans : ceux du kit par défaut, ou d'autres
+// (KIT_CHAT_SCENES / KIT_CHAT_PLANS) pour tourner une autre série de scènes
+// avec une autre distribution (KIT_CASTING) dans un autre dossier (KIT_CHAT_SORTIE).
+// Exemple : le salon des habitués, voir habitues.sh.
+const SCENES = process.env.KIT_CHAT_SCENES ? path.resolve(process.env.KIT_CHAT_SCENES) : path.join(__dirname, 'scenes.json');
 const FPS = 60;
 // Plage de ports de la section « chat » : 4100–4199.
 const PORTS = { port: 4100, portXml: 4110, portScore: 4111 };
@@ -67,7 +71,7 @@ const BASE_PG = process.env.KIT_CHAT_PG || 'postgres://postgres@127.0.0.1:5433/k
  *   mobile   la vue light d'un téléphone (vertical 1080 × 1920) ;
  *   affiche  l'instant (s) de l'image gardée comme affiche PNG.
  */
-const PLANS = require('./plans');
+const PLANS = require(process.env.KIT_CHAT_PLANS ? path.resolve(process.env.KIT_CHAT_PLANS) : './plans');
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -424,7 +428,8 @@ async function main() {
   const noms = args.filter((a) => !a.startsWith('--'));
   const aFaire = noms.length ? noms : Object.keys(PLANS);
   for (const n of aFaire) await tournerPlan(n, essai);
-  if (!essai) require('./manifeste').ecrire(SORTIE, PLANS);
+  // La fiche de section (titre, texte) peut venir du scénario (« section »).
+  if (!essai) require('./manifeste').ecrire(SORTIE, PLANS, lireJson(SCENES).section);
 }
 
 if (require.main === module) {
