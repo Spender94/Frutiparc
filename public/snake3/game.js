@@ -34,6 +34,17 @@ const E = window.SnakeEncyclo;
 
 const hasard = (n) => Math.floor(Math.random() * (n || 0));
 
+/*
+ * LE MODE INVITÉ (?invite=1, /js/invite.js) : un visiteur sans compte, lancé
+ * depuis l'accueil. Frutisnake n'a rien à débloquer — tout est ouvert sans
+ * session —, l'invité joue donc le jeu tel quel, sans sid. Trois choses
+ * changent : la fin de partie ne dit plus « score NON enregistré » mais pose
+ * le panneau d'inscription, et le Battle EN LIGNE (qui demande un compte au
+ * serveur du chat) est grisé. Le pack de Frutisnake (`snake3Hud`, acheté en
+ * boutique) reste fermé : sans session, personne ne le demande.
+ */
+const invite = () => !!(window.FPInvite && window.FPInvite.actif);
+
 // ── Text.as — un écran à panneau (screens 483), qui rebondit en entrant ───
 // Étiquettes du clip : pause=1, gameOver=7, connexion=15, resultat=24,
 // fruit=32, text=39. Le panneau `pan` reste sur sa première image (vert) —
@@ -375,6 +386,7 @@ class VuePartie {
     // là, le moteur n'est pas arrêté) postait un deuxième score au classement.
     if (this.finie) return;
     this.finie = true;
+    this.scoreFinal = Math.max(0, Math.floor(score));   // pour le panneau de l'invité
     this.ecran = new Ecran(jeu, 'connexion', C.TXT_SCORE_SAVING);
 
     const pf = jeu.plateforme;
@@ -397,7 +409,11 @@ class VuePartie {
       // partaient au néant sous un « Votre record personnel » paisible. On
       // s'arrête là, et on dit pourquoi.
       if (!rep || rep.ok === false) {
-        texte += C.TXT_SCORE_PERDU + '\n' + C.TXT_SCORE_PERDU_MOTIF(rep && rep.error) + '\n';
+        // …sauf à l'INVITÉ : sans session, son score ne part nulle part, et
+        // c'est attendu. Pas d'« ATTENTION » ni de « Connectez-vous » — le
+        // panneau d'inscription le dira, en fin de chaîne (chaineFruits).
+        const invitePrevu = !!(rep && rep.error === 'hors_ligne' && invite());
+        if (!invitePrevu) texte += C.TXT_SCORE_PERDU + '\n' + C.TXT_SCORE_PERDU_MOTIF(rep && rep.error) + '\n';
         this.ecran.poserEcran('gameOver');
         this.ecran.poserTexte(texte);
         this.ecran.poserPresse(() => this.chaineFruits());
@@ -434,6 +450,18 @@ class VuePartie {
         this.ecran.poserPresse(() => this.chaineFruits());
         return;
       }
+    }
+    /*
+     * L'INVITÉ : l'écran de fin et les fruits du jour sont passés, le jeu
+     * rendrait la main au menu. Le panneau « Tu veux enregistrer tes
+     * scores ? » se pose d'abord (une fois par partie, Challenge comme
+     * tournoi) ; le menu revient quand il se ferme.
+     */
+    if (invite() && !this.inviteVu) {
+      this.inviteVu = true;
+      const jeu = this.jeu;
+      if (window.FPInvite.finDePartie({ score: String(this.scoreFinal || 0), libelle: 'Ton score',
+        surRejouer: () => jeu.forcerMode(0) })) return;
     }
     this.jeu.forcerMode(0);           // Manager.restartGame → le menu
   }
@@ -900,9 +928,12 @@ class Jeu {
       case 4: return new E.Encyclo(this);
       // Le sous-menu Battle : deux, trois, quatre joueurs sur un clavier — et
       // la pastille 10, le duel EN LIGNE (enligne.js), qui n'existait pas.
-      case 5: return new M.Menu(this, [6, 7, 8, 10, 5], (n) => this.choixMenu(n));
-      case 20: return new window.SnakeEnLigne.VueSalon(this);
-      case 21: return new window.SnakeEnLigne.VueBatailleEnLigne(this);
+      // L'invité voit la pastille 10 GRISÉE (un identifiant négatif : le
+      // carrousel la dessine à demi, sans appui) — le salon en ligne demande
+      // un compte. Les batailles sur un clavier restent ouvertes.
+      case 5: return new M.Menu(this, invite() ? [6, 7, 8, -10, 5] : [6, 7, 8, 10, 5], (n) => this.choixMenu(n));
+      case 20: return invite() ? this.menuPrincipal() : new window.SnakeEnLigne.VueSalon(this);
+      case 21: return invite() ? this.menuPrincipal() : new window.SnakeEnLigne.VueBatailleEnLigne(this);
       // La carte a pu fermer entre l'affichage de la pastille et le clic : on
       // retombe alors sur le menu plutôt que de partir sans script.
       case 96: {
@@ -930,7 +961,7 @@ class Jeu {
         this.nplayers = n - 4;
         this.poserModeSuivant(2);
         break;
-      case 10: this.poserModeSuivant(20); break;   // Battle en ligne : le salon
+      case 10: if (!invite()) this.poserModeSuivant(20); break;   // Battle en ligne : le salon (pas pour l'invité)
       default: break;
     }
   }
@@ -1426,7 +1457,9 @@ window.SnakeJeu = { Jeu, Ecran, VuePartie, VueBataille, dessinerFondArene, dessi
 window.demarrerFrutisnake = function (options) {
   const opts = options || {};
   const canvas = document.getElementById(opts.canvas || 'scene');
-  const sid = (window.FPSid && FPSid.sid) || new URLSearchParams(window.location.search).get('sid') || '';
+  // L'invité n'a JAMAIS de sid — pas même celui qu'on aurait mis à la main
+  // dans l'adresse (voir /js/invite.js).
+  const sid = invite() ? '' : ((window.FPSid && FPSid.sid) || new URLSearchParams(window.location.search).get('sid') || '');
   const plateforme = new window.SnakePlateforme.Plateforme(sid);
   const sons = new window.SnakeSons.Sons();
 

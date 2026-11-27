@@ -82,6 +82,7 @@
   #bareme { color: #5d8f33; font-size: 10px; line-height: 1.5; margin-top: 2px; }
 </style>
 <script src="/js/sid-discret.js"></script>
+<script src="/js/invite.js"></script>
 </head>
 <body>
 <div id="tout">
@@ -112,7 +113,16 @@ const J = window.JournalPartie || {};
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
-const sid = (window.FPSid && FPSid.sid) || params.get('sid') || '';
+/*
+ * LE MODE INVITÉ (?invite=1, /js/invite.js) : un visiteur sans compte, lancé
+ * depuis l'accueil. Mini-Fever n'a rien à débloquer ; l'invité joue donc sans
+ * sid — jamais, même écrit à la main dans l'adresse —, à la règle du jour
+ * (le barème public), et la fin de partie pose le panneau d'inscription à la
+ * place du « connecte-toi pour enregistrer tes scores ».
+ */
+const invite = !!(window.FPInvite && FPInvite.actif);
+const sid = invite ? '' : ((window.FPSid && FPSid.sid) || params.get('sid') || '');
+let bareme = null;                  // le barème du jour (/api/minifever/bareme)
 
 // Les appuis simulés par un script sont refusés et signalés (garde-entrees.js).
 if (window.GardeEntrees) window.GardeEntrees.surveiller({ jeu: 'minifever', sid });
@@ -219,7 +229,10 @@ function jouer() {
     }
     // La règle du jour donnée avec le jeton : sans plafond depuis le barème
     // de novembre 2026 (l'objectif atteint, on joue jusqu'à la dernière vie).
-    const sansPlafond = !!(partie && partie.regle && partie.regle.sansPlafond);
+    // L'invité n'a pas de jeton : il prend la règle du barème public, celle
+    // que jouent les membres aujourd'hui.
+    const sansPlafond = !!(partie && partie.regle && partie.regle.sansPlafond)
+      || (invite && !!(bareme && bareme.sansPlafond));
     socle = client.nouvellePartie(ArcadeVerifiee, JEUX, { palier: m.palier, sansPlafond });
     socle.verif = verif;
     // LES BATTEMENTS (journal-partie.js) : les images journalisées, toutes
@@ -312,6 +325,7 @@ function finArcade(d) {
   const finBattements = v0.battements ? v0.battements.finir() : Promise.resolve();
   v0.battements = null;
   const dire = (t) => { if (socle === cette) $('etat').textContent = base + ' · ' + t; };
+  if (invite) { panneauInvite(cette, scoreInvite(d)); return; }
   if (!sid) { dire('connecte-toi pour enregistrer tes scores'); return; }
   if (!(d.niveau > 0)) { dire('aucune épreuve remportée : rien à classer'); return; }
   const verif = (cette && cette.verif) || {};
@@ -344,9 +358,38 @@ function finArcade(d) {
   finBattements.then(envoyer);
 }
 
+/*
+ * L'INVITÉ, EN FIN DE PARTIE : le panneau « Tu veux enregistrer tes scores ?
+ * Inscris-toi ! » (/js/invite.js), une fois par partie, par-dessus la scène
+ * de fin — « Rejouer » relance le même mode.
+ *
+ * L'arcade s'arrête net sur sa console (le bandeau dit « choisir un mode ») :
+ * le panneau vient un instant après, que l'on voie la fin ; si le joueur a
+ * déjà relancé, il ne vient pas. Le fever, lui, attend un appui sur son
+ * écran gameOver : le panneau se pose à cet appui (`rejouer`), à la place de
+ * la relance.
+ *
+ * Le score de l'arcade se compte comme le serveur le compterait (10 points
+ * par épreuve remportée, × le multiplicateur du palier au barème du jour), et
+ * s'écrit comme le bandeau l'écrit à un membre : « 120 pts (×3) ».
+ */
+const DELAI_PANNEAU_INVITE = 1200;
+function scoreInvite(d) {
+  const mult = (bareme && Number(bareme.mult[d.palier])) || (1 + (Number(d.palier) || 0));
+  const pts = (Number(d.niveau) || 0) * 10 * mult;
+  return { score: pts + ' pts' + (mult > 1 ? ' (×' + mult + ')' : ''), libelle: 'Ton score' };
+}
+function panneauInvite(cette, opts) {
+  setTimeout(() => {
+    if (socle !== cette || !window.FPInvite) return;   // le joueur a relancé : on se tait
+    window.FPInvite.finDePartie(Object.assign({ surRejouer: () => { if (socle === cette) jouer(); } }, opts));
+  }, DELAI_PANNEAU_INVITE);
+}
+
 /* ── Le barème du jour, sous la scène (il a changé en novembre 2026). ── */
 fetch('/api/minifever/bareme').then((r) => r.json()).then((b) => {
   if (!b || !b.ok || !Array.isArray(b.mult)) return;
+  bareme = b;
   $('bareme').textContent = 'arcade : 10 pts par épreuve remportée, × ' + b.mult[1] + ' en normal, × ' + b.mult[2]
     + ' en difficile, × ' + b.mult[3] + ' en infernal'
     + (b.sansPlafond ? ' — sans plafond : on joue jusqu\'à la dernière vie' : '') + ' — un seul classement';
@@ -378,12 +421,24 @@ C.charger('/minifever/sprites/', (c) => {
         if (modeChoisi === 'fever') finFever(d); else finArcade(d);
         return;
       }
-      if (nom === 'rejouer') { jouer(); return; }
+      if (nom === 'rejouer') {
+        // L'invité : l'appui qui relançait pose d'abord le panneau d'inscription.
+        if (invite && socle && !socle.inviteVu && window.FPInvite) {
+          socle.inviteVu = true;
+          const cette = socle, n = Math.max(0, (Number(d.niveau) || 0) - 1);
+          if (window.FPInvite.finDePartie({ score: String(n), libelle: 'Épreuves remportées',
+            surRejouer: () => { if (socle === cette) jouer(); } })) return;
+        }
+        jouer(); return;
+      }
       majEtat();
     },
   });
   construireModes();
   jouer();
+  // La poignée des tests de bout en bout (comme window.__frutisnake) : le
+  // client, et la partie à l'écran.
+  window.__minifever = { client, get socle() { return socle; } };
 }).catch((e) => {
   $('etat').textContent = 'chargement impossible : ' + e.message;
 });

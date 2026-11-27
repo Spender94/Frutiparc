@@ -966,7 +966,9 @@
     this.unlockedChar = cid;
   };
   GameOver.prototype.winTitem = function (n) {
-    if (n === 0) return;
+    // L'invité n'a pas d'inventaire : rien ne lui est remis, on ne le lui
+    // annonce donc pas (le panneau d'inscription dira ce qu'un compte garde).
+    if (n === 0 || SW.invite()) return;
     this.titemText = 'Vous avez gagné ' + ((n === 1) ? 'un nouveau titem' : (n + ' nouveaux titems')) + ' Frutiparc !';
   };
   GameOver.prototype.setText = function (txt) {
@@ -997,6 +999,23 @@
   };
   GameOver.prototype.onClickDown = function () {
     if (this.lock || this.lock_time > 0) return;
+    /*
+     * LE MODE INVITÉ : la boîte de fin a dit le score, le joueur clique pour
+     * continuer — c'est là, une fois par partie, que se pose le panneau
+     * « Tu veux enregistrer tes scores ? Inscris-toi ! » (/js/invite.js).
+     * Le retour au menu attend qu'il se ferme (« Rejouer »). Challenge, essai
+     * et Classique seulement : ce sont les parties à score (`scoreInvite`,
+     * posé par Manager.gameOver) ; le Duel et le Pot au feu n'en ont pas.
+     */
+    if (this.scoreInvite != null && !this.inviteVu && window.FPInvite) {
+      this.inviteVu = true;
+      const me = this;
+      const ouvert = window.FPInvite.finDePartie({
+        score: String(this.scoreInvite), libelle: 'Ton score',
+        surRejouer: function () { if (Manager.mode === me) Manager.endGame(me.win_flag); },
+      });
+      if (ouvert) return;
+    }
     Manager.endGame(this.win_flag);
   };
   GameOver.prototype.main = function (tmod, deltaT) {
@@ -1186,6 +1205,9 @@
       const wins = (score !== 0);
       const g = new GameOver(Manager.mode);
       Manager.mode = g;
+      // L'invité verra son score au panneau d'inscription (GameOver.onClickDown).
+      if (SW.invite() && (SW.Data.gameMode === SW.Data.CHALLENGE || SW.Data.gameMode === SW.Data.CLASSIC))
+        g.scoreInvite = score;
       switch (SW.Data.gameMode) {
         case SW.Data.CLASSIC: {
           // Comme le SWF d'origine : le mode classique n'alimente AUCUN

@@ -78,6 +78,7 @@
   }
 </style>
 <script src="/js/sid-discret.js"></script>
+<script src="/js/invite.js"></script>
 </head>
 <body>
 <div id="tout">
@@ -202,7 +203,11 @@
   }
 
   adapter();
-  window.demarrerKaluga({ canvas, sid: (window.FPSid && FPSid.sid) || params.get('sid') || '' }).then(function () {
+  // L'invité (?invite=1, /js/invite.js) n'a jamais de sid, même écrit à la
+  // main dans l'adresse : sa fiche complète vit en mémoire (plateforme.js).
+  const invite = !!(window.FPInvite && FPInvite.actif);
+  const sid = invite ? '' : ((window.FPSid && FPSid.sid) || params.get('sid') || '');
+  window.demarrerKaluga({ canvas, sid }).then(function () {
     document.getElementById('chargement').remove();
     adapter();
     canvas.focus();

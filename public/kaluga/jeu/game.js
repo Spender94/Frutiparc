@@ -631,10 +631,45 @@ class Game extends J.Slot {
     }
   }
   addTitem(str) {
+    // L'invité n'a pas d'inventaire : on ne lui annonce pas un Titem qu'il
+    // n'aura nulle part (même règle pour la Kagulga, plus bas).
+    if (this.mng.client.invite) return;
     this.endPanelMiddle.push({ label: 'congrat', list: [{ type: 'congrat', text: 'Un nouveau Titem est disponible dans votre inventaire !\n', id: 10 }] });
     this.mng.client.giveItem(str);
   }
+  /*
+   * LE MODE INVITÉ — le panneau « Tu veux enregistrer tes scores ?
+   * Inscris-toi ! » (/js/invite.js), UNE fois par partie, quand le panneau de
+   * fin du jeu est arrivé au bout (Panel.setPage) : sur le « Rejouer ? » d'une
+   * partie seule, ou à la place du retour au menu d'un tournoi (`apres`, qui
+   * reprend quand le panneau se ferme). Rend vrai si le panneau s'est ouvert.
+   *
+   * Le score est celui que la page de résultats vient de montrer, tel qu'elle
+   * l'écrit (points, temps, centimètres) : le premier grand chiffre de
+   * résultat (image 1) ou de temps (image 3) — l'image 2 est le record.
+   * Un tournoi pose le sien (endTournament, `scoreInvite`). Une partie perdue
+   * avant tout résultat (le temps écoulé) n'en a pas : le panneau s'en passe.
+   */
+  finInvite(apres) {
+    if (!this.mng.client.invite || this.inviteVu || !racine.FPInvite) return false;
+    this.inviteVu = true;
+    const opts = Object.assign({}, this.scoreInvite || this.scoreDuPanneau());
+    if (apres) opts.surRejouer = apres;
+    return racine.FPInvite.finDePartie(opts);
+  }
+  scoreDuPanneau() {
+    for (const page of this.endPanelStart.concat(this.endPanelMiddle)) {
+      if (!page || typeof page !== 'object' || !Array.isArray(page.list)) continue;
+      for (const part of page.list) {
+        if (!part || part.type !== 'bigScore' || (part.frame !== 1 && part.frame !== 3)) continue;
+        const score = String(part.score);
+        return { score, libelle: part.frame === 3 ? 'Ton temps' : (/cm$/.test(score) ? 'Ta distance' : 'Ton score') };
+      }
+    }
+    return {};
+  }
   addKagulga() {
+    if (this.mng.client.invite) return;
     this.endPanelMiddle.push({ label: 'congrat', list: [{ type: 'congrat', text: 'Vous avez gagné la kagulga !\nEn véritable cuir de Tzongre, cette cagoule vous permettra de garder la fruticlasse en toutes circonstances !', id: 14 }] });
     this.mng.client.giveAccessory('$kagulga');
   }
