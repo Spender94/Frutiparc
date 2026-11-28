@@ -82,6 +82,12 @@
   #bareme { color: #5d8f33; font-size: 10px; line-height: 1.5; margin-top: 2px; }
 </style>
 <script src="/js/sid-discret.js"></script>
+<!-- Les langues du parc (voir /js/i18n.js) : en anglais, le vocabulaire
+     commun, les widgets partagés et le dictionnaire du jeu
+     (/minifever/lang/en.js) arrivent pendant l'analyse de la page ; en
+     français, rien n'est chargé — le français est écrit ici même. -->
+<script src="/js/i18n.js"></script>
+<script>FPI18n.charger(['commun', 'widgets', '/minifever/lang/{lang}.js']);</script>
 <script src="/js/invite.js"></script>
 </head>
 <body>
@@ -89,10 +95,10 @@
   <div id="aire"><canvas id="stage" width="240" height="240"></canvas></div>
   <div id="bandeau">
     <div id="modes"></div>
-    <div id="etat">chargement…</div>
+    <div id="etat" data-i18n="minifever.chargement">chargement…</div>
     <!-- La règle du classement, écrite là où on choisit sa difficulté : un
          seul tableau pour tous les modes, et le palier fait le multiplicateur. -->
-    <div id="bareme">arcade : 10 pts par épreuve remportée, × 2 en normal, × 3 en difficile, × 4 en infernal — un seul classement</div>
+    <div id="bareme" data-i18n="minifever.baremeDefaut">arcade : 10 pts par épreuve remportée, × 2 en normal, × 3 en difficile, × 4 en infernal — un seul classement</div>
   </div>
 </div>
 
@@ -113,6 +119,16 @@ const J = window.JournalPartie || {};
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
+
+/*
+ * LES LANGUES (/js/i18n.js, chargé dans le <head>) : le français reste écrit
+ * ici, argument de repli de T() ; l'anglais vit dans /minifever/lang/en.js.
+ * Les deux textes du bandeau marqués data-i18n passent d'un coup ; en
+ * français, appliquer() ne touche à rien. Le nom d'un palier se traduit à
+ * l'affichage : engine.js garde le sien (le serveur le lit aussi).
+ */
+FPI18n.appliquer(document);
+const nomPalier = (i, fr) => T('minifever.palier' + i, fr);
 /*
  * LE MODE INVITÉ (?invite=1, /js/invite.js) : un visiteur sans compte, lancé
  * depuis l'accueil. Mini-Fever n'a rien à débloquer ; l'invité joue donc sans
@@ -139,8 +155,8 @@ let demandes = 0;                   // la dernière demande de partie (cf. jouer
  * d'accueil (Menu.mt reconstruit — le SWF de dev, lui, sautait droit au mode
  * fever, menu jamais compilé). Les paliers d'arcade viennent de base/Arcade.mt.
  */
-const MODES = [{ id: 'menu', nom: 'menu' }, { id: 'fever', nom: 'fever' }]
-  .concat(E.PALIERS.filter((p) => p.nom).map((p, i) => ({ id: 'arcade' + i, nom: p.nom, palier: i })));
+const MODES = [{ id: 'menu', nom: T('minifever.modeMenu', 'menu') }, { id: 'fever', nom: 'fever' }]
+  .concat(E.PALIERS.filter((p) => p.nom).map((p, i) => ({ id: 'arcade' + i, nom: nomPalier(i, p.nom), palier: i })));
 
 function construireModes() {
   const hote = $('modes');
@@ -214,7 +230,7 @@ function jouer() {
     majEtat();
     return;
   }
-  majEtat('préparation de la partie…');
+  majEtat(T('minifever.preparation', 'préparation de la partie…'));
   demanderPartie(m.palier).then((partie) => {
     if (n !== demandes) return;       // le joueur a choisi autre chose entre-temps
     const verif = { partie, enregistreur: null };
@@ -259,14 +275,15 @@ function jouer() {
 function majEtat(texte) {
   if (texte !== undefined) { $('etat').textContent = texte; return; }
   if (!socle) { $('etat').textContent = ''; return; }
-  if (modeChoisi === 'menu') { $('etat').textContent = 'choisis ton mode'; return; }
+  if (modeChoisi === 'menu') { $('etat').textContent = T('minifever.choisisMode', 'choisis ton mode'); return; }
   if (modeChoisi === 'fever') {
-    $('etat').textContent = 'épreuve ' + Math.max(1, socle.niveau);
+    $('etat').textContent = T('minifever.epreuveN', 'épreuve {n}', { n: Math.max(1, socle.niveau) });
   } else {
     const p = socle.info;
-    $('etat').textContent = p.nom + ' · épreuve ' + (socle.niveau + 1)
-      + (socle.gagnee ? ' (mode terminé, on continue !)' : '/' + p.lvl)
-      + ' · ' + socle.vies + ' vie' + (socle.vies > 1 ? 's' : '');
+    const vies = T.n('minifever.vies', socle.vies, { one: '{n} vie', other: '{n} vies' });
+    $('etat').textContent = socle.gagnee
+      ? T('minifever.etatAuDela', '{palier} · épreuve {n} (mode terminé, on continue !) · {vies}', { palier: nomPalier(socle.palier, p.nom), n: socle.niveau + 1, vies })
+      : T('minifever.etatArcade', '{palier} · épreuve {n}/{lvl} · {vies}', { palier: nomPalier(socle.palier, p.nom), n: socle.niveau + 1, lvl: p.lvl, vies });
   }
 }
 
@@ -277,8 +294,10 @@ function majEtat(texte) {
  * où le joueur cherche son score.
  */
 function finFever(d) {
-  majEtat((d.niveau - 1) + ' épreuve' + (d.niveau > 2 ? 's' : '') + ' remportée'
-    + (d.niveau > 2 ? 's' : '') + ' (hors classement) — cliquer pour rejouer');
+  majEtat(T.n('minifever.finFever', d.niveau - 1, {
+    one: '{n} épreuve remportée (hors classement) — cliquer pour rejouer',
+    other: '{n} épreuves remportées (hors classement) — cliquer pour rejouer',
+  }));
   // Hors classement, mais pas hors quêtes : la chaîne compte pour Gromelin.
   if (sid && d.niveau > 1) {
     fetch('/api/quetes/mode', { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -301,23 +320,27 @@ function finFever(d) {
  */
 const ENVOI_ESSAIS = 12;              // toutes les cinq secondes : une minute
 const ENVOI_DELAI = 5000;
+// Les CODES du serveur, et la phrase que le client choisit pour chacun.
 const MOTIFS = {
-  session: 'ta session a expiré — reconnecte-toi, puis rejoue',
-  reseau: 'le serveur n\'a pas répondu',
-  partie: 'le serveur a refusé cette partie',
-  niveau: 'le serveur a refusé cette partie',
-  palier: 'ce palier n\'est pas classé',
-  partie_refusee: 'le serveur n\'a pas retrouvé cette partie en la rejouant',
-  partie_non_verifiee: 'partie jouée sans le serveur : non classée',
-  jeton: 'jeton de partie refusé',
-  jeton_deja_rendu: 'cette partie a déjà été rendue',
+  session: T('minifever.motifSession', 'ta session a expiré — reconnecte-toi, puis rejoue'),
+  reseau: T('minifever.motifReseau', 'le serveur n\'a pas répondu'),
+  partie: T('minifever.motifRefus', 'le serveur a refusé cette partie'),
+  niveau: T('minifever.motifRefus', 'le serveur a refusé cette partie'),
+  palier: T('minifever.motifPalier', 'ce palier n\'est pas classé'),
+  partie_refusee: T('minifever.motifRejeu', 'le serveur n\'a pas retrouvé cette partie en la rejouant'),
+  partie_non_verifiee: T('minifever.motifNonVerifiee', 'partie jouée sans le serveur : non classée'),
+  jeton: T('minifever.motifJeton', 'jeton de partie refusé'),
+  jeton_deja_rendu: T('minifever.motifDejaRendu', 'cette partie a déjà été rendue'),
 };
 function finArcade(d) {
+  const nom = nomPalier(d.palier, d.nom);
   majEtat(d.sansPlafond
-    ? d.niveau + ' épreuves' + (d.gagnee ? ' — mode ' + d.nom + ' terminé, et au-delà !' : '/' + d.objectif) + ' — choisir un mode pour rejouer'
+    ? (d.gagnee
+      ? T('minifever.finAuDela', '{n} épreuves — mode {palier} terminé, et au-delà ! — choisir un mode pour rejouer', { n: d.niveau, palier: nom })
+      : T('minifever.finSansPlafond', '{n} épreuves/{objectif} — choisir un mode pour rejouer', { n: d.niveau, objectif: d.objectif }))
     : d.gagnee
-      ? 'mode ' + d.nom + ' terminé ! — cliquer sur un mode pour rejouer'
-      : d.niveau + '/' + d.objectif + ' épreuves — choisir un mode pour rejouer');
+      ? T('minifever.finGagnee', 'mode {palier} terminé ! — cliquer sur un mode pour rejouer', { palier: nom })
+      : T('minifever.finPerdue', '{n}/{objectif} épreuves — choisir un mode pour rejouer', { n: d.niveau, objectif: d.objectif }));
   const base = $('etat').textContent;
   const cette = socle;                // si le joueur a relancé, on se tait
   // Le dernier battement part juste avant la fin.
@@ -326,10 +349,11 @@ function finArcade(d) {
   v0.battements = null;
   const dire = (t) => { if (socle === cette) $('etat').textContent = base + ' · ' + t; };
   if (invite) { panneauInvite(cette, scoreInvite(d)); return; }
-  if (!sid) { dire('connecte-toi pour enregistrer tes scores'); return; }
-  if (!(d.niveau > 0)) { dire('aucune épreuve remportée : rien à classer'); return; }
+  if (!sid) { dire(T('minifever.connecteToi', 'connecte-toi pour enregistrer tes scores')); return; }
+  if (!(d.niveau > 0)) { dire(T('minifever.rienAClasser', 'aucune épreuve remportée : rien à classer')); return; }
   const verif = (cette && cette.verif) || {};
-  if (!verif.partie || !verif.enregistreur) { dire('score NON enregistré : ' + MOTIFS.partie_non_verifiee); return; }
+  const nonEnregistre = (motif) => T('minifever.nonEnregistre', 'score NON enregistré : {motif}', { motif });
+  if (!verif.partie || !verif.enregistreur) { dire(nonEnregistre(MOTIFS.partie_non_verifiee)); return; }
   const corps = JSON.stringify({ sid, palier: d.palier, niveau: d.niveau, jouees: d.jouees,
     gagnee: d.gagnee, jeton: verif.partie.jeton, journal: verif.enregistreur.journal() });
   let essais = 0;
@@ -342,16 +366,16 @@ function finArcade(d) {
       .catch(() => ({ ok: false, error: 'reseau' }))
       .then((r) => {
         if (r.error === 'reseau' && essais < ENVOI_ESSAIS) {
-          dire('score en attente : serveur injoignable, nouvel essai dans quelques secondes…');
+          dire(T('minifever.enAttente', 'score en attente : serveur injoignable, nouvel essai dans quelques secondes…'));
           setTimeout(envoyer, ENVOI_DELAI);
           return;
         }
-        if (!r.ok) { dire('score NON enregistré : ' + (MOTIFS[r.error] || MOTIFS.reseau)); return; }
+        if (!r.ok) { dire(nonEnregistre(MOTIFS[r.error] || MOTIFS.reseau)); return; }
         const mult = Number(r.mult) || (1 + d.palier);
         let t = r.score + ' pts' + (mult > 1 ? ' (×' + mult + ')' : '');
-        if (r.classe) t += ' — au classement du jour';
-        else if (r.record > 0) t += ' — ton meilleur du jour reste ' + r.record + ' : le classement garde le meilleur';
-        if (r.pictos && r.pictos.length) t += ' · picto : ' + r.pictos.join(', ');
+        if (r.classe) t += T('minifever.auClassement', ' — au classement du jour');
+        else if (r.record > 0) t += T('minifever.meilleurReste', ' — ton meilleur du jour reste {record} : le classement garde le meilleur', { record: r.record });
+        if (r.pictos && r.pictos.length) t += T('minifever.picto', ' · picto : {pictos}', { pictos: r.pictos.join(', ') });
         dire(t);
       });
   };
@@ -377,7 +401,7 @@ const DELAI_PANNEAU_INVITE = 1200;
 function scoreInvite(d) {
   const mult = (bareme && Number(bareme.mult[d.palier])) || (1 + (Number(d.palier) || 0));
   const pts = (Number(d.niveau) || 0) * 10 * mult;
-  return { score: pts + ' pts' + (mult > 1 ? ' (×' + mult + ')' : ''), libelle: 'Ton score' };
+  return { score: pts + ' pts' + (mult > 1 ? ' (×' + mult + ')' : ''), libelle: 'Ton score', libelleEn: 'Your score' };
 }
 function panneauInvite(cette, opts) {
   setTimeout(() => {
@@ -390,14 +414,15 @@ function panneauInvite(cette, opts) {
 fetch('/api/minifever/bareme').then((r) => r.json()).then((b) => {
   if (!b || !b.ok || !Array.isArray(b.mult)) return;
   bareme = b;
-  $('bareme').textContent = 'arcade : 10 pts par épreuve remportée, × ' + b.mult[1] + ' en normal, × ' + b.mult[2]
-    + ' en difficile, × ' + b.mult[3] + ' en infernal'
-    + (b.sansPlafond ? ' — sans plafond : on joue jusqu\'à la dernière vie' : '') + ' — un seul classement';
+  const m = { normal: b.mult[1], difficile: b.mult[2], infernal: b.mult[3] };
+  $('bareme').textContent = b.sansPlafond
+    ? T('minifever.baremeSansPlafond', 'arcade : 10 pts par épreuve remportée, × {normal} en normal, × {difficile} en difficile, × {infernal} en infernal — sans plafond : on joue jusqu\'à la dernière vie — un seul classement', m)
+    : T('minifever.bareme', 'arcade : 10 pts par épreuve remportée, × {normal} en normal, × {difficile} en difficile, × {infernal} en infernal — un seul classement', m);
 }).catch(() => {});
 
 /* ── Le chargement, puis la première épreuve — toute seule, comme le SWF. ── */
 C.charger('/minifever/sprites/', (c) => {
-  $('etat').textContent = 'chargement… ' + Math.round(c * 100) + ' %';
+  $('etat').textContent = T('minifever.chargementPct', 'chargement… {pct} %', { pct: Math.round(c * 100) });
 }).then(() => {
   // Les pictos des épreuves — ceux que la console montre pendant le tirage.
   // Ils ne bloquent PAS le départ : la partie commence, et la console retombe
@@ -426,7 +451,7 @@ C.charger('/minifever/sprites/', (c) => {
         if (invite && socle && !socle.inviteVu && window.FPInvite) {
           socle.inviteVu = true;
           const cette = socle, n = Math.max(0, (Number(d.niveau) || 0) - 1);
-          if (window.FPInvite.finDePartie({ score: String(n), libelle: 'Épreuves remportées',
+          if (window.FPInvite.finDePartie({ score: String(n), libelle: 'Épreuves remportées', libelleEn: 'Rounds won',
             surRejouer: () => { if (socle === cette) jouer(); } })) return;
         }
         jouer(); return;
@@ -440,7 +465,7 @@ C.charger('/minifever/sprites/', (c) => {
   // client, et la partie à l'écran.
   window.__minifever = { client, get socle() { return socle; } };
 }).catch((e) => {
-  $('etat').textContent = 'chargement impossible : ' + e.message;
+  $('etat').textContent = T('minifever.chargementImpossible', 'chargement impossible : {erreur}', { erreur: e.message });
 });
 
 })();
