@@ -52,6 +52,8 @@ test('sources : la page du téléphone n’existe pas au bureau, et chacun de se
   const fiches = PAGE.slice(PAGE.indexOf('const FICHES = {'), PAGE.indexOf('const ORDRE_MOBILE'));
   assert.equal(ordre.length, 11);
   for (const id of ordre) assert.match(fiches, new RegExp('\\n      ' + id + ': \\['), id);
+  // La fonte des titres, servie par le site, avec sa licence (OFL).
+  for (const f of ['nunito-800.woff2', 'nunito-900.woff2', 'Nunito-OFL.txt']) assert.ok(fs.existsSync(path.join(ROOT, 'public/fontes', f)), f);
   // Les vignettes nettes existent.
   for (const f of ['logo', 'bk', 'frutisnake', 'mb', 'fb', 'swapou', 'grapiz', 'kaluga', 'mwave', 'jamajama', 'mpixiz']) {
     assert.ok(fs.existsSync(path.join(ROOT, 'public/images/m', f + '.webp')), f + '.webp');
@@ -98,6 +100,8 @@ test('Chromium : le téléphone a sa page d’accueil, le bureau garde la sienne
     assert.equal(await p.locator('#m-carrousel .m-jeu').count(), 11, 'onze jeux');
     assert.equal(await p.locator('#m-carrousel .m-jeu-badge').count(), 2, 'deux jeux en ligne');
     assert.equal(await p.locator('#m-ecrans .m-ecran').count(), 4, 'quatre frutiz au salon');
+    // La colline : cinq frutiz, dessinés quand la page a fini de charger.
+    await p.waitForFunction(() => document.querySelectorAll('#m-badauds .m-badaud canvas').length === 5, null, { timeout: 15000 });
     assert.ok(await p.locator('#m-fil .m-ligne').count() >= 3, 'le salon n’est jamais vide');
     // La connexion monte en feuille, et se referme (voile, Échap, croix).
     await p.click('.m-connexion');
@@ -172,7 +176,7 @@ test('Chromium : le téléphone a sa page d’accueil, le bureau garde la sienne
     assert.ok(await visible(bureau, '#topbar'), 'la barre de connexion d’époque');
     assert.ok(await visible(bureau, '.layout > .games'), 'la liste des jeux d’époque');
     assert.ok(!(await visible(bureau, '.feuille-tete')), 'pas d’en-tête de feuille');
-    const mobiles = urls.filter((u) => /\/images\/m\/|\/js\/bouille-|online-count|alba\.woff|\/fbouille\//.test(u));
+    const mobiles = urls.filter((u) => /\/images\/m\/|\/js\/bouille-|online-count|\/fontes\/nunito|\/fbouille\//.test(u));
     assert.deepEqual(mobiles, [], 'rien du téléphone n’est téléchargé');
     await ctxB.close();
   } finally {

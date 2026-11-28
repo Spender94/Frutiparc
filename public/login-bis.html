@@ -383,20 +383,34 @@
       #jeu-invite .ji-note { display: none; }
     }
 
-    /* ────────── L'ACCUEIL DU TÉLÉPHONE (≤ 760 px) ──────────────────────────
+    /* ────────── L'ACCUEIL DU TÉLÉPHONE ─────────────────────────────────────
        Le BUREAU garde l'accueil d'époque au pixel près : rien de ce qui suit ne
        le touche (tout est sous la requête média, et les éléments `.m-only`
        n'y paraissent pas). Les téléphones n'existaient pas pour cet accueil-là :
-       on s'y permet une vraie page d'accueil, ÉPURÉE, dans les codes du parc :
-       ses verts, le rose de ses boutons d'action (celui des boutons d'époque
-       « S'inscrire » et « Découvrir » : #FFAAAD, texte #AF0512), les cartes
-       blanches arrondies, le Verdana, le logo, les frutibouilles. Elle suit la
-       devise :
-
-         · la SCÈNE   — logo, devise, « Jouer maintenant » ;
+       on s'y permet une page d'accueil d'aujourd'hui, épurée, sans perdre
+       l'ADN du parc :
+         · ses couleurs : les verts, et le rose de ses boutons d'action (celui
+           des boutons d'époque « S'inscrire » et « Découvrir » : #FFAAAD,
+           texte #AF0512) ;
+         · son ciel et ses rayons de soleil (ceux de bg.gif), redessinés en CSS
+           pour rester nets à toutes les densités d'écran, des collines, des
+           nuages qui passent ;
+         · son logo, ses frutibouilles (des frutiz du casting fictif sur la
+           colline, un salon qui vit tout seul), ses icônes ;
+         · le Verdana pour le texte ; pour les titres et les boutons, Nunito
+           (libre, OFL, servie par le site : public/fontes/), ronde comme les
+           lettres du logo.
+       Elle suit la devise :
+         · la SCÈNE   — logo, devise, « Jouer maintenant », la colline ;
          · DES JEUX   — les jeux en carrousel, à jouer en invité d'un doigt ;
          · DU CHAT    — un salon qui vit tout seul, frutibouilles animées ;
          · DES FRUITS — une frutibouille tirée au sort, puis l'inscription.
+
+       Des animations LÉGÈRES, toutes en transformations (le compositeur les
+       joue sans redessiner la page), coupées pour qui demande moins
+       d'animations et mises en pause quand la scène quitte l'écran : les rayons
+       oscillent et respirent, les nuages passent, les frutiz se dandinent, le
+       bouton rose a un reflet de temps en temps.
 
        La connexion, l'inscription et le code oublié montent en FEUILLES du bas
        de l'écran, sur un voile (l'attribut data-feuille du <body>). Les messages
@@ -407,14 +421,22 @@
        sinon sur la page du bureau, pied de page fixe en travers de l'écran. La
        même requête est reprise par le script (ecranEtroit). ─────────────── */
     .m-only { display: none; }
+    @font-face { font-family: 'Nunito'; font-weight: 800; font-display: swap; src: url('/fontes/nunito-800.woff2') format('woff2'); }
+    @font-face { font-family: 'Nunito'; font-weight: 900; font-display: swap; src: url('/fontes/nunito-900.woff2') format('woff2'); }
     @keyframes m-pouls { 0%, 100% { box-shadow: 0 0 0 3px rgba(60,194,60,.25); } 50% { box-shadow: 0 0 0 6px rgba(60,194,60,.08); } }
     @keyframes m-monte { from { transform: translateY(100%); } to { transform: none; } }
     @keyframes m-tombe { from { transform: translateY(-140%); } to { transform: none; } }
     @keyframes m-entre { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+    @keyframes m-rayons { from { transform: rotate(-5deg); } to { transform: rotate(5deg); } }
+    @keyframes m-souffle { from { opacity: .7; } to { opacity: 1; } }
+    @keyframes m-nuage { from { transform: translateX(-160px); } to { transform: translateX(calc(100vw + 40px)); } }
+    @keyframes m-dandine { 0%, 100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg) translateY(-2px); } }
+    @keyframes m-arrivee { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+    @keyframes m-reflet { 0% { transform: translateX(-120%) skewX(-20deg); } 22%, 100% { transform: translateX(380%) skewX(-20deg); } }
 
     @media (max-width: 760px), (pointer: coarse) and (max-height: 500px) {
       html, body { overflow-x: hidden; }
-      body { display: block; padding: 0; background: #b9ea76; }
+      body { display: block; padding: 0; background: #F4FBE8; }
       body[data-feuille] { overflow: hidden; }
       .landing.m-only { display: block; }
       button { -webkit-tap-highlight-color: transparent; }
@@ -426,95 +448,141 @@
       .layout > .games, .main > div:last-child, #welcome-text,
       html[lang] .main .welcome-title, html[lang] .main .welcome-title-txt { display: none !important; }
 
-      /* ── La scène ── */
+      /* ── La scène : le ciel du parc ── */
       .m-hero {
-        position: relative; overflow: hidden; text-align: center;
-        padding: 56px 18px 30px;
-        /* Le ciel de bg.gif derrière le logo, les deux arbres de part et
-           d'autre — en haut seulement, puis le vert du parc (étirée sur toute la
-           page, l'image se pixelisait). Le logo a été dessiné pour ce ciel : son
-           liseré clair s'y fond, quand il faisait une boîte blanche sur un arbre. */
-        background: url('/images/bg.gif') 35% 0 / auto var(--m-decor) no-repeat;
-      }
-      /* La hauteur du décor : celle de l'image à 260 % de la largeur d'un
-         téléphone en portrait, bornée pour l'écran large de l'horizontale.
-         Elle se fond dans le vert JUSTE SOUS LE LOGO : un bandeau de ciel et
-         d'arbres, et le texte, en dessous, sur le vert uni — sur l'arbre, il
-         se lisait mal. */
-      .m-hero { --m-decor: clamp(290px, 88.5vw, 400px); }
-      .m-hero::after {
-        content: ''; position: absolute; left: 0; right: 0; top: 96px; bottom: 0; z-index: 0;
-        background: linear-gradient(rgba(185,234,118,0), #b9ea76 104px); pointer-events: none;
+        position: relative; overflow: hidden; text-align: center; padding: 66px 20px 0;
+        background: linear-gradient(#DDF7BA 0%, #C6EF8E 55%, #B5E66E 100%);
       }
       .m-hero > * { position: relative; z-index: 1; }
-      .langues { position: absolute; top: 12px; left: 12px; right: auto; font-size: 12px; z-index: 6; }
-      .langues a { display: inline-block; padding: 6px 10px; margin: 0 4px 0 0; border-radius: 14px; }
+      /* Les rayons : un éventail partant d'un soleil caché au-dessus de l'écran.
+         Il oscille de quelques degrés et respire — une rotation complète
+         demanderait une couche géante, trop lourde pour un téléphone. Il est
+         plus large que la scène pour qu'aucun bord ne paraisse en oscillant. */
+      .m-hero .m-rayons {
+        position: absolute; z-index: 0; left: -60%; right: -60%; top: -70px; height: 130%; pointer-events: none;
+        transform-origin: 50% 0;
+        background: repeating-conic-gradient(from 0deg at 50% 0, rgba(255,255,255,.34) 0deg 5deg, rgba(255,255,255,0) 5deg 13deg);
+        -webkit-mask-image: radial-gradient(circle at 50% 0, #000 0, rgba(0,0,0,.55) 300px, rgba(0,0,0,0) 620px);
+                mask-image: radial-gradient(circle at 50% 0, #000 0, rgba(0,0,0,.55) 300px, rgba(0,0,0,0) 620px);
+        animation: m-rayons 16s ease-in-out infinite alternate, m-souffle 7s ease-in-out infinite alternate;
+      }
+      /* Des nuages qui traversent le ciel, lentement, derrière le texte. */
+      .m-hero .m-nuage {
+        position: absolute; z-index: 0; left: 0; width: 110px; height: 46px; pointer-events: none; opacity: .8;
+        animation: m-nuage 80s linear infinite;
+      }
+      /* Dans le ciel autour du logo, jamais derrière le texte. */
+      .m-hero .m-nuage:nth-of-type(1) { top: 64px; animation-delay: -22s; }
+      .m-hero .m-nuage:nth-of-type(2) { top: 142px; width: 80px; height: 33px; opacity: .6; animation-duration: 110s; animation-delay: -75s; }
+      .langues {
+        position: absolute; top: 12px; left: 14px; right: auto; z-index: 6;
+        display: flex; gap: 2px; padding: 3px; border-radius: 999px;
+        background: rgba(255,255,255,.55); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+      }
+      .langues a { margin: 0; padding: 7px 11px; border: 0; border-radius: 999px; background: transparent; color: #335511; font-size: 0; }
+      .langues a::after { content: attr(data-lang); font: 800 12px/1 Nunito, Verdana, sans-serif; text-transform: uppercase; letter-spacing: .04em; }
+      .langues a[aria-current="true"] { background: #fff; color: #2C4A0F; box-shadow: 0 1px 4px rgba(51,85,17,.18); }
       .m-hero .m-connexion {
-        position: absolute; top: 10px; right: 12px; z-index: 6;
-        font: bold 13px Verdana, Geneva, sans-serif; color: #335511;
-        background: #fff; border: 0; border-radius: 16px; padding: 8px 14px; cursor: pointer;
+        position: absolute; top: 12px; right: 14px; z-index: 6; padding: 9px 16px; border: 0; border-radius: 999px; cursor: pointer;
+        font: 800 14px/1 Nunito, Verdana, sans-serif; color: #2C4A0F;
+        background: rgba(255,255,255,.7); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+        box-shadow: 0 2px 8px -2px rgba(51,85,17,.25);
       }
-      .m-logo { display: block; width: 236px; height: auto; margin: 6px auto 0; }
-      .m-devise { margin: 32px 0 8px; font: bold 22px/1.25 Verdana, Geneva, sans-serif; color: #335511; }
+      .m-logo { display: block; width: 224px; height: auto; margin: 4px auto 0; filter: drop-shadow(0 10px 18px rgba(51,85,17,.18)); }
+      .m-devise { margin: 22px 0 10px; font: 900 32px/1.08 Nunito, Verdana, sans-serif; letter-spacing: -.02em; color: #2C4A0F; }
       .m-devise br { display: block; }
-      .m-accroche { max-width: 320px; margin: 0 auto 22px; font-size: 15px; line-height: 1.5; color: #4b6a24; }
-      .m-actions { display: flex; flex-direction: column; gap: 10px; max-width: 320px; margin: 0 auto; }
-      /* Les boutons du parc : plats, arrondis, en Verdana gras — le rose des
-         boutons d'époque pour agir, le blanc pour le reste. */
+      .m-accroche { max-width: 320px; margin: 0 auto 24px; font-size: 15px; line-height: 1.5; color: #4b6a24; }
+      .m-actions { display: flex; flex-direction: column; gap: 12px; max-width: 320px; margin: 0 auto; }
+      /* L'arrivée : le logo, puis la devise, puis le reste, en douceur. */
+      .m-hero .m-logo { animation: m-arrivee .6s ease-out both; }
+      .m-hero .m-devise { animation: m-arrivee .6s .08s ease-out both; }
+      .m-hero .m-accroche { animation: m-arrivee .6s .16s ease-out both; }
+      .m-hero .m-actions { animation: m-arrivee .6s .24s ease-out both; }
+
+      /* Les boutons : des pilules ; le rose d'époque pour agir, avec un léger
+         modelé et, sur « Jouer maintenant », un reflet qui passe. */
       .m-btn {
-        display: block; width: 100%; border-radius: 14px; padding: 15px 18px; cursor: pointer;
-        font: bold 16px/1.1 Verdana, Geneva, sans-serif;
+        position: relative; overflow: hidden; display: block; width: 100%; padding: 18px 22px; border: 0; border-radius: 999px;
+        cursor: pointer; font: 900 17px/1 Nunito, Verdana, sans-serif; letter-spacing: .01em; transition: transform .12s ease;
       }
-      .m-btn:active { transform: translateY(1px); }
-      .m-btn-rose { color: #AF0512; background: #FFAAAD; border: 0; box-shadow: 0 3px 0 #F28687; }
-      .m-btn-rose:active { box-shadow: 0 2px 0 #F28687; }
-      .m-btn-jouer::before { content: '\25B6\00A0\00A0'; font-size: 13px; vertical-align: 1px; }
-      .m-btn-blanc { color: #335511; background: #fff; border: 0; }
-      .m-enligne { margin: 16px 0 0; font-size: 13px; color: #335511; }
+      .m-btn:active { transform: scale(.98); }
+      .m-btn-rose {
+        color: #AF0512; background: linear-gradient(180deg, #FFC0C3 0%, #FFA4A8 100%);
+        box-shadow: 0 12px 24px -12px rgba(209,103,103,.95), inset 0 -3px 0 rgba(242,134,135,.95), inset 0 1px 0 rgba(255,255,255,.7);
+      }
+      .m-btn-rose:active { box-shadow: 0 6px 14px -10px rgba(209,103,103,.95), inset 0 -2px 0 rgba(242,134,135,.95); }
+      .m-btn-jouer::before { content: '\25B6\00A0\00A0'; font-size: 12px; vertical-align: 1px; }
+      .m-btn-jouer::after {
+        content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 28%; pointer-events: none;
+        background: linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,.55), rgba(255,255,255,0));
+        animation: m-reflet 6s ease-in-out 1.6s infinite;
+        transform: translateX(-120%) skewX(-20deg);
+      }
+      .m-btn-blanc {
+        color: #2C4A0F; background: rgba(255,255,255,.82); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+        box-shadow: 0 8px 18px -14px rgba(51,85,17,.7), inset 0 0 0 1.5px rgba(255,255,255,.9);
+      }
+      .m-enligne { margin: 16px 0 0; font: 800 13px Nunito, Verdana, sans-serif; color: #335511; }
       .m-enligne i {
         display: inline-block; width: 9px; height: 9px; margin-right: 8px; border-radius: 50%;
         background: #3cc23c; animation: m-pouls 1.8s ease-in-out infinite;
       }
-
-      /* ── Les cartes des trois parties ── */
-      .m-carte {
-        margin: 0 max(12px, calc((100% - 560px) / 2)) 14px; padding: 20px 18px; border-radius: 18px; background: #fff;
+      /* La colline : deux verts, des frutiz qui dépassent, et le sol de la page
+         par-dessus — la scène se fond dans le contenu. */
+      .m-colline { position: relative; height: 128px; margin: 2px -20px 0; }
+      .m-colline svg { position: absolute; left: 0; bottom: 0; display: block; width: 100%; height: 100%; }
+      .m-badauds { position: absolute; inset: 0; }
+      .m-badaud {
+        position: absolute; padding: 0; border: 0; background: none; cursor: pointer; transform-origin: 50% 85%;
+        animation: m-dandine 3.6s ease-in-out infinite;
       }
-      .m-titre { display: flex; align-items: center; gap: 10px; margin: 0; font: bold 19px/1.2 Verdana, Geneva, sans-serif; color: #335511; }
-      .m-titre img { width: 30px; height: 30px; }
-      .m-sous { margin: 6px 0 16px; font-size: 14px; line-height: 1.5; color: #5A7D33; }
+      .m-badaud canvas { width: 100% !important; height: 100% !important; }
+      /* Hors de l'écran, la scène s'endort (voir preparerMobile). */
+      .m-hero.endormie *, .m-hero.endormie *::before, .m-hero.endormie *::after { animation-play-state: paused !important; }
+
+      /* ── Les cartes des trois parties : de l'air, une ombre douce ── */
+      .m-carte {
+        margin: 0 max(12px, calc((100% - 560px) / 2)) 16px; padding: 24px 20px 22px; border-radius: 26px; background: #fff;
+        box-shadow: 0 16px 36px -22px rgba(51,85,17,.5);
+      }
+      .m-titre { display: flex; align-items: center; gap: 12px; margin: 0; font: 900 23px/1.15 Nunito, Verdana, sans-serif; letter-spacing: -.015em; color: #2C4A0F; }
+      .m-titre img { width: 24px; height: 24px; padding: 8px; border-radius: 14px; background: #EEF9DF; box-sizing: content-box; }
+      .m-sous { margin: 10px 0 18px; font-size: 14px; line-height: 1.5; color: #6b8a45; }
 
       /* Des jeux : un carrousel qui déborde jusqu'aux bords de la carte. */
       .m-carrousel {
-        display: flex; gap: 12px; overflow-x: auto; overscroll-behavior-x: contain;
-        scroll-snap-type: x mandatory; scroll-padding: 0 18px; scrollbar-width: none;
-        margin: 0 -18px; padding: 0 18px 4px;
+        display: flex; gap: 14px; overflow-x: auto; overscroll-behavior-x: contain;
+        scroll-snap-type: x mandatory; scroll-padding: 0 20px; scrollbar-width: none;
+        margin: 0 -20px; padding: 0 20px 14px;
       }
       .m-carrousel::-webkit-scrollbar { display: none; }
       .m-jeu {
-        flex: 0 0 128px; scroll-snap-align: start; padding: 0; border: 0; background: none;
+        flex: 0 0 142px; scroll-snap-align: start; padding: 0; border: 0; background: none;
         font: inherit; color: inherit; text-align: left; cursor: pointer;
       }
       .m-jeu-image {
-        position: relative; display: block; width: 128px; height: 128px; overflow: hidden;
-        border-radius: 16px; background: #E8F8D3;
+        position: relative; display: block; width: 142px; height: 142px; overflow: hidden; border-radius: 24px; background: #E8F8D3;
+        box-shadow: 0 12px 22px -16px rgba(51,85,17,.75); transition: transform .15s ease;
       }
       .m-jeu-image img { display: block; width: 100%; height: 100%; object-fit: cover; }
-      .m-jeu:active .m-jeu-image { opacity: .85; }
+      .m-jeu:active .m-jeu-image { transform: scale(.96); }
       .m-jeu-jouer {
-        position: absolute; right: 7px; bottom: 7px; width: 30px; height: 30px; border-radius: 50%;
-        background: #FFAAAD; color: #AF0512; font: 11px/30px Verdana, sans-serif; text-align: center;
+        position: absolute; right: 9px; bottom: 9px; width: 34px; height: 34px; border-radius: 50%;
+        color: #AF0512; font: 11px/34px Verdana, sans-serif; text-align: center;
+        background: rgba(255,255,255,.88); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+        box-shadow: 0 4px 12px rgba(0,0,0,.18);
       }
       .m-jeu-badge {
-        position: absolute; left: 7px; top: 7px; padding: 4px 7px; border-radius: 8px;
-        background: #fff; color: #335511; font: bold 10px/1 Verdana, sans-serif;
+        position: absolute; left: 9px; top: 9px; padding: 5px 9px; border-radius: 999px; color: #335511;
+        font: 800 11px/1 Nunito, Verdana, sans-serif;
+        background: rgba(255,255,255,.9); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
       }
-      .m-jeu-nom { display: block; margin: 8px 0 0 2px; font-size: 14px; font-weight: bold; color: #335511; }
+      .m-jeu-nom { display: block; margin: 10px 0 0 2px; font: 800 15px/1.2 Nunito, Verdana, sans-serif; color: #2C4A0F; }
       .m-jeu-genre { display: block; margin: 2px 0 0 2px; font-size: 12px; color: #7a9a55; }
 
-      /* Du chat : la fenêtre d'un salon, comme au bureau. */
-      .m-salon { padding: 10px; border: 2px solid #E8F8D3; border-radius: 16px; background: #fff; }
-      .m-salon-barre { display: flex; align-items: center; gap: 6px; margin: 0 2px 10px; font: bold 13px Verdana, Geneva, sans-serif; color: #5A7D33; }
+      /* Du chat : la fenêtre d'un salon, comme au bureau, en plus léger. */
+      .m-salon { padding: 12px; border-radius: 20px; background: #F4FBE8; }
+      .m-salon-barre { display: flex; align-items: center; gap: 6px; margin: 0 2px 10px; font: 800 14px Nunito, Verdana, sans-serif; color: #335511; }
       .m-salon-barre img { width: 18px; height: auto; }
       .m-ecrans { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 8px; }
       .m-ecran { min-width: 0; text-align: center; }
@@ -525,26 +593,28 @@
       }
       .m-ecran-cadre canvas { position: absolute; left: 3%; top: 3%; width: 94% !important; height: 94% !important; }
       .m-ecran.parle .m-ecran-cadre { transform: translateY(-4px); filter: drop-shadow(0 4px 4px rgba(44,74,15,.3)); }
-      .m-ecran-nom { display: block; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: bold 10px Verdana, sans-serif; }
+      .m-ecran-nom { display: block; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 800 11px Nunito, Verdana, sans-serif; }
       .m-fil {
         display: flex; flex-direction: column; justify-content: flex-end; height: 132px; overflow: hidden;
-        padding: 8px 10px; border-radius: 12px; background: #F4FBE8; font: 12.5px/1.5 Verdana, Geneva, sans-serif;
+        padding: 8px 10px; border-radius: 14px; background: #fff; font: 12.5px/1.5 Verdana, Geneva, sans-serif;
+        /* La ligne qui s'en va par le haut s'efface au lieu d'être coupée net. */
+        -webkit-mask-image: linear-gradient(rgba(0,0,0,0) 4px, #000 30px); mask-image: linear-gradient(rgba(0,0,0,0) 4px, #000 30px);
       }
       .m-ligne { flex: none; animation: m-entre .35s ease-out; overflow-wrap: anywhere; }
       .m-ligne .h { opacity: .75; }
       .m-ligne.emote { font-style: italic; }
       .m-aussi { margin: 14px 0 0; font-size: 13px; line-height: 1.5; color: #7a9a55; }
 
-      /* Des fruits : une frutibouille, une autre, encore une autre… */
+      /* Des fruits : une frutibouille dans la lumière, une autre, encore une autre… */
       .m-atelier { display: flex; flex-direction: column; align-items: center; gap: 8px; margin: 0 0 18px; }
       .m-tete {
-        position: relative; width: 150px; height: 150px; padding: 0; border: 0; border-radius: 24px; cursor: pointer;
-        background: url('/fb/cadre_bouille.svg') center / 100% 100% no-repeat;
+        position: relative; width: 170px; height: 170px; padding: 0; border: 0; border-radius: 50%; cursor: pointer;
+        background: radial-gradient(circle at 50% 46%, #FFFFFF 0%, #EEF9DF 58%, rgba(238,249,223,0) 71%);
       }
       .m-tete canvas { position: absolute; left: 4%; top: 4%; width: 92% !important; height: 92% !important; }
       .m-autre {
-        padding: 8px 12px; border: 0; background: none; cursor: pointer;
-        font: bold 14px Verdana, Geneva, sans-serif; color: #4f7d1e;
+        padding: 10px 18px; border: 0; border-radius: 999px; background: #F4FBE8; cursor: pointer;
+        font: 800 14px Nunito, Verdana, sans-serif; color: #335511;
       }
       .m-autre::before { content: '\21BB\00A0'; }
       .m-fruits .m-btn { max-width: 320px; margin: 0 auto; }
@@ -553,7 +623,7 @@
 
       /* Les parties paraissent en glissant vers le haut (si le visiteur ne
          demande pas moins d'animations : la classe n'est alors pas posée). */
-      .m-anime .m-carte { opacity: 0; transform: translateY(12px); transition: opacity .45s ease, transform .45s ease; }
+      .m-anime .m-carte { opacity: 0; transform: translateY(14px); transition: opacity .5s ease, transform .5s ease; }
       .m-anime .m-carte.vu { opacity: 1; transform: none; }
 
       /* ── Les feuilles : connexion (la barre d'époque), inscription, oubli ── */
@@ -570,8 +640,8 @@
         flex-direction: column; align-items: stretch;
         width: auto !important; max-width: none !important; height: auto; min-height: 0; max-height: 92vh;
         margin: 0 !important; overflow-y: auto; overscroll-behavior: contain;
-        padding: 10px 18px calc(20px + env(safe-area-inset-bottom)) !important;
-        border: 0 !important; border-radius: 24px 24px 0 0 !important; background: #fff !important;
+        padding: 10px 20px calc(20px + env(safe-area-inset-bottom)) !important;
+        border: 0 !important; border-radius: 28px 28px 0 0 !important; background: #fff !important;
         box-shadow: 0 -10px 30px rgba(0,0,0,.25); text-align: left;
         animation: m-monte .3s cubic-bezier(.2,.8,.3,1);
       }
@@ -588,9 +658,9 @@
       .topbar .logo { display: none; }
       .feuille-tete.m-only { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 2px 12px; }
       #register-form .feuille-tete { order: -1; }
-      .feuille-tete strong { font: bold 19px/1.2 Verdana, Geneva, sans-serif; color: #335511; }
+      .feuille-tete strong { font: 900 22px/1.15 Nunito, Verdana, sans-serif; letter-spacing: -.015em; color: #2C4A0F; }
       .feuille-fermer {
-        flex: none; width: 38px; height: 38px; border-radius: 50%; border: 2px solid #ADE76B; background: #fff;
+        flex: none; width: 38px; height: 38px; border-radius: 50%; border: 0; background: #F4FBE8;
         color: #335511; font: bold 16px/1 Verdana, sans-serif; cursor: pointer;
       }
       .feuille-oubli.m-only { display: block; margin: 14px 0 0; text-align: center; font-size: 14px; color: #4f7d1e; }
@@ -608,8 +678,8 @@
       .register-simple input, #forgot-email, #register-form #reg-email { flex: none; }
       .login-form > input:not([type="checkbox"]), .register-simple input, #forgot-email {
         min-width: 0; width: 100% !important; height: 48px !important;
-        padding: 0 14px !important; border-radius: 12px !important;
-        border: 2px solid #cfe9a3 !important; background: #f4fbe8 !important;
+        padding: 0 14px !important; border-radius: 16px !important;
+        border: 1.5px solid #E1F2C8 !important; background: #F7FCEF !important;
         font-size: 16px !important; /* ≥ 16 px : pas de zoom automatique d'iOS au focus */
         color: #3b5a16;
       }
@@ -638,22 +708,24 @@
       .mode-ring circle { display: none; }
       .btn { padding: 0 14px; font-size: 16px; line-height: 1; }
       .btn-primary, #forgot-submit {
-        flex: 1 1 100%; height: 50px; margin-top: 12px; border-radius: 14px; color: #AF0512;
-        background: #FFAAAD; border: 0; box-shadow: 0 3px 0 #F28687; font: bold 16px/1 Verdana, Geneva, sans-serif;
+        flex: 1 1 100%; height: 52px; margin-top: 12px; border: 0; border-radius: 999px; color: #AF0512;
+        font: 900 17px/1 Nunito, Verdana, sans-serif;
+        background: linear-gradient(180deg, #FFC0C3 0%, #FFA4A8 100%);
+        box-shadow: 0 12px 24px -12px rgba(209,103,103,.95), inset 0 -3px 0 rgba(242,134,135,.95), inset 0 1px 0 rgba(255,255,255,.7);
       }
-      .btn-primary:active, #forgot-submit:active { transform: translateY(1px); box-shadow: 0 2px 0 #F28687; }
+      .btn-primary:active, #forgot-submit:active { transform: scale(.98); }
       .btn-secondary {
-        flex: 1 1 100%; height: 48px; margin: 10px 0 0; padding: 0 14px; border-radius: 14px;
-        border: 2px solid #E8F8D3; color: #4f7d1e; background: #fff; text-decoration: none; font-size: 15px;
+        flex: 1 1 100%; height: 50px; margin: 10px 0 0; padding: 0 14px; border: 0; border-radius: 999px;
+        color: #335511; background: #F4FBE8; text-decoration: none; font: 800 15px Nunito, Verdana, sans-serif;
       }
-      .btn-secondary:active { background: #f1f9e4; }
+      .btn-secondary:active { background: #E8F8D3; }
       .register-simple { max-width: none; }
       .register-simple label { font-size: 13px; margin: 10px 0 4px 4px; }
       .register-actions { margin-top: 16px; }
       .register-actions .btn-primary, .register-actions .btn-secondary { flex: 1 1 0; margin-top: 0; }
       #forgot-form > div:first-of-type { gap: 10px !important; }
       #forgot-form .btn { flex: 1 1 0; margin-top: 0; }
-      #forgot-box strong { font: bold 19px/1.2 Verdana, Geneva, sans-serif; color: #335511 !important; }
+      #forgot-box strong { font: 900 22px/1.15 Nunito, Verdana, sans-serif; letter-spacing: -.015em; color: #2C4A0F !important; }
       #forgot-box p { font-size: 14px !important; line-height: 1.45; }
 
       /* Les messages : une bulle en haut de l'écran, par-dessus les feuilles. */
@@ -668,12 +740,13 @@
 
       /* Le pied de page, dans le flux : plus de barre fixe qui recouvre la page. */
       footer { position: static; width: 100%; margin-top: 8px; }
-      .footer-top { padding: 14px 12px; font-size: 13px; line-height: 1.7; }
+      .footer-top { padding: 14px 12px; font-size: 13px; line-height: 1.7; background: transparent; }
       .footer-bottom { padding: 10px 14px calc(12px + env(safe-area-inset-bottom)); font-size: 10.5px; line-height: 1.5; }
     }
     @media (max-width: 760px) and (prefers-reduced-motion: reduce),
            (pointer: coarse) and (max-height: 500px) and (prefers-reduced-motion: reduce) {
-      .m-enligne i { animation: none; }
+      .m-hero *, .m-hero *::before, .m-hero *::after, .m-enligne i { animation: none !important; }
+      .m-hero .m-nuage { display: none; }
       .topbar, #register-form, #forgot-box, .status, .m-ligne { animation: none !important; }
     }
   </style>
@@ -710,7 +783,10 @@
     la scène, puis des jeux, du chat, et des fruits.
   -->
   <main class="landing m-only" id="landing">
-    <section class="m-hero">
+    <section class="m-hero" id="m-hero">
+      <div class="m-rayons" aria-hidden="true"></div>
+      <svg class="m-nuage" viewBox="0 0 120 50" aria-hidden="true"><g fill="#fff"><circle cx="30" cy="32" r="15"/><circle cx="54" cy="22" r="20"/><circle cx="80" cy="28" r="16"/><circle cx="98" cy="35" r="11"/><rect x="18" y="32" width="88" height="15" rx="7.5"/></g></svg>
+      <svg class="m-nuage" viewBox="0 0 120 50" aria-hidden="true"><g fill="#fff"><circle cx="30" cy="32" r="15"/><circle cx="54" cy="22" r="20"/><circle cx="80" cy="28" r="16"/><circle cx="98" cy="35" r="11"/><rect x="18" y="32" width="88" height="15" rx="7.5"/></g></svg>
       <button type="button" class="m-connexion" data-m-connexion data-i18n="accueil.m.seConnecter">Se connecter</button>
       <img loading="lazy" decoding="async" class="m-logo" src="/images/m/logo.webp" width="236" height="105" alt="Frutiparc" />
       <h1 class="m-devise" data-i18n-html="accueil.m.devise">Des fruits, des jeux,<br>du chat !</h1>
@@ -720,6 +796,13 @@
         <button type="button" class="m-btn m-btn-blanc" data-m-inscription data-i18n="accueil.m.creerCompte">Créer mon compte</button>
       </div>
       <p class="m-enligne hidden" id="m-enligne"><i aria-hidden="true"></i><span></span></p>
+      <!-- La colline : deux verts, les frutiz du casting (preparerMobile), et le
+           sol de la page par-dessus, qui fond la scène dans le contenu. -->
+      <div class="m-colline" aria-hidden="true">
+        <svg viewBox="0 0 390 128" preserveAspectRatio="none"><path d="M0 70 C 70 38 150 42 228 60 S 340 44 390 52 L390 128 L0 128 Z" fill="#A9DF63"/><path d="M0 94 C 90 66 172 74 262 86 S 360 76 390 82 L390 128 L0 128 Z" fill="#93CF4B"/></svg>
+        <div class="m-badauds" id="m-badauds"></div>
+        <svg viewBox="0 0 390 128" preserveAspectRatio="none"><path d="M0 110 C 96 90 196 104 280 102 S 368 94 390 96 L390 128 L0 128 Z" fill="#F4FBE8"/></svg>
+      </div>
     </section>
 
     <section class="m-carte m-jeux" id="m-jeux" aria-labelledby="m-titre-jeux">
@@ -1459,6 +1542,37 @@
       });
     }
 
+    /* ── LA COLLINE : cinq frutiz du casting dépassent derrière, se dandinent
+       (le CSS) et, de temps en temps, l'un d'eux réagit — ou celui qu'on
+       touche. Seulement quand la scène est à l'écran. ── */
+    const BADAUDS = [
+      { bouille: CASTING[0].bouille, gauche: 3, taille: 64, bas: 22, decale: 0 },
+      { bouille: '0005080i040b0J0e01070l07', gauche: 21, taille: 56, bas: 32, decale: -1.3 },   // Myrtillou
+      { bouille: CASTING[1].bouille, gauche: 41, taille: 70, bas: 18, decale: -2.2 },
+      { bouille: CASTING[2].bouille, gauche: 62, taille: 58, bas: 30, decale: -0.7 },
+      { bouille: CASTING[3].bouille, gauche: 79, taille: 66, bas: 20, decale: -2.9 },
+    ];
+    const scene = { visible: true };
+    function badauds(V) {
+      const hote = document.getElementById('m-badauds');
+      BADAUDS.forEach((x) => {
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'm-badaud'; b.tabIndex = -1;
+        b.style.cssText = 'left:' + x.gauche + '%;bottom:' + x.bas + 'px;width:' + x.taille + 'px;height:' + x.taille
+          + 'px;animation-delay:' + x.decale + 's';
+        b.innerHTML = V.html(x.bouille, { marge: V.MARGE_ECRAN });
+        b.addEventListener('click', () => reagir(b.querySelector('canvas')));
+        hote.appendChild(b);
+      });
+      V.brancher(hote);
+      if (moinsDAnimations) return;
+      setInterval(() => {
+        if (!scene.visible || document.hidden) return;
+        const cs = hote.querySelectorAll('canvas');
+        if (cs.length) reagir(cs[Math.floor(Math.random() * cs.length)]);
+      }, 2600);
+    }
+
     /* ── LE TOUT, une seule fois, dès que l'écran est celui d'un téléphone
        (y compris un navigateur de bureau qu'on rétrécit). ── */
     let mobilePret = false;
@@ -1475,6 +1589,10 @@
           { one: '{n} frutiz en ligne', other: '{n} frutiz en ligne' });
         badge.classList.remove('hidden');
       }).catch(() => {});
+      // La colline, dès la page chargée (le moteur sert ensuite au salon).
+      const lancerBadauds = () => chargerBouilles().then(badauds).catch(() => {});
+      if (document.readyState === 'complete') lancerBadauds();
+      else window.addEventListener('load', lancerBadauds, { once: true });
       if (!('IntersectionObserver' in window)) {
         chargerBouilles().then((V) => { bouillesDuSalon(V); atelier(V); }).catch(() => {});
         salon.visible = true; animerSalon();
@@ -1496,6 +1614,11 @@
       }, { rootMargin: '500px 0px' });
       approche.observe(document.getElementById('m-chat'));
       approche.observe(document.getElementById('m-fruits'));
+      // La scène s'endort hors de l'écran : rayons, nuages et frutiz en pause.
+      new IntersectionObserver((entrees) => {
+        scene.visible = entrees[entrees.length - 1].isIntersecting;
+        document.getElementById('m-hero').classList.toggle('endormie', !scene.visible);
+      }).observe(document.getElementById('m-hero'));
       // Le salon ne parle que quand on le regarde.
       new IntersectionObserver((entrees) => {
         salon.visible = entrees[entrees.length - 1].isIntersecting;
