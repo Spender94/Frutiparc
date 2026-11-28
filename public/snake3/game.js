@@ -51,6 +51,60 @@ const invite = () => !!(window.FPInvite && window.FPInvite.actif);
 // sauf en bataille, où le vainqueur teinte l'écran de sa couleur.
 const ECRANS = { pause: 1, gameOver: 7, connexion: 15, resultat: 24, fruit: 32, text: 39 };
 
+// LA VERSION ANGLAISE des titres gravés : « Connexion », « Resultat » et
+// « Nouveau Fruit » sont des formes du SWF. En anglais, l'écran est la version
+// nue de sprites/en/ (dessin.js, sansTexte) et le titre s'écrit ici, dans le
+// style de l'original — Alba, la ronde du jeu, en lettres rouges dégradées
+// (#ac0202 en haut, #fe8b8b en bas) au reflet clair, cernées de blanc, avec
+// l'ombre grise qu'elles portent sur le bandeau blanc. « Game over » et
+// « Pause » sont déjà de l'anglais : leurs images restent.
+const TITRES = {
+  [ECRANS.connexion]: { cle: 'snake3.ecran.connexion', fr: 'Connexion' },
+  [ECRANS.resultat]: { cle: 'snake3.ecran.resultat', fr: 'Resultat' },
+  [ECRANS.fruit]: { cle: 'snake3.ecran.nouveauFruit', fr: 'Nouveau Fruit' },
+};
+function dessinerTitre(ctx, texte) {
+  ctx.save();
+  ctx.font = '54px Alba, Verdana, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  ctx.lineJoin = 'round';
+  // Pas plus large que le bandeau (−150…150).
+  const l = ctx.measureText(texte).width;
+  if (l > 300) ctx.scale(300 / l, 1);
+  const y = -98;
+  // L'ombre grise, découpée au bandeau blanc (−126,4 … −107,85).
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(-190, -126.4, 390, 18.55);
+  ctx.clip();
+  ctx.strokeStyle = '#cccccc';
+  ctx.lineWidth = 11;
+  ctx.strokeText(texte, -3, y + 3);
+  ctx.restore();
+  // Le cerne blanc, puis la lettre et son dégradé.
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 9;
+  ctx.strokeText(texte, 0, y);
+  const g = ctx.createLinearGradient(0, -144.5, 0, -101.5);
+  g.addColorStop(0, '#ac0202');
+  g.addColorStop(1, '#fe8b8b');
+  ctx.fillStyle = g;
+  ctx.fillText(texte, 0, y);
+  // Le reflet : le haut de la lettre, blanc vers rose, à demi transparent.
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(-190, -150, 390, 30);
+  ctx.clip();
+  const r = ctx.createLinearGradient(0, -138, 0, -120);
+  r.addColorStop(0, 'rgba(255,255,255,0.85)');
+  r.addColorStop(1, 'rgba(254,116,116,0.25)');
+  ctx.fillStyle = r;
+  ctx.fillText(texte, 0, y);
+  ctx.restore();
+  ctx.restore();
+}
+
 class Ecran {
   constructor(jeu, ecran, texte) {
     this.jeu = jeu;
@@ -93,6 +147,9 @@ class Ecran {
     const pose = D.manifeste.cadres.panPose;
     D.poser(ctx, 'pan', this.panCouleur, pose[4], pose[5], 1, 1, 0);
     D.poser(ctx, 'screensSans', this.frame, 0, 0, 1, 1, 0);
+    if (TITRES[this.frame] && D.sansTexte && D.sansTexte('screensSans', this.frame)) {
+      dessinerTitre(ctx, C.T(TITRES[this.frame].cle, TITRES[this.frame].fr));
+    }
 
     // Le texte du panneau (fieldText — verdana_12pt_st 12 px, blanc, centré,
     // recentré verticalement comme Text.setText). Sur l'écran « fruit », le
@@ -461,7 +518,7 @@ class VuePartie {
       this.inviteVu = true;
       const jeu = this.jeu;
       if (window.FPInvite.finDePartie({ score: String(this.scoreFinal || 0), libelle: 'Ton score',
-        surRejouer: () => jeu.forcerMode(0) })) return;
+        libelleEn: 'Your score', surRejouer: () => jeu.forcerMode(0) })) return;
     }
     this.jeu.forcerMode(0);           // Manager.restartGame → le menu
   }

@@ -1,0 +1,339 @@
+<!-- Aide du jeu JamaJama réécrite par Toad06 — version anglaise (même structure que help.xml, mêmes sections, mêmes illustrations). -->
+<help>
+	<stylesheet>
+	<![CDATA[
+		p, ul {
+			font-family: Verdana, sans-serif;
+			font-size: 14px;
+		}
+		.title {
+			font-size: 16px;
+			font-weight: bold;
+			text-align: center;
+			leading: 12px;
+		}
+		.subtitle {
+			font-weight: bold;
+		}
+	]]>
+	</stylesheet>
+	<!-- Aide principale. -->
+	<section name="index">
+		<p class="title">Welcome to JamaJama!</p>
+		<p><img src="images/help_illuspictos1_upgraded.jpg" width="114" height="112" />In levels mostly made by the players themselves, you have to help Tiki the little ghost find his way to the exit while dodging the traps along the way.</p>
+		<p>To learn the basics of the game, start with the <i>Premiers pas</i> series of <i>Adventure</i> mode.<img src="images/help_illuspictos2_upgraded.jpg" width="290" height="30" /></p>
+		<br /><br /><br />
+		<p>This help has several sections: feel free to browse them with the buttons below.</p>
+	</section>
+	<section name="index_controls">
+		<p class="title">Controls</p>
+		<p>During a game, the following keyboard controls are available.</p>
+		<ul>
+			<li><b>Arrow keys:</b> Move Tiki or his spirit.</li>
+			<li><b>Space bar:</b> Take control of Tiki's spirit, or bring it back to him.</li>
+			<li><b>Esc key:</b> Quit the level.</li>
+		</ul>
+		<p>In the menus, the following keyboard controls are available.</p>
+		<ul>
+			<li><b>Esc key:</b> Go back to the previous menu or to the title screen.</li>
+			<li><b>Ctrl key:</b> In menus with several pages, hold this key down while clicking the navigation buttons (next or previous page) to jump 10 pages at a time.</li>
+		</ul>
+		<p>Finally, this version of the game lets you display debugging information at any time.</p>
+		<ul>
+			<li><b>F1 key:</b> Turn debug mode on or off.</li>
+			<li><b>D key:</b> Show or hide the debugging information (you can scroll through it with the mouse wheel).</li>
+			<li><b>Delete key:</b> Clear the debugging history (only while it is shown on screen).</li>
+		</ul>
+		<!-- Note: If debug mode is on while editing a level, every element (fruits, crates, etc.) is made available. In this version of the game, they all are by default anyway. -->
+	</section>
+	<section name="index_adventure">
+		<p class="title">Adventure mode</p>
+		<p>The levels of Adventure mode are split into several series, which you unlock as you succeed.</p>
+		<p>Only the first twelve levels of the <i>Premiers pas</i> series were designed by the Motion-Twin team: Adventure mode didn't have any other series at all...</p>
+		<p>The levels added in this version of the game are a selection of levels made by players, credited in the last section of this help.</p>
+		<br />
+		<p class="subtitle">The levels</p>
+		<p>You can go from one level to another by clicking the fancy arrows.</p>
+		<p>If a level gives you trouble, you can skip it as long as there are blue flames still burning on the selection screen: each level skipped this way puts one out.</p>
+		<p>The last level of a series must be beaten, though, to unlock the next series.</p>
+		<br />
+		<p class="subtitle">A level's status</p>
+		<p>For each level, an icon shows its status: a level you have beaten shows Tiki, a level not played yet or lost shows a green star.</p>
+	</section>
+	<section name="index_tournament">
+		<p class="title">Tournament mode</p>
+		<p>The levels of Tournament mode are the ones designed and validated in Editor mode by all the players who chose to share their creations. Your own validated levels are in there too.</p>
+		<p>To start a level, just double-click its title.</p>
+		<br />
+		<p class="subtitle">Status</p>
+		<p>In front of each level's name, an icon shows your best result.</p>
+		<ul>
+			<li><b>Green star:</b> You have never played this level.</li>
+			<li><b>Gravestone cross:</b> You gave up, or Tiki met his end there.</li>
+			<li><b>White Tiki:</b> You managed to finish this level.</li>
+			<li><b>Golden Tiki:</b> You finished this level with a score equal to or lower than its creator's.</li>
+		</ul>
+		<p class="subtitle">Difficulty</p>
+		<p>In this version of the game, the difficulty is worked out from the score of the level's creator: the more moves Tiki makes, the higher the difficulty rating.</p>
+		<br />
+		<p class="subtitle">Record</p>
+		<p>The record is simply the best score you have made on the level, that is, the number of moves Tiki made: the lower that number, the better your score.</p>
+		<br />
+		<p class="subtitle">Other information</p>
+		<p>You can also see a level's author, its creation date, and how many games you have played and won on it: click the row of the level you're interested in, then the “?” button at the bottom of the screen.</p>
+	</section>
+	<section name="index_tournament_2">
+		<p class="title">Tournament mode (continued)</p>
+		<p>Below the list of levels you'll find several options, explained here.</p>
+		<br />
+		<p class="subtitle">Sorting the levels</p>
+		<p>The “↑↓” button lets you customize the order in which levels are listed, by choosing a priority between the different settings and their sort: “+” for alphabetical, ascending order, “-” for the reverse.</p>
+		<br />
+		<p class="subtitle">Searching</p>
+		<p>Whatever you type in the search field runs a case-insensitive search through the names of the levels and of their authors.</p>
+		<br />
+		<p class="subtitle">Adding levels</p>
+		<p>Since this version of the game doesn't send any data to a server, levels created and shared are added straight into the source code with each update of the game.</p>
+		<p>Any player can still add levels made by others, though: just paste the level code (an XML node) that was shared with you into the search field and confirm. If the code is correct, the level is added right away.</p>
+		<br />
+		<p class="subtitle">Removing levels</p>
+		<p>Removing levels works the same way as adding them, described above. The difference is that the value of the XML node (the part of the code between the &amp;gt; and &amp;lt; characters) must be deleted entirely.</p>
+		<p>If you no longer have the code of the original XML node, follow these steps to find it again.</p>
+		<ul>
+			<li>Turn debug mode on.</li>
+			<li>Start a game on the level you want to remove.</li>
+			<li>Show the debugging information on screen: one of the messages starts with <i>LevelData</i>, followed by the level's code.</li>
+			<br />
+			<p><i><u>Note:</u> If you are the author of the level, it won't be removed but simply un-validated: you'll then be able to edit it again in Editor mode.</i></p>
+		</ul>
+	</section>
+	<section name="index_edition">
+		<p class="title">Editor mode</p>
+		<p>The levels of Editor mode are... yours. The list of levels in this part of the game depends only on your creativity.</p>
+		<p>To create a level or go back to editing one, just double-click an “... empty ...” slot or the level's title.</p>
+		<br />
+		<p class="subtitle">Status</p>
+		<p>In front of each level's name, an icon shows whether it has been validated or not.</p>
+		<ul>
+			<li><b>Green star:</b> You haven't validated this level yet. You can still edit it.</li>
+			<li><b>Golden Tiki:</b> You have validated this level. It can no longer be edited, or even tested. You can only play it through Tournament mode.</li>
+			<br />
+			<p><i><u>Note:</u> This version of the game lets you cancel a level's validation: see the previous page of this help for more information.</i></p>
+		</ul>
+		<p class="subtitle">Difficulty and record</p>
+		<p>These two values are only worked out when the level is validated.</p>
+		<ul>
+			<li><b>The record:</b> The number of moves Tiki made during the validation game. Avoid useless moves as much as you can, so the golden Tiki isn't too easy for other players to get: to earn it, they will have to match or beat your record.</li>
+			<li><b>The difficulty:</b> In this version of the game, it is worked out from your record. The higher your record, the harder the level is considered.</li>
+		</ul>
+		<p class="subtitle">Other options</p>
+		<p>There are several buttons at the bottom of the screen. They only do something if you first click one of the levels in the list.</p>
+		<ul>
+			<li><b>Play button:</b> It does nothing at all. :)</li>
+			<li><b>Wrench button:</b> Creates the level, or goes back to editing it, as long as it hasn't been validated.</li>
+			<li><b>Cross button:</b> Deletes the level.</li>
+			<li><b>Question mark button:</b> If the level hasn't been validated yet, lets you change its title; otherwise, it shows information about the level, the same as this button in Tournament mode.</li>
+		</ul>
+	</section>
+	<section name="index_edition_2">
+		<p class="title">Editor mode (continued)</p>
+		<p>Once you have chosen the level's name and size, you can start placing the different elements that will make it up.</p>
+		<p>There are four buttons at the bottom of the screen.</p>
+		<ul>
+			<li>The three on the right let you, respectively, place a new object of the selected element (the exit by default), move any object, or delete any object.</li>
+			<li>The one on the left shows the list of all the available elements, along with other options.</li>
+		</ul>
+		<p class="subtitle">The elements</p>
+		<p>There are 22 different elements. In this version of the game, all of them are available from your very first level.</p>
+		<p>Use the arrows at the edges of the screen to scroll through the elements: the one circled in the middle is the element currently selected, the one you can place.</p>
+		<ul>
+			<li><b>The “?” button:</b> Gives contextual help about the element.</li>
+			<li><b>The “→” button:</b> Changes the element's characteristics (only for the fruit and the bomb).</li>
+			<li><b>The “Π” button:</b> Rotates the element (only for Tiki, the exit hatch, the one-way paths, the magnets, Kohl and the lurker).</li>
+		</ul>
+		<p class="subtitle">From testing to validation</p>
+		<ul>
+			<li>At any point while building it, you can <b>test</b> your level.</li>
+			<li>You can stop editing the level and pick it up again later, as long as you <b>save</b> it.</li>
+			<li>When you're happy with the level, you can <b>submit</b> it for validation: to do so, you have to get Tiki to the exit.</li>
+			<br />
+			<p>Once this last step is done, you get a code (an XML node) holding all the level's data: you're free to share it with other players so they can try it.</p>
+		</ul>
+		<p class="subtitle">Keyboard shortcuts</p>
+		<ul>
+			<li><b>Space bar:</b> Open or close the elements menu.</li>
+			<li><b>Insert key:</b> Switch to moving elements.</li>
+			<li><b>Delete key:</b> Switch to deleting elements.</li>
+			<li><b>End key:</b> Switch to adding elements.</li>
+			<li><b>Page Up and Page Down keys:</b> Go to the next or previous element in the list.</li>
+			<li><b>Arrow keys:</b> Point the element in the direction shown (or Up and Down to change the element's characteristics - only for the fruit and the bomb).</li>
+		</ul>
+		<p class="subtitle">Worth knowing: the order in which elements are placed matters</p>
+		<p>An element can behave differently depending on when it was added to the level. For example, if you place several exit hatches, they will open one after the other, in the order you placed them. If you don't like that order, just select each hatch and place it again.</p>
+		<p>In this simple case, the consequences are harmless, but they show a behavior you need to keep in mind to handle trickier situations.</p>
+		<p>What happens, for example, when Tiki reaches the crossing of two magnets placed so as to pull him up and to the left respectively? In other words, will Tiki go up or left? The answer: Tiki will go up, but only if that magnet was placed before the one pulling him to the left.</p>
+		<p>So if you want to build complex, consistent levels, the order in which you place the elements needs to be checked and thought through.</p>
+	</section>
+	<section name="index_stats">
+		<p class="title">Stats</p>
+		<p>Since this version of the game isn't connected to the network, the stats shown are only a summary of your own scores.</p>
+		<p>The stats of the "Players" and "Creators" tabs are therefore not available.</p>
+		<br />
+		<p>The "Levels" tab lists the scores you have made on the levels of other creators.</p>
+		<ul>
+			<li>The author's name comes before the level's title.</li>
+			<li>If no score has been recorded, the number of games played is shown instead.</li>
+		</ul>
+		<p>The "My levels" tab lists the scores you have made, as a player, on your own levels.</p>
+		<ul>
+			<li>If no score has been recorded, the number of games played is shown instead.</li>
+		</ul>
+	</section>
+	<section name="index_credits">
+		<p class="title">Credits</p>
+		<p>Original game created in February 2005 by <b>yota</b> and <b>bumdum</b> of the Motion-Twin team.</p>
+		<p>Adapted to run locally in October 2024 by <b>Toad06</b>, with a few other changes that don't affect gameplay, and a rewrite of the help.</p>
+		<br />
+		<p class="subtitle">Authors of the Adventure mode levels</p>
+		<ul>
+			<li>Motion-Twin: the first 12 levels.</li>
+			<li>Toad06<img src="images/help_illuspictos3_upgraded.jpg" width="290" height="45" /></li>
+		</ul>
+		<br /><br /><br />
+	</section>
+	<section name="index_annex">
+		<p class="title">Appendix: The elements in detail</p>
+		<p>This page presents the 22 elements you can come across during a game.</p>
+		<p>These are the same descriptions as the ones found one by one in the contextual help of Editor mode.</p>
+		<!-- The rest of the text is filled in automatically with the nodes below. -->
+	</section>
+	<!-- Aide des différents éléments lors de l'édition d'un niveau. -->
+	<section name="Exit">
+		<p class="subtitle">The exit hatch</p>
+		<p>This is how Tiki escapes to finish the level: there must be at least one.</p>
+		<p>A hatch stays closed as long as any fruit (if there is any) hasn't disappeared. It only opens after that, and can then be entered from three of its four sides, depending on how it was placed.</p>
+	</section>
+	<section name="Hero">
+		<p class="subtitle">Tiki</p>
+		<p>A hero in spite of himself, the unlucky and clumsy little ghost is the last survivor of his kind.</p>
+		<p>He can count on his spirit, though, which most enemies can't see, to get around some obstacles and take over the bodies of other creatures.</p>
+		<p>To win the level, Tiki must reach the exit hatch.</p>
+	</section>
+	<section name="Fruit">
+		<p class="subtitle">The fruits</p>
+		<p>From the orange to the banana, there are five different kinds.</p>
+		<p>For the exit hatch to open, Tiki must make every fruit disappear, by bringing them together in pairs of the same kind, or by using tricks to get them destroyed.</p>
+	</section>
+	<section name="Box">
+		<p class="subtitle">The crate</p>
+		<p>The crate is a small obstacle Tiki can push. Dropping it into the water makes a way across.</p>
+		<p>It can also be swallowed by Louki or destroyed by a BoBombe's blast.</p>
+	</section>
+	<section name="Wall">
+		<p class="subtitle">The wall</p>
+		<p>No surprise here: the wall is an obstacle nobody can get past.</p>
+		<p>It can, however, be swallowed by Louki or destroyed by a BoBombe's blast.</p>
+	</section>
+	<section name="Water">
+		<p class="subtitle">The water</p>
+		<p>Water is an obstacle no character can cross, except Winkle.</p>
+		<p>Pushing a crate into the water makes a way across.</p>
+	</section>
+	<section name="Bridge">
+		<p class="subtitle">The rickety bridge</p>
+		<p>This little wooden bridge is held up by little more than a great mystery and two straight posts.</p>
+		<p>It collapses as soon as Tiki has gone over it, revealing the water underneath.</p>
+		<p>A BoBombe's blast destroys the bridge too.</p>
+	</section>
+	<section name="Peeble">
+		<p class="subtitle">The pebbles</p>
+		<p>Pebbles are an obstacle that only Kohl and Tiki's spirit can cross.</p>
+		<p>If Kohl is standing on pebbles when Tiki's spirit leaves his body, Tiki takes his place but can't move onto the pebbles of the neighboring squares.</p>
+	</section>
+	<section name="Rune">
+		<p class="subtitle">The rune</p>
+		<p>The rune is just a tile on the ground. But its mystical side means Tiki's spirit can't cross it.</p>
+	</section>
+	<section name="OneWay">
+		<p class="subtitle">The one-way path</p>
+		<p>Once on a one-way path, a character can no longer move against the direction shown by the arrows on the ground, unless the next square doesn't force the same direction.</p>
+		<p>Moving sideways is still possible.</p>
+		<p>Only Tiki's spirit can get around these restrictions.</p>
+	</section>
+	<section name="OneWayStrict">
+		<p class="subtitle">The strict one-way path</p>
+		<p>Once on a strict one-way path, a character has no choice but to move in the direction shown by the arrows on the ground.</p>
+		<p>The path must also be entered in the direction shown.</p>
+		<p>Only Tiki's spirit can get around these restrictions.</p>
+	</section>
+	<section name="Magnet">
+		<p class="subtitle">The gray magnet</p>
+		<p>It pulls every movable element toward it. No character except Tiki's spirit can resist its magnetic force.</p>
+		<p>The gray magnet can't pull more than one element at a time, though, nor any element standing behind a wall or another fixed element.</p>
+	</section>
+	<section name="GoldMagnet">
+		<p class="subtitle">The gold magnet</p>
+		<p>It pulls every movable element toward it. No character except Tiki's spirit can resist its magnetic force.</p>
+		<p>The gold magnet is so powerful that it can even pull elements standing behind a fixed element such as a wall.</p>
+	</section>
+	<section name="Bomb">
+		<p class="subtitle">The BoBombe</p>
+		<p>As long as it stays where it started, the BoBombe is completely harmless.</p>
+		<p>Otherwise, it ends up exploding after the number of moves shown, destroying the fruits, crates, walls, bridges, Jade statues and characters in its way; only Winkle and Tiki's spirit can withstand it.</p>
+		<p>Tiki and Winkle are the only characters able to move a BoBombe.</p>
+	</section>
+	<section name="Louki">
+		<p class="subtitle">Louki</p>
+		<p>When Tiki's spirit takes over Louki's body, Louki is nothing but a tiny speck.</p>
+		<p>Louki reaches his final form after gobbling up a crate, a piece of wall or... one of his own kind. As soon as Tiki's spirit leaves his body, he is replaced by the object he swallowed.</p>
+		<p>He can also cross a bridge without making it collapse.</p>
+	</section>
+	<section name="Kohl">
+		<p class="subtitle">Kohl</p>
+		<p>When Tiki's spirit takes over Kohl's body, the plain little black ball he is bursts into flames at once.</p>
+		<p>Kohl can cross areas covered with pebbles and go over a bridge without making it collapse.</p>
+		<p>Above all, he has a certain power of teleportation: when Tiki's spirit leaves his body, his position and Tiki's are swapped.</p>
+	</section>
+	<section name="Winkle">
+		<p class="subtitle">Winkle</p>
+		<p>Tiki's spirit can take over Winkle's body.</p>
+		<p>This little periwinkle is very tough: he can move BoBombes and their blast can't hurt him.</p>
+		<p>He can also cross water, walk over a bridge without making it collapse, and slip under every enemy's radar!</p>
+	</section>
+	<section name="Archer">
+		<p class="subtitle">The Electrificator</p>
+		<p>The Electrificator's electric shocks are deadly.</p>
+		<p>Any character other than Winkle or Tiki's spirit who ends up in its horizontal or vertical line of fire pays the price.</p>
+	</section>
+	<section name="Spider">
+		<p class="subtitle">The spider</p>
+		<p>Wrapped in its cocoon, the spider only comes out once every fruit in the level has disappeared.</p>
+		<p>Any character other than Winkle or Tiki's spirit who ends up in its horizontal or vertical path gets gobbled up in one bite.</p>
+		<p>Its very special interest in Tiki can make it miss a few opportunities, though.</p>
+	</section>
+	<section name="Lurker">
+		<p class="subtitle">The lurker</p>
+		<p>Almost blending into the scenery, the lurker draws its strength from staying out of sight.</p>
+		<p>It only attacks, however, when a character other than Winkle or Tiki's spirit is standing right in front of it.</p>
+	</section>
+	<section name="Jade">
+		<p class="subtitle">The Jade statue</p>
+		<p>The four turrets of the Jade statue leave no doubt about how dangerous it is.</p>
+		<p>Any character other than Winkle or Tiki's spirit standing on a square diagonally next to it suffers the consequences.</p>
+		<p>Light and fragile, it can be moved by Tiki, though, and destroyed by a BoBombe's blast.</p>
+	</section>
+	<section name="Eye">
+		<p class="subtitle">The Zoeil</p>
+		<p>Always closed, the Zoeil only opens to watch the moves of Tiki's spirit.</p>
+		<p>If Tiki or his spirit is in the horizontal or vertical line of sight of the open Zoeil, he inevitably pays the price.</p>
+	</section>
+	<!-- Éléments non disponibles dans l'aide. -->
+	<section name="Ghost">
+		<p class="subtitle">Tiki's spirit</p>
+		<p>Not listed, since it is simply a different state of Tiki.</p>
+	</section>
+	<section name="Pin">
+		<p class="subtitle">The switch</p>
+		<p>An element that seems to have been abandoned during the game's development.</p>
+	</section>
+</help>

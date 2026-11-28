@@ -422,7 +422,9 @@ test('JamaJama en invité : toute l\'aventure jouable, le tournoi gravé, ni éd
     const fleches = ['ArrowUp', 'ArrowRight', 'ArrowDown', 'ArrowLeft'];
     for (const m of solution) { await page.keyboard.press(fleches[m]); await attendre(900); }
     const p = await attendrePanneau(page);
-    assert.deepStrictEqual(p.appels, [{ titre: 'Niveau réussi !', score: solution.length, libelle: 'Coups joués', surRejouer: 'fonction' }],
+    // (le jeu passe aussi son anglais au panneau : titreEn, libelleEn)
+    assert.deepStrictEqual(p.appels, [{ titre: 'Niveau réussi !', titreEn: 'Level complete!', score: solution.length,
+      libelle: 'Coups joués', libelleEn: 'Moves', surRejouer: 'fonction' }],
       'une fois, avec les coups joués — et la suite du jeu (surRejouer) quand il se ferme');
     assert.strictEqual(p.ouverts, 1);
     await capturer(page, 'jamajama');

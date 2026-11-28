@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-185.05 -150.8 380.95 56.6" width="380.95" height="56.6">
+<g transform="matrix(1,0,0,1,0,0)">
+  <defs>
+    <linearGradient id="f1_g1" gradientUnits="userSpaceOnUse" x1="-16384" y1="0" x2="16384" y2="0" spreadMethod="pad" gradientTransform="matrix(0,0.00142,-0.00727,0,-1.35,-122.3)"><stop offset="0" stop-color="#ac0202"/><stop offset="1" stop-color="#fe8b8b"/></linearGradient>
+    <linearGradient id="f1_g2" gradientUnits="userSpaceOnUse" x1="-16384" y1="0" x2="16384" y2="0" spreadMethod="pad" gradientTransform="matrix(0,0.00086,-0.00715,0,-1.6,-114.75)"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></linearGradient>
+  </defs>
+  <path d="M126.55 -127L184.95 -127L188.05 -126.55L188.15 -126.55Q190.05 -125.9 191.55 -124.7L192.3 -124.1L192.7 -123.65Q195.9 -120.4 195.9 -116L195.9 -108.5L126.05 -108.5L126.2 -110Q126.65 -115.4 124.75 -120.2L124.7 -120.25L124.65 -120.4L124.6 -120.45L124.4 -120.7L124.7 -120.8Q124.9 -120.9 125.1 -121.1L125.2 -121.2Q126.05 -122.8 126.4 -124.6L126.4 -124.55L126.45 -124.9L126.45 -124.8L126.55 -126.4L126.55 -126.5L126.55 -127ZM-130 -108.5L-185.05 -108.5L-185.05 -115.9Q-184.95 -120.45 -181.8 -123.7L-181.75 -123.7L-181.75 -123.75Q-178.55 -126.9 -174.05 -127L-129.5 -127Q-129.95 -117.75 -130 -108.5Z" fill="#ffffff" fill-rule="evenodd"/><rect x="-172" y="-126.4" width="356" height="18.55" fill="#ffffff"/>
+  
+  
+  
+  
+  <path d="M-104.9 -130.45L-104.95 -130.5L-104.95 -130.45L-104.9 -130.45" fill="none" stroke="#ff0000" stroke-width="0.05" stroke-linecap="round" stroke-linejoin="round"/>
+
+</g>
+</svg>

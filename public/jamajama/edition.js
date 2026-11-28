@@ -26,13 +26,28 @@
   const decaler = (r, dx, dy) => r && { x: r.x + dx, y: r.y + dy, w: r.w, h: r.h };
   const NOMS_DIR = ['North', 'East', 'South', 'West'];
   const W = Consts.WIDTH, H = Consts.HEIGHT;
+  // LES LANGUES (/js/i18n.js) : T() rend l'anglais quand la page est en
+  // anglais ; sans le module (les bancs d'essai), le français écrit ici.
+  // Les dialogues s'écrivent en Jester du fichier (ASCII, plus é et ê) :
+  // l'anglais garde l'apostrophe droite.
+  const T = window.T || ((cle, fr, p) => String(fr).replace(/\{(\w+)\}/g, (m, k) => (p && p[k] != null ? p[k] : m)));
+  const LANGUE = (window.FPI18n && window.FPI18n.langue) || 'fr';
 
-  // Les textes du fichier (Consts).
+  // Les textes du fichier (Consts). La confirmation de suppression recolle
+  // le titre du niveau : c'est une phrase à trou.
   const TEXTES = {
-    SUPPR_CONFIRM: 'Supprimer le level ',
-    QUIT_EDITION: 'Sauver avant de quitter ?',
-    VALIDATE_WARNING: 'Gagnez le niveau pour le valider, il sera alors jouable par les autres joueurs.',
+    SUPPR_CONFIRM: (titre) => T('jamajama.supprimer', 'Supprimer le level "{titre}"', { titre }),
+    QUIT_EDITION: T('jamajama.sauverAvantQuitter', 'Sauver avant de quitter ?'),
+    VALIDATE_WARNING: T('jamajama.validerAvertissement', 'Gagnez le niveau pour le valider, il sera alors jouable par les autres joueurs.'),
   };
+  // « ... vide ... » et « sans nom » (Consts) sont des VALEURS : la case vide
+  // de la liste, le titre d'un niveau laissé sans nom. On traduit ce qu'on
+  // affiche — la case vide, le champ de titre —, et la comparaison reconnaît
+  // les deux langues. Un niveau sans nom part au serveur dans la langue du
+  // joueur, comme un titre qu'il aurait tapé.
+  const VIDE = T('jamajama.vide', Consts.EMPTY_LEVEL_TITLE);
+  const SANS_NOM = T('jamajama.sansNom', Consts.WITHOUT_TITLE);
+  const titreSaisi = (t) => (t === Consts.EMPTY_LEVEL_TITLE || t === VIDE || !t.trim() ? SANS_NOM : t.trim());
 
   // ── le clavier de l'éditeur ──
   //
@@ -347,7 +362,7 @@
       try {
         Rendu.dessiner(ctx, this.cle, 1, {
           champs: { levelTitle: '', width: '', height: '',
-            'btnValidate.label': 'valider', 'btnCancel.label': 'annuler' },
+            'btnValidate.label': T('jamajama.valider', 'valider'), 'btnCancel.label': T('jamajama.annulerMin', 'annuler') },
         });
       } catch (e) {}
       ctx.restore();
@@ -381,7 +396,8 @@
       ctx.translate(W / 2, H / 2);
       try {
         Rendu.dessiner(ctx, 'jama_GUI_ConfirmQuit', 1, {
-          champs: { content: this.texte, 'yes.label': 'oui', 'no.label': 'non', 'cancel.label': 'retour' },
+          champs: { content: this.texte, 'yes.label': T('jamajama.oui', 'oui'), 'no.label': T('jamajama.non', 'non'),
+            'cancel.label': T('jamajama.retour', 'retour') },
         });
       } catch (e) {}
       ctx.restore();
@@ -412,14 +428,14 @@
     }
   }
   const ERREURS = {
-    plein: 'Toutes vos cases sont prises : supprimez un niveau.',
-    valide: 'Ce niveau est validé : il ne se modifie plus.',
-    contenu: 'Le serveur refuse ce niveau.',
-    perdu: 'Le serveur n\'a pas vu la victoire : validation refusée.',
-    session: 'Session expirée : rechargez le jeu.',
-    horsLigne: 'Hors du site : rien ne s\'enregistre.',
+    plein: T('jamajama.erreurPlein', 'Toutes vos cases sont prises : supprimez un niveau.'),
+    valide: T('jamajama.erreurValide', 'Ce niveau est validé : il ne se modifie plus.'),
+    contenu: T('jamajama.erreurContenu', 'Le serveur refuse ce niveau.'),
+    perdu: T('jamajama.erreurPerdu', 'Le serveur n\'a pas vu la victoire : validation refusée.'),
+    session: T('jamajama.erreurSession', 'Session expirée : rechargez le jeu.'),
+    horsLigne: T('jamajama.erreurHorsLigne', 'Hors du site : rien ne s\'enregistre.'),
   };
-  const erreur = (d) => ERREURS[d && d.error] || 'Le serveur ne répond pas.';
+  const erreur = (d) => ERREURS[d && d.error] || T('jamajama.erreurReseau', 'Le serveur ne répond pas.');
 
   // ── l'aide d'un élément (Panel._updateHelp), en vrai HTML ──
   //
@@ -429,7 +445,7 @@
   let aideDemandee = null;
   function chargerAide() {
     if (!aideDemandee) {
-      aideDemandee = fetch('/api/jamajama/aide').then((r) => r.json()).then((d) => {
+      aideDemandee = fetch('/api/jamajama/aide?lang=' + LANGUE).then((r) => r.json()).then((d) => {
         if (d && d.ok) { aideSections = d.sections; aideStyle = d.style; }
       }).catch(() => {});
     }
@@ -514,13 +530,13 @@
       // Le Panel, en se construisant, lance le curseur de la palette : on
       // entre dans l'éditeur prêt à poser la sortie (« par défaut la sortie »).
       this._curseurElement();
-      const T = 'jama_gui_LevelDesign_TitleBar', MB = 'jama_gui_LevelDesign_MenuBar';
+      const TB = 'jama_gui_LevelDesign_TitleBar', MB = 'jama_gui_LevelDesign_MenuBar';
       const SB = 'jama_gui_LevelDesign_SpriteBar', L = 'jama_gui_lens';
       this.z = {
-        mode: Ecrans.cadreEnfant(T, 1, 'butMode'),
-        ajout: Ecrans.cadreEnfant(T, 1, 'butFlag2'),
-        deplacer: Ecrans.cadreEnfant(T, 1, 'butFlag1'),
-        effacer: Ecrans.cadreEnfant(T, 1, 'butFlag0'),
+        mode: Ecrans.cadreEnfant(TB, 1, 'butMode'),
+        ajout: Ecrans.cadreEnfant(TB, 1, 'butFlag2'),
+        deplacer: Ecrans.cadreEnfant(TB, 1, 'butFlag1'),
+        effacer: Ecrans.cadreEnfant(TB, 1, 'butFlag0'),
         sauver: Ecrans.cadreEnfant(MB, 1, 'butSave'),
         valider: Ecrans.cadreEnfant(MB, 1, 'butSubmit'),
         tester: Ecrans.cadreEnfant(MB, 1, 'butTest'),
@@ -894,7 +910,7 @@
         try {
           Rendu.dessiner(ctx, 'jama_GUI_LevelSlot', 1, {
             vars: {
-              name: n.titre,
+              name: n.vide ? VIDE : n.titre,
               difficulty: record ? String(Math.round(record * (record / 290))) : '-',
               record: record ? String(record) : '-',
             },
@@ -933,11 +949,11 @@
       const niveau = new Level();
       niveau.id = -1;
       niveau.title = Consts.EMPTY_LEVEL_TITLE;
-      moi.fenetre = new FenetreSaisie(hote, 'titre', { titre: niveau.title });
+      moi.fenetre = new FenetreSaisie(hote, 'titre', { titre: VIDE });
       moi.surFenetre = (v) => {
         fermerFenetre();
         if (v === 'annuler') return;
-        niveau.title = v.titre === Consts.EMPTY_LEVEL_TITLE || !v.titre.trim() ? Consts.WITHOUT_TITLE : v.titre.trim();
+        niveau.title = titreSaisi(v.titre);
         moi.fenetre = new FenetreSaisie(hote, 'taille',
           { largeur: Consts.MAX_LEVEL_WIDTH, hauteur: Consts.MAX_LEVEL_HEIGHT });
         moi.surFenetre = (t) => {
@@ -961,7 +977,7 @@
       moi.surFenetre = (v) => {
         fermerFenetre();
         if (v === 'annuler') return;
-        const titre = v.titre === Consts.EMPTY_LEVEL_TITLE || !v.titre.trim() ? Consts.WITHOUT_TITLE : v.titre.trim();
+        const titre = titreSaisi(v.titre);
         attendre(moi, pf.renommerNiveau(n.id, titre), (d) => {
           if (!d.ok) moi.bandeau.dire(erreur(d));
           recharger();
@@ -969,7 +985,7 @@
       };
     }
     function supprimer(n) {
-      moi.dialogue = new Ecrans.Dialogue('confirm', TEXTES.SUPPR_CONFIRM + '"' + n.titre + '"');
+      moi.dialogue = new Ecrans.Dialogue('confirm', TEXTES.SUPPR_CONFIRM(n.titre));
       moi.surDialogue = (r) => {
         moi.dialogue = null;
         if (r !== 'oui') return;

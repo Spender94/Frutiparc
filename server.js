@@ -20714,10 +20714,17 @@ app.get('/api/jamajama/pictos', (req, res) => {
 // charge du client de l'afficher. Les illustrations sont déjà accessibles
 // (express.static monte Games/poulpi sur /games/poulpi), on ne réécrit donc
 // que la racine de leurs adresses.
-let jamaAideCache = null;
+//
+// EN ANGLAIS, help-en.xml : la même structure, les mêmes sections. La langue
+// est celle de la requête (langueDeRequete : le compte si elle porte un sid,
+// sinon le `lang` que la page envoie — le jeu le met toujours —, sinon
+// Accept-Language). Sans fichier anglais, le français.
+const jamaAideCache = {};
 app.get('/api/jamajama/aide', (req, res) => {
-  if (!jamaAideCache) {
-    const xml = fs.readFileSync(path.join(__dirname, 'Games/poulpi/help.xml'), 'utf8');
+  const fichier = langueDeRequete(req) === 'en' && fs.existsSync(path.join(__dirname, 'Games/poulpi/help-en.xml'))
+    ? 'help-en.xml' : 'help.xml';
+  if (!jamaAideCache[fichier]) {
+    const xml = fs.readFileSync(path.join(__dirname, 'Games/poulpi', fichier), 'utf8');
     const style = (/<stylesheet>\s*<!\[CDATA\[([\s\S]*?)\]\]>/.exec(xml) || [, ''])[1];
     const sections = {};
     for (const s of xml.matchAll(/<section\s+name="([^"]+)"\s*>([\s\S]*?)<\/section>/g)) {
@@ -20739,9 +20746,9 @@ app.get('/api/jamajama/aide', (req, res) => {
     if (sections.index_annex) {
       for (const cle of ANNEXE) if (sections[cle]) sections.index_annex += '<br />' + sections[cle];
     }
-    jamaAideCache = { style: style.trim(), sections };
+    jamaAideCache[fichier] = { style: style.trim(), sections };
   }
-  res.json(Object.assign({ ok: true }, jamaAideCache));
+  res.json(Object.assign({ ok: true }, jamaAideCache[fichier]));
 });
 
 // L'aventure (le format de chaîne du jeu d'origine) et les options.

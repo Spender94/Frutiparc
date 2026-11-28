@@ -52,6 +52,11 @@
   .jama-aide a { color: #4a3c21; }
 </style>
 <script src="/js/sid-discret.js"></script>
+<!-- Les langues du parc (voir /js/i18n.js) : en anglais, les dictionnaires
+     arrivent pendant l'analyse de la page — le commun, les widgets, et celui
+     du jeu (/jamajama/lang/en.js) ; en français, rien. -->
+<script src="/js/i18n.js"></script>
+<script>FPI18n.charger(['commun', 'widgets', '/jamajama/lang/{lang}.js']);</script>
 <!-- Le mode invité (?invite=1, lancé depuis l'accueil) : voir le fichier. -->
 <script src="/js/invite.js"></script>
 </head>
@@ -64,7 +69,7 @@
     <button type="button" class="b" data-dir="2">▼</button>
     <button type="button" class="g" data-dir="3">◀</button>
   </div>
-  <div class="action"><button type="button" data-action="1">Fantôme</button></div>
+  <div class="action"><button type="button" data-action="1" data-i18n="jamajama.fantome">Fantôme</button></div>
 </div>
 <script src="regles.js"></script>
 <script src="rendu.js"></script>

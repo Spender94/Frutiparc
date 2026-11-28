@@ -24,6 +24,10 @@
 
 (function (racine) {
 
+// Les textes de statut, dans la langue de la page (/js/i18n.js, clés
+// snake3.salon.*) ; sans le module (Node, une page qui ne l'a pas), le français.
+const T = racine.T || ((cle, fr) => fr);
+
 class Reseau {
   constructor(o) {
     const opts = o || {};
@@ -82,7 +86,7 @@ class Reseau {
     this.ws = ws;
     ws.binaryType = 'arraybuffer';
     ws.onopen = () => {
-      this.surEtat('Identification…');
+      this.surEtat(T('snake3.salon.identification', 'Identification…'));
       this.salonRecu = false;
       this.envoyer('<k l="' + Reseau.xml(this.pseudo) + '" s="' + Reseau.xml(this.sid) + '" />');
       if (this._helloTimer) clearInterval(this._helloTimer);
@@ -96,7 +100,7 @@ class Reseau {
       this._lancerPings();
     };
     ws.onmessage = (ev) => this._recevoir(ev.data);
-    ws.onclose = () => { if (this.ws !== ws) return; if (!this.ferme) { this.surEtat('Reconnexion…'); this._planifier(); } };
+    ws.onclose = () => { if (this.ws !== ws) return; if (!this.ferme) { this.surEtat(T('snake3.salon.reconnexion', 'Reconnexion…')); this._planifier(); } };
     ws.onerror = () => { try { ws.close(); } catch (e) { /* déjà fermée */ } };
   }
 
@@ -174,7 +178,7 @@ class Reseau {
       if (!el || el.nodeName !== this.balise) continue;
       const e = el.getAttribute('e');
       if (e === 'pong') { this._pong(Number(el.getAttribute('t')), Number(el.getAttribute('st'))); continue; }
-      if (e === this.evenementSalon && !this.salonRecu) { this.salonRecu = true; this.surEtat('Connecté'); }
+      if (e === this.evenementSalon && !this.salonRecu) { this.salonRecu = true; this.surEtat(T('snake3.salon.connecte', 'Connecté')); }
       this.surEvenement(e, el);
     }
   }

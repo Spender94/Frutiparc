@@ -19,20 +19,35 @@
 // détourage au dessin — parce que `ctx.filter` n'existe pas sous Safari.
 //
 // Tout est accroché à window : le jeu vise les mêmes navigateurs que light.html.
+//
+// LA VERSION ANGLAISE (/js/i18n.js, dictionnaire /jamajama/lang/en.js) :
+//   · un champ que le jeu ne remplit pas montre le texte du fichier (« Auteur : »,
+//     « difficulté »…) : en anglais, le dictionnaire le remplace, par numéro de
+//     champ (jamajama.champ.743) ;
+//   · les textes FIGÉS (le lettrage du menu, les titres des fenêtres de
+//     l'éditeur, le bouton « jouer »…) ont leur remplaçant dessiné dans
+//     sprites/paquet-en.json — même fonte que le fichier, même place
+//     (scripts/build-jamajama-anglais.js). Chaque remplaçant porte son cadre :
+//     un mot anglais n'a pas la largeur du mot français.
 (function () {
   'use strict';
 
   let MANIFESTE = null;
   const images = new Map();          // fichier → Image prête
+  const remplacants = new Map();     // fichier → { img, vb } : sa version anglaise
   const teintes = new Map();         // fichier+cx → canevas teinté
   let BASE = '';
+  const enAnglais = () => !!(window.FPI18n && window.FPI18n.langue === 'en');
+  const texteDuChamp = (num, texte) => (window.T ? window.T('jamajama.champ.' + num, texte) : texte);
 
   function charger(base) {
     BASE = base || '';
     return Promise.all([
       fetch(BASE + 'sprites/sprites.json').then((r) => r.json()),
       fetch(BASE + 'sprites/paquet.json').then((r) => r.json()),
-    ]).then(([manifeste, paquet]) => {
+      enAnglais() ? fetch(BASE + 'sprites/paquet-en.json').then((r) => r.json()).catch(() => ({}))
+        : Promise.resolve({}),
+    ]).then(([manifeste, paquet, paquetEn]) => {
       MANIFESTE = manifeste;
       // Les fontes embarquées, déclarées puis réellement chargées : un fillText
       // parti avant que la fonte n'arrive resterait en Times pour toujours.
@@ -53,7 +68,14 @@
         img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
         images.set(fichier, img);
       }));
-      return Promise.all(dessins.concat(fontes));
+      const dessinsEn = Object.entries(paquetEn || {}).map(([fichier, r]) => new Promise((res) => {
+        const img = new Image();
+        img.onload = res;
+        img.onerror = res;
+        img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(r.svg);
+        remplacants.set(fichier, { img, vb: r.vb });
+      }));
+      return Promise.all(dessins.concat(dessinsEn, fontes));
     });
   }
 
@@ -231,16 +253,19 @@
       try {
       if (p.m) ctx.transform(p.m[0], p.m[1], p.m[2], p.m[3], p.m[4], p.m[5]);
       if (p.fichier !== undefined) {
-        const img = images.get(p.fichier);
+        // La version anglaise d'un texte figé, si la page en a une.
+        const en = remplacants.get(p.fichier);
+        const img = en ? en.img : images.get(p.fichier);
+        const vb = en ? en.vb : p.vb;
         if (img) {
           if (p.cx) {
             const t = ctx.getTransform();
             const echelle = Math.hypot(t.a, t.b);
             ctx.globalAlpha *= Math.max(0, Math.min(1, p.cx[3] / 256));
-            ctx.drawImage(teinter(img, p.vb, p.cx, echelle),
-              p.vb[0], p.vb[1], p.vb[2], p.vb[3]);
+            ctx.drawImage(teinter(img, vb, p.cx, echelle),
+              vb[0], vb[1], vb[2], vb[3]);
           } else {
-            ctx.drawImage(img, p.vb[0], p.vb[1], p.vb[2], p.vb[3]);
+            ctx.drawImage(img, vb[0], vb[1], vb[2], vb[3]);
           }
         }
       } else if (p.clip !== undefined) {
@@ -280,7 +305,7 @@
         // et le champ lié suit). Les lignes de la liste des niveaux sont de
         // la seconde sorte — sans ce canal, elles resteraient au texte de
         // maquette (« Le nom de mon super level lalatsouin »).
-        let texte = meta.texte || '';
+        let texte = meta.texte ? texteDuChamp(p.champ, meta.texte) : '';
         if (meta.variable && sur.vars && meta.variable in sur.vars) texte = sur.vars[meta.variable];
         if (p.nom && sur.champs && chemin in sur.champs) texte = sur.champs[chemin];
         ecrireChamp(ctx, meta, texte, meta.alpha);
@@ -307,5 +332,7 @@
   function tempsCourant() { return temps; }
 
   window.JamaRendu = { charger, dessiner, etatDe, longueur, etiquettes, zoneBouton,
-    symbole, ecrireChamp, manifeste: () => MANIFESTE, avancer, temps: tempsCourant };
+    symbole, ecrireChamp, manifeste: () => MANIFESTE, avancer, temps: tempsCourant,
+    // Le texte figé a-t-il son remplaçant anglais ? (les tests de la version anglaise)
+    remplace: (fichier) => remplacants.has(fichier) };
 })();
