@@ -29,8 +29,8 @@ const FPI18n = require('./public/js/i18n.js');
  * (MOTS_VIDES_EN, `racineEn`, les mots-clés MOTS_EN) —, et on garde la
  * meilleure réponse (cf. `repondre`). Ce qui est choisi, c'est une CLÉ de
  * réponse ; elle se dit ensuite dans la langue de chaque lecteur du salon
- * (`texteTraduisible` : le français ici, l'anglais dans
- * i18n-serveur/en/gaspard.js).
+ * (la réponse porte sa forme traduisible, `tr` : le français ici,
+ * l'anglais dans i18n-serveur/en/gaspard.js).
  */
 
 const MOTS_VIDES = new Set(('le la les l un une des du de d et ou a au aux en y je tu il elle on nous vous ils elles me te se ce ca cela ceci ' +
