@@ -115,7 +115,7 @@ const JEUX = {
     // Denmark (94, 77 glyphes, sans virgule) a sa copie complète (464).
     // 911 Porscha (119) n'en a pas : ses minuscules sont toutes là, l'anglais
     // s'en accommode ; à défaut, une grasse du système.
-    substituts: { 94: 464, 119: LARGE, 583: VERDANA, 330: LARGE, 134: LARGE, 188: LARGE, 195: LARGE, 378: VERDANA },
+    substituts: { 94: 464, 119: LARGE, 583: 'bold ' + VERDANA, 330: LARGE, 134: LARGE, 188: LARGE, 195: LARGE, 378: 'bold ' + VERDANA },
     reglages: {},
   },
   mb2: {
@@ -124,7 +124,7 @@ const JEUX = {
     // Sweet as candy (884, 33 glyphes) a sa copie complète (69). Kiloton
     // (74) n'a que vingt-cinq lettres : une étroite du système. Les « _st »
     // sont des Arial pixellisées : l'Arial du système.
-    substituts: { 884: 69, 74: ETROITE, 124: ARIAL, 126: ARIAL, 129: ARIAL, 136: ARIAL, 133: ARIAL, 886: 69 },
+    substituts: { 884: 69, 74: ETROITE, 124: 'bold ' + ARIAL, 126: 'bold ' + ARIAL, 129: 'bold ' + ARIAL, 136: ARIAL, 133: 'bold ' + ARIAL, 886: 69 },
     reglages: {
       // La règle du jeu : une liste à puces, alignée à gauche (les lignes de
       // suite sont en retrait, ce qui trompait la déduction).

@@ -38,20 +38,7 @@ const METRIQUES_SYSTEME = { asc: 1.005, desc: 0.21, lead: 0 };
  * serveur), ou sans /js/i18n.js, tout reste en français.
  */
 K.jeuCourant = () => String(K.base || '/kaluga/').replace(/^\/+|\/+$/g, '');
-// T(), T.n(), T.table() de /js/i18n.js, lus À L'APPEL : les jeux écrivent
-// `const T = K.T;` et restent jouables sans le module (les rejeux du serveur,
-// les tests en bac à sable), où ils parlent le français de leur code.
-const remplacer = (s, p) => (p ? String(s).replace(/\{(\w+)\}/g, (m, k) => (p[k] != null ? String(p[k]) : m)) : s);
-K.T = function (cle, fr, params) {
-  return typeof racine.T === 'function' ? racine.T(cle, fr, params) : remplacer(fr, params);
-};
-K.T.n = function (cle, n, formes, params) {
-  if (typeof racine.T === 'function' && racine.T.n) return racine.T.n(cle, n, formes, params);
-  return remplacer(Math.abs(n) < 2 ? formes.one : formes.other, Object.assign({}, params, { n }));
-};
-K.T.table = function (cle, fr) {
-  return (typeof racine.T === 'function' && racine.T.table) ? racine.T.table(cle, fr) : fr;
-};
+// (K.T, T() lu à l'appel avec le français en repli, est posé par flash.js.)
 // La clé d'un caractère : « kaluga.champ.907 » pour la bibliothèque du jeu,
 // « kaluga.challenge.champ.12 » pour celle d'une carte (aucune n'en a encore).
 function cleCaractere(biblio, quoi, id) {
@@ -350,8 +337,15 @@ function familleFigee(figes, f, texte) {
   if (sait(f)) return `"Kaluga ${f}", ${PILES.verdana}`;
   const s = figes.substituts && figes.substituts[f];
   if (typeof s === 'number' && sait(s)) return `"Kaluga ${s}", ${PILES.verdana}`;
+  // Une pile système peut demander le gras (« bold Verdana, … ») : la fonte
+  // d'origine l'était (les Verdana pixellisées « _st » du SWF).
   if (typeof s === 'string') return s;
   return PILES.verdana;
+}
+// « bold Verdana, … » → le gras devant le corps, comme le veut ctx.font.
+function policeFigee(taille, famille) {
+  const gras = /^bold\s+/.test(famille);
+  return `${gras ? 'bold ' : ''}${taille}px ${gras ? famille.replace(/^bold\s+/, '') : famille}`;
 }
 
 /*
@@ -375,7 +369,7 @@ function ecrireLignes(ctx, fige, a) {
     if (!texte) return;
     const l = modele[Math.min(i, n - 1)];
     const y = i < n ? l.y : modele[n - 1].y + (i - n + 1) * pas;
-    ctx.font = `${l.t}px ${famille}`;
+    ctx.font = policeFigee(l.t, famille);
     ctx.fillStyle = l.c;
     // L'ESPACE : certaines fontes du SWF la font large d'un em entier (la
     // Donald de Kaluga) — l'auteur posait ses lettres une à une et ne s'en
