@@ -1093,6 +1093,11 @@ async function initSchema() {
         updated_at  TIMESTAMPTZ DEFAULT now()
       );
       ALTER TABLE gaspard_help_topics ADD COLUMN IF NOT EXISTS is_index BOOLEAN NOT NULL DEFAULT FALSE;
+      -- La version anglaise d'une rubrique, facultative : vide, la rubrique se
+      -- montre (et Gaspard la cite au chat) en français à tout le monde.
+      ALTER TABLE gaspard_help_topics ADD COLUMN IF NOT EXISTS title_en TEXT NOT NULL DEFAULT '';
+      ALTER TABLE gaspard_help_topics ADD COLUMN IF NOT EXISTS body_en TEXT NOT NULL DEFAULT '';
+      ALTER TABLE gaspard_help_topics ADD COLUMN IF NOT EXISTS keywords_en TEXT NOT NULL DEFAULT '';
       CREATE INDEX IF NOT EXISTS idx_gaspard_help_parent ON gaspard_help_topics(parent_id, sort_order);
       -- Only one topic can act as the help-window landing page.
       CREATE UNIQUE INDEX IF NOT EXISTS idx_gaspard_help_one_index
@@ -5672,7 +5677,7 @@ async function updateChannelTopic(name, topic) {
 async function listGaspardHelpTopics() {
   const r = await pool.query(
     `SELECT id, title, body, parent_id, sort_order, keywords, is_index,
-            created_at, updated_at
+            title_en, body_en, keywords_en, created_at, updated_at
      FROM gaspard_help_topics
      ORDER BY COALESCE(parent_id, 0), sort_order, id`
   );
@@ -5680,7 +5685,7 @@ async function listGaspardHelpTopics() {
 }
 async function getGaspardHelpTopic(id) {
   const r = await pool.query(
-    `SELECT id, title, body, parent_id, sort_order, keywords, is_index
+    `SELECT id, title, body, parent_id, sort_order, keywords, is_index, title_en, body_en, keywords_en
      FROM gaspard_help_topics WHERE id = $1`,
     [id]
   );
@@ -5688,26 +5693,27 @@ async function getGaspardHelpTopic(id) {
 }
 async function getGaspardIndexTopic() {
   const r = await pool.query(
-    `SELECT id, title, body, parent_id, sort_order, keywords, is_index
+    `SELECT id, title, body, parent_id, sort_order, keywords, is_index, title_en, body_en, keywords_en
      FROM gaspard_help_topics WHERE is_index = TRUE LIMIT 1`,
   );
   return r.rows[0] || null;
 }
-async function createGaspardHelpTopic({ title, body, parent_id, sort_order, keywords, is_index }) {
+async function createGaspardHelpTopic({ title, body, parent_id, sort_order, keywords, is_index, title_en, body_en, keywords_en }) {
   // Marking a new topic as the index automatically clears the flag on every
   // other row so the unique partial index never trips.
   if (is_index) {
     await pool.query('UPDATE gaspard_help_topics SET is_index = FALSE WHERE is_index');
   }
   const r = await pool.query(
-    `INSERT INTO gaspard_help_topics (title, body, parent_id, sort_order, keywords, is_index)
-     VALUES ($1, $2, $3, $4, $5, $6)
-     RETURNING id, title, body, parent_id, sort_order, keywords, is_index`,
-    [title, body || '', parent_id || null, sort_order || 0, keywords || '', !!is_index]
+    `INSERT INTO gaspard_help_topics (title, body, parent_id, sort_order, keywords, is_index, title_en, body_en, keywords_en)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+     RETURNING id, title, body, parent_id, sort_order, keywords, is_index, title_en, body_en, keywords_en`,
+    [title, body || '', parent_id || null, sort_order || 0, keywords || '', !!is_index,
+     title_en || '', body_en || '', keywords_en || '']
   );
   return r.rows[0];
 }
-async function updateGaspardHelpTopic(id, { title, body, parent_id, sort_order, keywords, is_index }) {
+async function updateGaspardHelpTopic(id, { title, body, parent_id, sort_order, keywords, is_index, title_en, body_en, keywords_en }) {
   if (is_index === true) {
     await pool.query(
       'UPDATE gaspard_help_topics SET is_index = FALSE WHERE is_index AND id <> $1',
@@ -5722,11 +5728,15 @@ async function updateGaspardHelpTopic(id, { title, body, parent_id, sort_order, 
          sort_order = COALESCE($5, sort_order),
          keywords = COALESCE($6, keywords),
          is_index = COALESCE($7, is_index),
+         title_en = COALESCE($8, title_en),
+         body_en = COALESCE($9, body_en),
+         keywords_en = COALESCE($10, keywords_en),
          updated_at = now()
      WHERE id = $1
-     RETURNING id, title, body, parent_id, sort_order, keywords, is_index`,
+     RETURNING id, title, body, parent_id, sort_order, keywords, is_index, title_en, body_en, keywords_en`,
     [id, title, body, parent_id === undefined ? null : parent_id,
-     sort_order, keywords, is_index === undefined ? null : !!is_index]
+     sort_order, keywords, is_index === undefined ? null : !!is_index,
+     title_en == null ? null : title_en, body_en == null ? null : body_en, keywords_en == null ? null : keywords_en]
   );
   return r.rows[0] || null;
 }

@@ -1996,6 +1996,14 @@ questions sans énoncé ou sans réponse sont ignorées. "image" doit correspond
         <textarea id="gaspard-content-body" rows="10" style="width:100%;font-family:monospace" placeholder="HTML accepté : <b>gras</b>, <a href='asfunction:win.box.getContent,N'>lien vers rubrique N</a>, etc."></textarea>
       </div>
     </label>
+    <!-- La version anglaise, facultative : vide, la rubrique se montre en
+         français aux anglophones aussi (fenêtre d'aide, réponses de Gaspard au chat). -->
+    <p style="font-size:11px;color:#666;margin:10px 0 4px">Version anglaise (facultative) — vide, les anglophones lisent le français. Gaspard s'en sert aussi pour comprendre les questions posées en anglais au chat.</p>
+    <label><span>Titre (EN) :</span> <input id="gaspard-title-en" maxlength="120" placeholder="How do I play?"></label>
+    <label><span>Mots-clés (EN) :</span> <input id="gaspard-keywords-en" maxlength="200" placeholder="titems pictos cards (espace-séparés)"></label>
+    <label style="align-items:start"><span>Contenu (EN) :</span>
+      <textarea id="gaspard-content-body-en" rows="6" style="flex:1;width:100%;font-family:monospace" placeholder="Même HTML que le contenu français."></textarea>
+    </label>
     <div class="actions">
       <button class="btn" onclick="closeModal('modal-edit-gaspard')">Annuler</button>
       <button class="btn-danger" onclick="saveGaspardTopic()">Enregistrer</button>
@@ -6290,7 +6298,8 @@ async function essayerGaspard() {
   if (!q) return;
   try {
     const j = await (await fetch('/api/admin/gaspard/essai?q=' + encodeURIComponent(q), { headers: hdr() })).json();
-    $('#gaspard-essai-r').textContent = j.ok ? 'Gaspard : ' + j.reponse.texte + '   [' + j.reponse.source + (j.reponse.cle ? ' · ' + j.reponse.cle : '') + ']' : 'Erreur';
+    $('#gaspard-essai-r').textContent = j.ok ? 'Gaspard : ' + j.reponse.texte + '   [' + j.reponse.source + (j.reponse.cle ? ' · ' + j.reponse.cle : '') + (j.reponse.lu === 'en' ? ' · compris en anglais' : '') + ']'
+      + (j.reponse.texteEn ? '\nEN : ' + j.reponse.texteEn : '') : 'Erreur';
   } catch (e) { $('#gaspard-essai-r').textContent = 'Erreur réseau.'; }
 }
 async function loadGaspardTopics() {
@@ -6309,7 +6318,7 @@ async function loadGaspardTopics() {
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td>${t.id}</td>
-        <td>${escapeHTML(t.title)}</td>
+        <td>${escapeHTML(t.title)}${t.title_en ? `<br><span style="font-size:11px;color:#888">EN : ${escapeHTML(t.title_en)}</span>` : ''}</td>
         <td>${escapeHTML(parent)}</td>
         <td>${t.sort_order}</td>
         <td>${indexCell}</td>
@@ -6388,6 +6397,9 @@ function openAddGaspardTopic() {
   $('#gaspard-title').value = '';
   $('#gaspard-content-body').value = '';
   $('#gaspard-keywords').value = '';
+  $('#gaspard-title-en').value = '';
+  $('#gaspard-keywords-en').value = '';
+  $('#gaspard-content-body-en').value = '';
   $('#gaspard-sort').value = '0';
   $('#gaspard-is-index').checked = false;
   refreshGaspardParentSelect(null);
@@ -6406,6 +6418,9 @@ async function editGaspardTopic(id) {
     $('#gaspard-title').value = topic.title || '';
     $('#gaspard-content-body').value = topic.body || '';
     $('#gaspard-keywords').value = topic.keywords || '';
+    $('#gaspard-title-en').value = topic.title_en || '';
+    $('#gaspard-keywords-en').value = topic.keywords_en || '';
+    $('#gaspard-content-body-en').value = topic.body_en || '';
     $('#gaspard-sort').value = String(topic.sort_order || 0);
     $('#gaspard-is-index').checked = !!topic.is_index;
     refreshGaspardParentSelect(topic.id);
@@ -6427,6 +6442,9 @@ async function saveGaspardTopic() {
     sort_order: parseInt($('#gaspard-sort').value, 10) || 0,
     keywords: $('#gaspard-keywords').value.trim(),
     is_index: $('#gaspard-is-index').checked,
+    title_en: $('#gaspard-title-en').value.trim(),
+    keywords_en: $('#gaspard-keywords-en').value.trim(),
+    body_en: $('#gaspard-content-body-en').value,
   };
   if (!payload.title) { toast('Titre requis'); return; }
   try {

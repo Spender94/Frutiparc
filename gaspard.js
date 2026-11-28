@@ -1,4 +1,5 @@
 'use strict';
+const FPI18n = require('./public/js/i18n.js');
 /*
  * GASPARD, L'HÔTE DU PARC — ce qu'il sait répondre, et comment il comprend.
  *
@@ -21,6 +22,15 @@
  * l'emporte ; à égalité, la base intégrée passe avant les rubriques de l'aide,
  * et un seul point ne suffit pas quand la question est longue (on ne répond
  * pas « les kikooz » à « j'ai perdu mon mot de passe et mes kikooz »).
+ *
+ * EN DEUX LANGUES. Les salons sont partagés : on lui pose aussi des questions
+ * en anglais. La même question passe donc DEUX lecteurs — le français (ses
+ * mots vides, `racine`, les mots-clés `mots` de chaque réponse) et l'anglais
+ * (MOTS_VIDES_EN, `racineEn`, les mots-clés MOTS_EN) —, et on garde la
+ * meilleure réponse (cf. `repondre`). Ce qui est choisi, c'est une CLÉ de
+ * réponse ; elle se dit ensuite dans la langue de chaque lecteur du salon
+ * (`texteTraduisible` : le français ici, l'anglais dans
+ * i18n-serveur/en/gaspard.js).
  */
 
 const MOTS_VIDES = new Set(('le la les l un une des du de d et ou a au aux en y je tu il elle on nous vous ils elles me te se ce ca cela ceci ' +
@@ -60,6 +70,82 @@ function score(q, cles) {
     if (q.some((m) => m === c || (c.length >= 4 && m.length >= 4 && (m.startsWith(c) || c.startsWith(m))))) n++;
   }
   return n;
+}
+
+/*
+ * LE LECTEUR ANGLAIS — le même principe, ses propres mots vides et sa propre
+ * racine. `normaliser` sert aux deux langues : « what's » y devient
+ * « what s », d'où les bouts de contraction (s, t, ll, re…) parmi les mots
+ * vides. Les verbes passe-partout (get, find, work, use…) y sont aussi : ils
+ * ne disent rien du sujet, et tireraient la question vers une réponse qui les
+ * aurait pour mot-clé.
+ */
+const MOTS_VIDES_EN = new Set(('a an the and or but of to in on at by for with from into onto about as is are am was were be been being ' +
+  'do does did doing done have has had having i me my mine myself you your yours he him his she her hers it its we us our they them their ' +
+  'this that these those there here what which who whom whose when where why how can could will would shall should may might must ' +
+  'please pls plz thanks thank thx ty hi hello hey yo gaspard s t ll re ve d m don doesn didn isn aren wasn weren won wouldn couldn shouldn cant ' +
+  'not no yes so very just also any some get got gets getting want wanna need tell know explain show see look find work works working use used using ' +
+  'thing things something anything one ok okay oh much many lot lots really there s what s whats hows').split(/\s+/));
+
+// Une racine anglaise, sans prétention : le pluriel (quests → quest,
+// abilities → ability, boxes → box, wolves → wolf) et les terminaisons -ing /
+// -ed les plus courantes, quand il reste au moins quatre lettres (playing →
+// play, changed → chang, que le préfixe retrouve ; racing reste racing).
+function racineEn(mot) {
+  let m = mot;
+  if (m.length > 4 && /ies$/.test(m)) return m.slice(0, -3) + 'y';
+  if (m.length > 4 && /lves$/.test(m)) m = m.slice(0, -3) + 'f';
+  else if (m.length > 4 && /(ches|shes|xes|sses|zes)$/.test(m)) m = m.slice(0, -2);
+  else if (m.length > 3 && /s$/.test(m) && !/ss$/.test(m)) m = m.slice(0, -1);
+  if (m.length >= 7 && /ing$/.test(m)) m = m.slice(0, -3);
+  else if (m.length >= 6 && /ed$/.test(m)) m = m.slice(0, -2);
+  return m;
+}
+function motsEn(texte) {
+  return normaliser(texte).split(' ').filter((m) => m && !MOTS_VIDES_EN.has(m)).map(racineEn);
+}
+/*
+ * Les mots-clés anglais, PESÉS. Le singulier et le pluriel d'un mot ont la
+ * même racine : ils ne comptent qu'une fois (là où le français, qui ne
+ * dédoublonne pas, fait compter double « kikooz kikoo »). Un sujet précis qui
+ * doit l'emporter sur un mot passe-partout le dit : « werewolf:2 » vaut deux
+ * points (sinon « how do I play werewolf? » partirait vers les jeux en
+ * général). → Map racine → poids.
+ */
+function motsClesEn(liste) {
+  const r = new Map();
+  for (const brut of String(Array.isArray(liste) ? liste.join(' ') : liste || '').split(/[\s,;]+/)) {
+    const m = /^(.*?)(?::(\d))?$/.exec(brut);
+    const c = racineEn(normaliser(m[1]));
+    if (c) r.set(c, Math.max(r.get(c) || 0, Number(m[2]) || 1));
+  }
+  return r;
+}
+// Le score anglais : le poids de chaque mot-clé retrouvé (`sc`), et leur
+// nombre (`n`, pour la règle des questions longues). Le préfixe ne joue qu'à
+// partir de cinq lettres — « play » ne doit pas retrouver « player », ni
+// « mode » « moderator ».
+function scoreEn(q, cles) {
+  let sc = 0, n = 0;
+  for (const [c, w] of cles) {
+    if (q.some((m) => m === c || (c.length >= 5 && m.length >= 5 && (m.startsWith(c) || c.startsWith(m))))) { sc += w; n++; }
+  }
+  return { sc, n };
+}
+/*
+ * La langue d'une question, d'après ses mots vides : ceux d'une seule des
+ * deux listes (« the », « hello » sont dans les deux, ils ne comptent pour
+ * personne). 'fr', 'en', ou '' quand rien ne tranche (« mode nuit ? »).
+ */
+function langueDeQuestion(texte) {
+  let fr = 0, en = 0;
+  for (const m of normaliser(texte).split(' ')) {
+    if (!m) continue;
+    const f = MOTS_VIDES.has(m), e = MOTS_VIDES_EN.has(m);
+    if (f && !e) fr++;
+    else if (e && !f) en++;
+  }
+  return en > fr ? 'en' : fr > en ? 'fr' : '';
 }
 
 /*
@@ -201,10 +287,80 @@ const BASE = [
     reponse: 'Un souci ? Raconte-le sur le forum, avec ce que tu faisais et sur quel appareil : l’équipe y passe. Et un rechargement de la page règle souvent l’affaire.' },
 ];
 
+/*
+ * LES MOTS-CLÉS ANGLAIS de chaque réponse de la base (même clé que BASE) :
+ * ce qu'un anglophone tape pour poser la même question. Les noms propres du
+ * parc (kikooz, frutibouille, les jeux, Gromelin…) y sont aussi, puisqu'ils
+ * ne se traduisent pas. « mot:2 » : le mot qui désigne le sujet lui-même,
+ * qui l'emporte sur un mot passe-partout (cf. motsClesEn). Les réponses elles-mêmes sont dans
+ * i18n-serveur/en/gaspard.js (`gaspard.reponse.<clé>`).
+ */
+const MOTS_EN = {
+  commandes: 'command:2 slash list',
+  quetes: 'quest:2 gromelin mission task weekly week chore errand',
+  medailles: 'medal:2 gold silver bronze podium',
+  parrainage: 'referral:2 referrer refer invite invitation friend sponsor',
+  kikooz: 'kikooz kikoo money currency coin rich',
+  primes: 'bounty:2 prize reward record beat',
+  feutres: 'felt pen:2 colour color ink rainbow',
+  boutique: 'shop:2 store buy buying purchase sell item section',
+  bouille: 'bouille:2 frutibouille avatar face head look appearance editor hair hairstyle',
+  inventaire: 'inventory:2 wear wearing remove default accessory incarnation',
+  fonds: 'wallpaper:2 background',
+  atelier: 'workshop:2 homemade home-made draw drawing variant create creator designer design',
+  frutisnake: 'frutisnake:2 snake battle online',
+  swapou: 'swapou:2 swapou2 swap natacha dimitri',
+  kaluga: 'kaluga:2 tzongre grappe freestyle',
+  motionball: 'motionball:2 motion ball mb2 marble octopus',
+  burningkiwi: 'burning kiwi bkiwi race racing track circuit driver car turbo',
+  grapiz: 'grapiz:2 hexagon hexagonal token',
+  frutibandas: 'frutibandas:2 bandas fruticard push',
+  miniwave: 'miniwave:2 wave survival letter ship spaceship',
+  minipixiz: 'minipixiz:2 pixiz fairy jar',
+  minifever: 'minifever:2 fever microgame',
+  jamajama: 'jamajama:2 jama puzzle',
+  challenge: 'challenge:2 forbidden fruit fd disc quota limit pass free ranked daily',
+  jeux: 'game play playing disc console frusion launch start',
+  classements: 'ranking:2 leaderboard score consecration',
+  championnat: 'championship:2 elo rating opponent duel',
+  pictos: 'picto:2 collection',
+  club: 'club:2 record book trophy',
+  serie: 'streak:2 login row reward gift loyalty bonus 100 days',
+  niveau: 'level:2 xp experience exp',
+  salons: 'room chatroom chat channel talk join create',
+  logs: 'log:2 /log /logs history previous missed scroll',
+  nuit: 'night:2 dark theme light mode',
+  frutimail: 'frutimail:2 mail email letter inbox mailbox',
+  mp: 'private:2 pm dm direct message',
+  chuchoter: 'whisper:2 /! secret public',
+  ignorer: 'ignore:2 /ignore /unignore unignore block blocking blacklist',
+  emotes: 'emote:2 emoticon smiley lol laugh',
+  contacts: 'contact:2 address book friend add',
+  mentions: 'mention:2 tag tagging @ notify notification ping',
+  forum: 'forum:2 topic post posting reply thread board',
+  blueon: 'blueon blueoff /blueon /blueoff blue poll /poll /vote vote survey',
+  moderation: 'moderator:2 mod report reporting insult harassment abuse alert totoche mute',
+  statut: 'status:2 away dot busy afk icon',
+  profil: 'profile account info details edit delete deletion data name city comment',
+  fiche: 'profile player card',
+  bouilloscope: 'bouilloscope:2 directory search lookup',
+  animateurs: 'host:2 animator event staff team admin',
+  kiloute: 'kiloute kiloutou mikehorny mike horny question:2 60 quiz trivia 7pm',
+  blindtest: 'blindtest:2 blind music song clip',
+  loupgarou: 'werewolf:2 wolf village villager mafia',
+  frutisigne: 'frutisign:2 frutisigne sign ascendant rising irma dam horoscope zodiac',
+  motdepasse: 'password:2 secret code forgot forgotten lost reset email',
+  appli: 'app application install installation android iphone ios phone mobile',
+  bureau: 'desktop:2 light mobile tablet computer version flash ruffle',
+  prunostic: 'prunostic:2 bet betting wager odds pot',
+  bug: 'bug:2 problem issue broken crash crashed stuck error glitch',
+};
+
 // Ce que Gaspard répond quand on le salue ou le remercie, sans question.
+// (Les mots anglais en sont aussi : les salons sont partagés.)
 const POLITESSES = [
-  { mots: ['bonjour', 'salut', 'hello', 'coucou', 'bonsoir', 'hey', 'yo'], reponse: 'Bonjour {nom} ! Pose-moi une question sur le parc, je ferai de mon mieux — par exemple « @Gaspard comment gagner des kikooz ? ».' },
-  { mots: ['merci', 'thanks', 'thx'], reponse: 'Avec plaisir, {nom} ! Je suis là si tu as d’autres questions.' },
+  { cle: 'bonjour', mots: ['bonjour', 'salut', 'hello', 'coucou', 'bonsoir', 'hey', 'yo', 'hi', 'hiya', 'howdy'], reponse: 'Bonjour {nom} ! Pose-moi une question sur le parc, je ferai de mon mieux — par exemple « @Gaspard comment gagner des kikooz ? ».' },
+  { cle: 'merci', mots: ['merci', 'thanks', 'thx', 'thank', 'cheers', 'ty'], reponse: 'Avec plaisir, {nom} ! Je suis là si tu as d’autres questions.' },
 ];
 
 const THEMES = 'les kikooz, l’XP et la série de connexion, le Challenge et ses médailles, les quêtes, les Prunostics, la boutique et l’inventaire, chaque jeu du parc, les salons et leurs commandes, les messages privés et le courrier, le forum, la modération, les animations';
@@ -240,47 +396,114 @@ function interpelle(texte) {
   return q;
 }
 
+/*
+ * LES TEXTES TRADUISIBLES. Gaspard parle dans un salon partagé : chaque
+ * réponse sort sous la forme { k, fr, p } (une clé, son français, ses
+ * paramètres — cf. `texteDe` dans server.js), que le serveur rend dans la
+ * langue de chaque lecteur. Le français reste écrit ici ; `enFrancais` le
+ * rend pour qui veut une chaîne (les tests, l'essai de l'admin, le journal).
+ */
+function enFrancais(t) {
+  if (t == null || typeof t === 'string') return String(t == null ? '' : t);
+  return t.formes !== undefined ? FPI18n.pluriel('fr', t.k, Number(t.n), t.formes, t.p) : FPI18n.traduire('fr', t.k, t.fr, t.p);
+}
+const RIEN_ECOUTE = 'Je t’écoute, {nom} : pose-moi ta question après « @Gaspard ». Je connais ' + THEMES + '.';
+const RIEN_COMPRIS = 'Je n’ai pas compris, {nom}. Je connais ' + THEMES + ' — ou ouvre l’aide complète : l’icône Gaspard de l’accueil.';
+const SUITE_RUBRIQUE = '{titre} — {corps} (la suite dans l’aide, icône Gaspard)';
+
 /**
  * La réponse à une question. `rubriques` : les rubriques de l'aide
- * ({ title, keywords, body, is_index }), facultatives.
- * @returns {{ texte: string, source: 'base'|'aide'|'politesse'|'rien', cle?: string }}
+ * ({ title, keywords, body, is_index }, et leurs champs anglais facultatifs
+ * title_en, keywords_en, body_en), facultatives.
+ *
+ * Deux lecteurs lisent la question : le FRANÇAIS (mots, motsCles, `mots` de
+ * BASE) et l'ANGLAIS (motsEn, motsClesEn, MOTS_EN ; pour une rubrique, ses
+ * champs anglais). Chacun garde son meilleur candidat, avec la même règle
+ * (un seul point sur une question de cinq mots ou plus ne suffit pas). La
+ * langue de la question (ses mots vides, `langueDeQuestion`) dit lequel
+ * écouter d'abord — l'autre ne sert que s'il n'a rien trouvé ; quand rien ne
+ * tranche, le meilleur score l'emporte, et le français à égalité. Une
+ * question française reçoit donc la réponse qu'elle recevait avant.
+ *
+ * @returns {{ texte: string, source: 'base'|'aide'|'politesse'|'rien', cle?: string,
+ *             tr: object, lu?: 'fr'|'en' }}
+ *   `texte` : la réponse en français ; `tr` : la même, traduisible ;
+ *   `lu` : le lecteur qui l'a trouvée.
  */
 function repondre(question, rubriques, nom) {
   const q = String(question || '').trim();
   const qm = mots(q);
+  const qmEn = motsEn(q);
   const brut = normaliser(q).split(' ').filter(Boolean);
   const pseudo = nom || 'toi';
-  const avecNom = (t) => t.replace(/\{nom\}/g, pseudo);
+  const dire = (source, tr, cle) => Object.assign({ texte: enFrancais(tr), source }, cle !== undefined ? { cle } : {}, { tr });
+  const politesse = (p) => dire('politesse', { k: 'gaspard.politesse.' + p.cle, fr: p.reponse, p: { nom: pseudo } });
 
   if (!qm.length) {
-    for (const p of POLITESSES) if (brut.some((m) => p.mots.includes(m))) return { texte: avecNom(p.reponse), source: 'politesse' };
-    return { texte: avecNom('Je t’écoute, {nom} : pose-moi ta question après « @Gaspard ». Je connais ' + THEMES + '.'), source: 'rien' };
+    for (const p of POLITESSES) if (brut.some((m) => p.mots.includes(m))) return politesse(p);
+    return dire('rien', { k: 'gaspard.rienEcoute', fr: RIEN_ECOUTE, p: { nom: pseudo } });
   }
 
-  let meilleur = null;
-  const retenir = (sc, cand) => { if (sc > 0 && (!meilleur || sc > meilleur.sc)) meilleur = Object.assign({ sc }, cand); };
-  for (const e of BASE) retenir(score(qm, motsCles(e.mots)), { source: 'base', cle: e.cle, texte: avecNom(e.reponse) });
+  const lecteurs = { fr: { mots: qm, meilleur: null }, en: { mots: qmEn, meilleur: null } };
+  // `n` : combien de mots-clés différents (le français ne pèse pas : n = sc).
+  const retenir = (l, sc, cand, n) => {
+    const L = lecteurs[l];
+    if (sc > 0 && (!L.meilleur || sc > L.meilleur.sc)) L.meilleur = Object.assign({ sc, n: n === undefined ? sc : n }, cand);
+  };
+  for (const e of BASE) {
+    const cand = { source: 'base', cle: e.cle, tr: { k: 'gaspard.reponse.' + e.cle, fr: e.reponse } };
+    retenir('fr', score(qm, motsCles(e.mots)), cand);
+    const en = scoreEn(qmEn, motsClesEn(MOTS_EN[e.cle]));
+    retenir('en', en.sc, cand, en.n);
+  }
   for (const r of (rubriques || [])) {
     if (!r || r.is_index) continue;
-    const cles = motsCles(r.keywords).concat(mots(r.title));
-    const sc = score(qm, cles);
+    const titre = String(r.title || ''), titreEn = String(r.title_en || '');
     const corps = texteDeRubrique(r.body, 320);
-    if (sc > 0 && corps) retenir(sc, { source: 'aide', cle: String(r.title || ''), texte: String(r.title || '') + ' — ' + corps + ' (la suite dans l’aide, icône Gaspard)' });
+    const corpsEn = r.body_en ? texteDeRubrique(r.body_en, 320) : '';
+    // Le titre et le corps dans les deux langues sont des PARAMÈTRES : la
+    // ligne se refait au rejeu, et l'anglais retombe sur le français quand
+    // la rubrique n'a pas le sien (i18n-serveur/en/gaspard.js).
+    const cand = { source: 'aide', cle: titre, tr: { k: 'gaspard.rubrique', fr: SUITE_RUBRIQUE, p: { titre, corps, titreEn, corpsEn } } };
+    const sc = score(qm, motsCles(r.keywords).concat(mots(r.title)));
+    if (sc > 0 && corps) retenir('fr', sc, cand);
+    const clesEn = motsClesEn(r.keywords_en);
+    for (const m of motsEn(r.title_en)) if (!clesEn.has(m)) clesEn.set(m, 1);
+    const en = scoreEn(qmEn, clesEn);
+    if (en.sc > 0 && (corpsEn || corps)) retenir('en', en.sc, cand, en.n);
   }
-  // Un seul point sur une question de cinq mots ou plus : trop fragile.
-  if (meilleur && !(meilleur.sc === 1 && qm.length >= 5)) return { texte: meilleur.texte, source: meilleur.source, cle: meilleur.cle };
-  for (const p of POLITESSES) if (brut.some((m) => p.mots.includes(m)) && qm.length <= 2) return { texte: avecNom(p.reponse), source: 'politesse' };
-  return { texte: avecNom('Je n’ai pas compris, {nom}. Je connais ' + THEMES + ' — ou ouvre l’aide complète : l’icône Gaspard de l’accueil.'), source: 'rien' };
+  // Un seul mot-clé sur une question de cinq mots ou plus : trop fragile.
+  const retenu = (l) => {
+    const L = lecteurs[l];
+    return L.meilleur && !(L.meilleur.n === 1 && L.mots.length >= 5) ? L.meilleur : null;
+  };
+  const fr = retenu('fr'), en = retenu('en');
+  const langue = langueDeQuestion(q);
+  const choix = langue === 'en' ? (en || fr) : langue === 'fr' ? (fr || en)
+    : (fr && en ? (en.sc > fr.sc ? en : fr) : (fr || en));
+  if (choix) return Object.assign(dire(choix.source, choix.tr, choix.cle), { lu: choix === fr ? 'fr' : 'en' });
+  for (const p of POLITESSES) if (brut.some((m) => p.mots.includes(m)) && (qm.length <= 2 || qmEn.length <= 2)) return politesse(p);
+  return dire('rien', { k: 'gaspard.rien', fr: RIEN_COMPRIS, p: { nom: pseudo } });
 }
 
-/** Le mot de bienvenue d'un nouveau, à sa première entrée dans un salon. */
-function bienvenue(nom, kikooz) {
+/**
+ * Le mot de bienvenue d'un nouveau, à sa première entrée dans un salon : trois
+ * textes traduisibles (cf. plus haut) — `bienvenue` les rend en français.
+ */
+function bienvenueTextes(nom, kikooz) {
   const k = Number(kikooz) || 0;
+  const avecKikooz = 'Bienvenue {nom} ! Je suis Gaspard, l’hôte du parc. Pour commencer, voici {n} kikooz de bienvenue — la monnaie d’ici.';
   return [
-    `Bienvenue ${nom} ! Je suis Gaspard, l’hôte du parc.` + (k > 0 ? ` Pour commencer, voici ${k} kikooz de bienvenue — la monnaie d’ici.` : ''),
-    'Quelques repères : les pommes en haut sont les salons, @pseudo interpelle quelqu’un, /aide ouvre l’aide, et les quêtes de Gromelin (depuis l’accueil) rapportent des kikooz chaque semaine.',
-    'Une question ? Écris @Gaspard devant, je réponds dans le salon.',
+    k > 0
+      ? { k: 'gaspard.bienvenueKikooz', n: k, formes: { one: avecKikooz, other: avecKikooz }, p: { nom } }
+      : { k: 'gaspard.bienvenue', fr: 'Bienvenue {nom} ! Je suis Gaspard, l’hôte du parc.', p: { nom } },
+    { k: 'gaspard.reperes', fr: 'Quelques repères : les pommes en haut sont les salons, @pseudo interpelle quelqu’un, /aide ouvre l’aide, et les quêtes de Gromelin (depuis l’accueil) rapportent des kikooz chaque semaine.' },
+    { k: 'gaspard.question', fr: 'Une question ? Écris @Gaspard devant, je réponds dans le salon.' },
   ];
 }
+function bienvenue(nom, kikooz) { return bienvenueTextes(nom, kikooz).map(enFrancais); }
 
-module.exports = { BASE, POLITESSES, THEMES, normaliser, mots, racine, score, interpelle, repondre, bienvenue, texteDeRubrique };
+module.exports = {
+  BASE, POLITESSES, THEMES, MOTS_EN, normaliser, mots, racine, score, interpelle, repondre, bienvenue, texteDeRubrique,
+  motsEn, motsClesEn, racineEn, scoreEn, langueDeQuestion, bienvenueTextes, enFrancais,
+};

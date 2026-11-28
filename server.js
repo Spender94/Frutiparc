@@ -17370,10 +17370,11 @@ app.post('/api/admin/gaspard/reglages', adminAuth, async (req, res) => {
   console.log('[GASPARD] réglages :', JSON.stringify(gaspardReglages));
   res.json({ ok: true, reglages: gaspardReglages });
 });
-// L'essai de l'admin : ce que Gaspard répondrait à une question.
+// L'essai de l'admin : ce que Gaspard répondrait à une question — en
+// français, et ce qu'un anglophone lirait (`texteEn`).
 app.get('/api/admin/gaspard/essai', adminAuth, async (req, res) => {
   const r = Gaspard.repondre(String(req.query.q || ''), await gaspardRubriquesDe(), 'toi');
-  res.json({ ok: true, reponse: r });
+  res.json({ ok: true, reponse: Object.assign(r, { texteEn: texteDe('en', r.tr) }) });
 });
 
 app.get('/api/admin/gaspard/topics', adminAuth, async (req, res) => {
@@ -17400,7 +17401,7 @@ app.get('/api/admin/gaspard/topics/:id', adminAuth, async (req, res) => {
 });
 
 app.post('/api/admin/gaspard/topics', adminAuth, async (req, res) => {
-  const { title, body, parent_id, sort_order, keywords, is_index } = req.body || {};
+  const { title, body, parent_id, sort_order, keywords, is_index, title_en, body_en, keywords_en } = req.body || {};
   if (!title || typeof title !== 'string' || title.trim() === '') {
     return res.status(400).json({ error: 'title_required' });
   }
@@ -17412,6 +17413,10 @@ app.post('/api/admin/gaspard/topics', adminAuth, async (req, res) => {
       sort_order: sort_order != null ? parseInt(sort_order, 10) : 0,
       keywords: typeof keywords === 'string' ? keywords : '',
       is_index: !!is_index,
+      // La version anglaise, facultative (vide : le français pour tous).
+      title_en: typeof title_en === 'string' ? title_en.trim() : '',
+      body_en: typeof body_en === 'string' ? body_en : '',
+      keywords_en: typeof keywords_en === 'string' ? keywords_en : '',
     });
     res.status(201).json({ topic: row });
   } catch (e) {
@@ -17423,7 +17428,7 @@ app.post('/api/admin/gaspard/topics', adminAuth, async (req, res) => {
 app.put('/api/admin/gaspard/topics/:id', adminAuth, async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (!Number.isInteger(id)) return res.status(400).json({ error: 'bad_id' });
-  const { title, body, parent_id, sort_order, keywords, is_index } = req.body || {};
+  const { title, body, parent_id, sort_order, keywords, is_index, title_en, body_en, keywords_en } = req.body || {};
   try {
     const row = await db.updateGaspardHelpTopic(id, {
       title: title !== undefined ? String(title) : null,
@@ -17432,6 +17437,9 @@ app.put('/api/admin/gaspard/topics/:id', adminAuth, async (req, res) => {
       sort_order: sort_order !== undefined ? parseInt(sort_order, 10) : null,
       keywords: keywords !== undefined ? String(keywords) : null,
       is_index: is_index !== undefined ? !!is_index : undefined,
+      title_en: title_en !== undefined ? String(title_en || '').trim() : null,
+      body_en: body_en !== undefined ? String(body_en || '') : null,
+      keywords_en: keywords_en !== undefined ? String(keywords_en || '') : null,
     });
     if (!row) return res.status(404).json({ error: 'not_found' });
     res.json({ topic: row });
@@ -17453,6 +17461,124 @@ app.delete('/api/admin/gaspard/topics/:id', adminAuth, async (req, res) => {
     res.status(500).json({ error: 'delete_failed', detail: e.message });
   }
 });
+
+/*
+ * LA VERSION ANGLAISE DES RUBRIQUES SEMÉES (le semis lui-même est au
+ * démarrage, avec la base : « Hierarchical seed »). Clé : le titre français,
+ * tel qu'il est semé ; l'admin les retouche ensuite librement (onglet Aide
+ * Gaspard, champs « EN »). Une rubrique sans anglais se montre en français.
+ */
+const GASPARD_AIDE_EN = {
+  'Bienvenue chez Gaspard': {
+    title_en: 'Welcome from Gaspard',
+    keywords_en: 'index home welcome gaspard contents',
+    body_en: "Hello! I'm <b>Gaspard</b>, your host on Frutiparc.<br/><br/>"
+      + 'Pick a topic below to explore the site, or type your question in the search box.<br/><br/>'
+      + "If you're new here, I'd suggest starting with <i>On the desktop</i>, then <i>The chat</i>.<br/><br/>"
+      + 'Enjoy your visit with the Frutiz!',
+  },
+  'Sur le bureau': {
+    title_en: 'On the desktop',
+    keywords_en: 'desktop icon navigation',
+    body_en: 'The Frutiparc desktop is the home screen you land on after logging in.<br/><br/>'
+      + 'It has several icons, each opening a window: your discs, your inventory, your mailbox, your contacts, and plenty more.<br/><br/>'
+      + 'Click a sub-topic below to find out more.',
+  },
+  'Les ic&#244;nes du bureau': {
+    title_en: 'The desktop icons',
+    keywords_en: 'icon desktop disc inventory mail contact',
+    body_en: 'The main desktop icons:<br/>'
+      + '&#8226; <i>My discs</i>: your game collection<br/>'
+      + '&#8226; <i>Inventory</i>: your accessories, wallpapers and pictos<br/>'
+      + '&#8226; <i>Mailbox</i>: your incoming mail<br/>'
+      + '&#8226; <i>My contacts</i>: your Frutiz friends<br/>'
+      + '&#8226; <i>Shop</i>: accessories and wallpapers to buy with Kikooz',
+  },
+  'La console Frusion': {
+    title_en: 'The Frusion console',
+    keywords_en: 'frusion console disc game play eject',
+    body_en: 'The <b>Frusion console</b> is the machine you play your games on.<br/><br/>'
+      + 'To play, drag a disc from <i>My discs</i> onto the console. To stop, click the eject button or put the disc back in its case.',
+  },
+  'Le chat': {
+    title_en: 'The chat',
+    keywords_en: 'chat room apple conversation command',
+    body_en: 'The Frutiparc chat is made up of several colourful chat rooms, shown as apples at the top left of the desktop.<br/><br/>'
+      + 'Click an apple to join that chat room. Then pick your felt pen colour from the palette and chat away with the other Frutiz.',
+  },
+  'Rejoindre un salon': {
+    title_en: 'Joining a chat room',
+    keywords_en: 'room join apple colour color',
+    body_en: 'To join a chat room, just click one of the coloured apples at the top left of the desktop. Each apple is a themed chat room.',
+  },
+  'Les commandes de chat': {
+    title_en: 'Chat commands',
+    keywords_en: 'command slash help topic profile give kick status away',
+    body_en: 'A few handy chat commands:<br/>'
+      + '&#8226; <i>/help</i> or <i>/aide</i>: opens this window<br/>'
+      + "&#8226; <i>/fiche username</i>: shows a Frutiz's profile<br/>"
+      + "&#8226; <i>/! username message</i>: a message only that Frutiz, who must be in the chat room, will see (it doesn't show up in the logs)<br/>"
+      + '&#8226; <i>/ignore username</i>: you no longer see their messages in the chat rooms (they go on your blacklist); '
+      + '<i>/unignore username</i> to undo it, <i>/ignore</i> on its own for the list<br/>'
+      + '&#8226; <i>/status away</i>, <i>phone</i>, <i>zzz</i>, <i>work</i>, <i>eat</i>: '
+      + "swaps your green dot for a little icon that says what you're up to "
+      + '(<i>/status off</i> to remove it)<br/>'
+      + '&#8226; <i>/give number username</i>: gives Kikooz (the number first!)<br/>'
+      + '&#8226; <i>/d6</i>, <i>/d20</i>&#8230;: rolls a die in front of the whole chat room<br/>'
+      + '&#8226; <i>/lg help</i>: the werewolf commands, when a host is running a game<br/>'
+      + '&#8226; <i>/topic ...</i>: changes the chat room topic (moderators)',
+  },
+  'Mon profil': {
+    title_en: 'My profile',
+    keywords_en: 'profile bouille frutibouille accessory',
+    body_en: 'Your profile is the identity other Frutiz see.<br/><br/>'
+      + 'It includes your <i>Frutibouille</i> (your avatar), your profile card, your accessories and your pictos. You can customise all of it.',
+  },
+  'Ma Frutibouille': {
+    title_en: 'My Frutibouille',
+    keywords_en: 'bouille frutibouille avatar look customise customize editor',
+    body_en: 'Your <b>Frutibouille</b> is your avatar on Frutiparc.<br/><br/>'
+      + 'To customise it, click your own profile and use the bouille editor: hair, eyes, skin, clothes and accessories can all be changed.',
+  },
+  'Les accessoires': {
+    title_en: 'Accessories',
+    keywords_en: 'accessory shop inventory wallpaper background',
+    body_en: 'Your accessories are kept in your <i>Inventory</i>. Use them to dress up your Frutibouille.<br/><br/>'
+      + 'New accessories unlock as you play, or can be bought in the <i>Shop</i> with Kikooz.',
+  },
+  'Mes pictos': {
+    title_en: 'My pictos',
+    keywords_en: 'picto titem reward profile card fruticard',
+    body_en: '<b>Pictos</b> (or <b>titems</b>) are the rewards you earn by playing.<br/><br/>'
+      + 'Each game has its own pictos to unlock by reaching certain goals. All your pictos show up in your <i>Inventory &#8594; Pictos</i> and on your <i>FrutiCard</i>.',
+  },
+  'Les jeux': {
+    title_en: 'The games',
+    keywords_en: 'game disc score challenge medal picto',
+    body_en: 'Frutiparc offers a dozen Flash games you can launch from your discs.<br/><br/>'
+      + 'Each game has its own pictos, its classic ranking (personal records) and its daily challenge (the Challenge).',
+  },
+  'Lancer un jeu': {
+    title_en: 'Launching a game',
+    keywords_en: 'game disc console frusion launch play',
+    body_en: 'Drag a disc from <i>My discs</i> onto the Frusion console. The game opens in its own window.<br/><br/>'
+      + "To put the game away, click the console's eject button or close the window.",
+  },
+  'Les scores et le challenge': {
+    title_en: 'Scores and the Challenge',
+    keywords_en: 'score ranking challenge medal gold silver bronze daily',
+    body_en: 'Your scores come in two kinds:<br/>'
+      + '&#8226; <b>Classic</b>: your best score ever in the game<br/>'
+      + '&#8226; <b>Challenge</b>: your best score of the day, reset every night<br/><br/>'
+      + 'Every day, the three best Challenge players win a gold, silver or bronze medal.',
+  },
+  'Les Kikooz': {
+    title_en: 'Kikooz',
+    keywords_en: 'kikooz money currency shop gift give',
+    body_en: "<b>Kikooz</b> are Frutiparc's virtual currency.<br/><br/>"
+      + 'You earn them by playing, chatting and taking on daily challenges. You can spend them in the <i>Shop</i> or give them to another Frutiz with the <i>/give number username</i> command (for example <i>/give 10 Gaspard</i>).',
+  },
+};
 
 // ───────── Public Gaspard help endpoints (consumed by main.swf) ─────────
 /*
@@ -17522,13 +17648,31 @@ function gaspardBodyXml(body) {
 // whichever topic the admin has flagged as is_index, regardless of id.
 const GASPARD_HOME_ID = 1;
 
+// LA LANGUE DE L'AIDE. Le bureau JS demande `lang=en` quand il parle anglais :
+// chaque rubrique se montre alors dans sa version anglaise quand elle en a une
+// (title_en, body_en — onglet Aide Gaspard de l'admin), en français sinon. Le
+// SWF d'époque ne demande rien : il reste en français. Les rubriques sont
+// mises dans la langue AVANT d'être écrites : `title` et `body` sont ceux
+// qu'on montre, et la recherche lit les mots-clés des deux langues (et le
+// titre français), puisqu'on ne sait pas dans laquelle on cherche.
+function gaspardLangueAide(params) { return FPI18n.valide(params && params.lang) || 'fr'; }
+function gaspardAideEnLangue(liste, lang) {
+  if (lang === 'fr') return liste;
+  return liste.map((t) => Object.assign({}, t, {
+    title: String(t.title_en || '').trim() ? t.title_en : t.title,
+    body: String(t.body_en || '').trim() ? t.body_en : t.body,
+    keywords: [t.keywords, t.keywords_en, t.title].filter(Boolean).join(' '),
+  }));
+}
+
 app.all(['/fh/get', '/legacy/fh/get'], async (req, res) => {
   const params = Object.assign({}, req.query || {}, req.body || {});
+  const lang = gaspardLangueAide(params);
   const idRaw = params.i || params.k || params.id || '';
   const id = parseInt(String(idRaw), 10);
   console.log(`[GASPARD] /fh/get method=${req.method} idRaw=${JSON.stringify(idRaw)} parsedId=${Number.isInteger(id) ? id : '(none)'} q=${JSON.stringify(req.query)} b=${JSON.stringify(req.body || {})}`);
   try {
-    const all = await db.listGaspardHelpTopics();
+    const all = gaspardAideEnLangue(await db.listGaspardHelpTopics(), lang);
     // Les liens d'un groupe. `onGetContent` range chaque `<l>` INTÉRIEUR dans
     // `links[t]` : le groupe est un attribut du lien, pas le nom du conteneur.
     // `cat_ls` = les sous-rubriques de la page courante, `cat_tree` = les
@@ -17569,9 +17713,9 @@ app.all(['/fh/get', '/legacy/fh/get'], async (req, res) => {
     if (!topic) {
       // No admin-defined index → emit a generated welcome so the SWF still
       // has something to render with the root nav.
-      const indexBody = "Bienvenue ! Choisissez une rubrique ci-dessous, ou utilisez la recherche.";
+      const indexBody = t(lang, 'gaspard.aideAccueil', "Bienvenue ! Choisissez une rubrique ci-dessous, ou utilisez la recherche.");
       return res.type('text/xml').send(
-        `<?xml version="1.0" encoding="UTF-8"?>\n<h i="0" n="Index de l'aide"><c>${gaspardBodyXml(indexBody)}</c>${liens(rootTree)}</h>`
+        `<?xml version="1.0" encoding="UTF-8"?>\n<h i="0" n="${escapeXmlText(t(lang, 'gaspard.aideIndex', "Index de l'aide"))}"><c>${gaspardBodyXml(indexBody)}</c>${liens(rootTree)}</h>`
       );
     }
 
@@ -17595,6 +17739,7 @@ app.all(['/fh/get', '/legacy/fh/get'], async (req, res) => {
 app.all(['/fh/search', '/legacy/fh/search'], async (req, res) => {
   const params = Object.assign({}, req.query || {}, req.body || {});
   const query = String(params.s || '').trim().toLowerCase();
+  const lang = gaspardLangueAide(params);
   console.log(`[GASPARD] /fh/search method=${req.method} s=${JSON.stringify(query)} q=${JSON.stringify(req.query)} b=${JSON.stringify(req.body || {})}`);
   // `n` porte le NOMBRE de résultats, et `onSearch` le passe à `Number()` :
   // « no_result » y devenait NaN, ni `< 1` ni `== 1`, et la fenêtre partait
@@ -17603,7 +17748,7 @@ app.all(['/fh/search', '/legacy/fh/search'], async (req, res) => {
     return res.type('text/xml').send('<r n="0" m="e"/>');
   }
   try {
-    const all = await db.listGaspardHelpTopics();
+    const all = gaspardAideEnLangue(await db.listGaspardHelpTopics(), lang);
     const tokens = query.split(/\s+/).filter(Boolean);
     const matchesExact = (t) => {
       const hay = ((t.title || '') + ' ' + (t.keywords || '')).toLowerCase();
@@ -35194,11 +35339,12 @@ async function boot() {
           let seeded = 0;
           for (const cat of seedTree) {
             const { children = [], ...catFields } = cat;
-            const root = await db.createGaspardHelpTopic({ ...catFields, parent_id: null });
+            const root = await db.createGaspardHelpTopic({ ...catFields, ...(GASPARD_AIDE_EN[catFields.title] || {}), parent_id: null });
             seeded++;
             for (let i = 0; i < children.length; i++) {
               await db.createGaspardHelpTopic({
                 ...children[i],
+                ...(GASPARD_AIDE_EN[children[i].title] || {}),
                 parent_id: root.id,
                 sort_order: (i + 1) * 10,
               });
@@ -35208,6 +35354,17 @@ async function boot() {
           console.log(`[GASPARD] Seeded ${seeded} help topic(s) — hierarchy with is_index landing page`);
         } else {
           console.log(`[GASPARD] ${existingTopics.length} help topic(s) already in DB`);
+          // Une base semée AVANT la version anglaise : les rubriques d'origine
+          // (même titre français) la reçoivent, une fois — celles que l'admin
+          // a déjà traduites, renommées ou ajoutées ne bougent pas.
+          let traduites = 0;
+          for (const t of existingTopics) {
+            const en = GASPARD_AIDE_EN[t.title];
+            if (!en || String(t.title_en || '').trim()) continue;
+            await db.updateGaspardHelpTopic(t.id, Object.assign({ parent_id: t.parent_id }, en));
+            traduites++;
+          }
+          if (traduites) console.log(`[GASPARD] ${traduites} help topic(s) given their English version`);
         }
       } catch (e) { console.error('[GASPARD] Seed error:', e.message); }
       try {
@@ -36165,8 +36322,10 @@ function gaspardEcoute(g, username, texte) {
     setTimeout(() => {
       if (!channels[g]) return;
       gaspardVisite(g);
-      npcSay('gaspard', g, `@${nom} ${r.texte}`, 'm', [username]);
-      console.log(`[GASPARD] ${u} sur ${g} : « ${q.slice(0, 60)} » → ${r.source}${r.cle ? ' (' + r.cle + ')' : ''}`);
+      // La réponse dans la langue de chaque lecteur : `r.tr` est la réponse
+      // traduisible (gaspard.js), quelle que soit la langue de la question.
+      npcSay('gaspard', g, { k: 'gaspard.mention', fr: '@{nom} {reponse}', p: { nom, reponse: r.tr } }, 'm', [username]);
+      console.log(`[GASPARD] ${u} sur ${g} : « ${q.slice(0, 60)} » → ${r.source}${r.cle ? ' (' + r.cle + ')' : ''}${r.lu === 'en' ? ' [lu en anglais]' : ''}`);
     }, 900 + Math.random() * 900);
   });
 }
@@ -36193,7 +36352,7 @@ function gaspardAccueillir(g, username) {
   setTimeout(() => {
     if (!channels[g] || !channels[g].users.has(u)) return;   // déjà reparti
     gaspardVisite(g);
-    npcSaySequence('gaspard', g, Gaspard.bienvenue(nom, k), () => gaspardVisite(g), 'm', 3500, [username]);
+    npcSaySequence('gaspard', g, Gaspard.bienvenueTextes(nom, k), () => gaspardVisite(g), 'm', 3500, [username]);
   }, 2500);
   console.log(`[GASPARD] accueille ${u} sur ${g}${k ? ` (+${k} kikooz)` : ''}`);
 }
