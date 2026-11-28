@@ -35,6 +35,38 @@ const N = (typeof module !== 'undefined' && module.exports)
   ? require('./nuit.js') : null;
 const nuit = () => N || racine.MinipixizNuit;
 
+// LES LANGUES (/js/i18n.js). FPI18n est cherché à CHAQUE appel ; sans lui —
+// sous Node, aux tests —, le français, gabarits remplis. Les tables d'ici
+// (SECTION, FLASK_ACTION, LETTRES…) restent françaises ; on les lit au même
+// rang dans la langue du joueur (minipixiz.inv.<TABLE>, T.table) au moment
+// d'écrire — et un tirage au sort se fait toujours dans la table française.
+function remplir(s, p) {
+  return String(s).replace(/\{(\w+)\}/g, (m, k) => (p && p[k] != null ? String(p[k]) : m));
+}
+function T(cle, fr, p) {
+  const I = racine.FPI18n;
+  return I && I.T ? I.T(cle, fr, p) : remplir(fr, p);
+}
+T.n = function (cle, n, formes, p) {
+  const I = racine.FPI18n;
+  if (I && I.T && I.T.n) return I.T.n(cle, n, formes, p);
+  const q = Object.assign({}, p, { n });
+  return remplir(Math.abs(n) < 2 ? formes.one : formes.other, q);   // la règle française
+};
+function dans(table, fr, i) {
+  const I = racine.FPI18n;
+  const t = (I && I.T && I.T.table) ? I.T.table('minipixiz.inv.' + table, null) : null;
+  let v = t, f = fr;
+  for (const k of [].concat(i)) { v = (v === null || v === undefined) ? v : v[k]; f = f[k]; }
+  return (v === null || v === undefined || typeof v !== typeof f) ? f : v;
+}
+// Le nom d'une caractéristique, dans la langue du joueur (faerie.js).
+function nomCarac(c) {
+  const F = racine.MinipixizFee || (typeof module !== 'undefined' && module.exports ? require('./faerie.js') : null);
+  if (!F || !F.NOM_CARAC || F.NOM_CARAC[c] === undefined) return undefined;
+  return F.nomCarac ? F.nomCarac(c) : F.NOM_CARAC[c];
+}
+
 // Les constantes d'Inventory.mt, telles quelles.
 const SCENE = 240;
 const MARGIN_UP = 20;
@@ -142,7 +174,8 @@ const ORIGINE_SORT = {
   parchemin: 'parchemin porté',
 };
 function origineEnClair(sources) {
-  const l = (sources || []).map((s) => ORIGINE_SORT[s]).filter(Boolean);
+  const l = (sources || []).map((s) => (ORIGINE_SORT[s] ? dans('ORIGINE_SORT', ORIGINE_SORT, s) : ORIGINE_SORT[s]))
+    .filter(Boolean);
   // « appris en montant de niveau + grimoire du sac » : le grimoire fait
   // doublon, le jeter ne lui ôtera rien.
   return l.join(' + ');
@@ -423,7 +456,7 @@ class Inventaire {
       this.caseAvecObjet(c.cx, c.cy, SLOT_SIZE, liste[c.i], 'joueur', c.i);
     }
     if (!g.max) {
-      this.texte('Pas encore de sac', INV_WIDTH / 2, MARGIN_UP + INV_HEIGHT / 2, '#6b5b3a', 10);
+      this.texte(T('minipixiz.inv.pasDeSac', 'Pas encore de sac'), INV_WIDTH / 2, MARGIN_UP + INV_HEIGHT / 2, '#6b5b3a', 10);
     }
 
     // 3. La rangée du bas : ce qu'on a rapporté du monde (DP_SLOT lui aussi).
@@ -495,7 +528,7 @@ class Inventaire {
     // Le bouton des volets dit où il mène (Mc.makeHint), au lieu de l'écrire
     // dans le tableau de bois.
     if (this.surVolet && fee && !(this.glisse && this.glisse.pris)) {
-      this.infobulle(SECTION_BULLE[(this.volet + 1) % 4]);
+      this.infobulle(dans('SECTION_BULLE', SECTION_BULLE, (this.volet + 1) % 4));
     }
 
     // 7. L'infobulle de la pastille (mcHint : fond vert pâle à 80 %, Verdana
@@ -537,7 +570,10 @@ class Inventaire {
     const vues = ['grimoire', 'parchemin'].filter((o) => connus.some((k) => k.origine === o));
     if (!vues.length) return false;
     const ctx = this.ctx;
-    const mots = { grimoire: 'grimoire du sac', parchemin: 'parchemin porté' };
+    const mots = {
+      grimoire: dans('ORIGINE_SORT', ORIGINE_SORT, 'grimoire'),
+      parchemin: dans('ORIGINE_SORT', ORIGINE_SORT, 'parchemin'),
+    };
     ctx.save();
     ctx.font = 'bold 8px Verdana, Arial, sans-serif';
     ctx.textAlign = 'left';
@@ -598,20 +634,21 @@ class Inventaire {
   prochainNiveau(fee) {
     if (!fee || (this.volet !== 0 && this.volet !== 1)) return null;
     const fs = fee.fs;
-    const titre = 'Prochain niveau :';
-    if (nombre(fs.$level) + 1 > NIVEAU_SURPRISE) return { titre, message: 'surprise !' };
+    const titre = T('minipixiz.inv.prochainNiveau', 'Prochain niveau :');
+    if (nombre(fs.$level) + 1 > NIVEAU_SURPRISE) return { titre, message: T('minipixiz.inv.surprise', 'surprise !') };
     const nx = Array.isArray(fs.$next) ? fs.$next : null;
     if (!nx) return null;
     const F = racine.MinipixizFee;
     const c = Number(nx[0]);
-    const carac = (Number.isInteger(c) && F && F.NOM_CARAC && F.NOM_CARAC[c]) ? '+1 en ' + F.NOM_CARAC[c] : null;
+    const carac = (Number.isInteger(c) && F && F.NOM_CARAC && F.NOM_CARAC[c])
+      ? T('minipixiz.inv.plusUn', '+1 en {carac}', { carac: nomCarac(c) }) : null;
     let sort = null;
     if (nx[1] !== null && nx[1] !== undefined) {
       const S = racine.MinipixizSorts;
       const sp = S && S.nouveauSort ? S.nouveauSort(nx[1], null) : null;
-      sort = (sp && sp.nom && sp.nom()) || 'un nouveau sort';
+      sort = (sp && sp.nom && sp.nom()) || T('minipixiz.inv.nouveauSort', 'un nouveau sort');
     }
-    const t = [carac, sort].filter(Boolean).join(' ou ');
+    const t = [carac, sort].filter(Boolean).join(T('minipixiz.inv.ou', ' ou '));
     return t ? { titre, message: t } : null;
   }
 
@@ -629,17 +666,17 @@ class Inventaire {
     const cle = z.sac + ':' + z.case;
     if (this.survol && this.survol.cle === cle) return this.survol;
     if (z.sac === 'joueur' && it.famille === 'bocal') {
-      return { cle, titre: 'Bocal résidentiel :', message: this.descBocal(z.case) };
+      return { cle, titre: T('minipixiz.inv.bocalTitre', 'Bocal résidentiel :'), message: this.descBocal(z.case) };
     }
-    return { cle, titre: (it.nom || '') + ' :', message: it.desc || '' };
+    return { cle, titre: T('minipixiz.inv.titre', '{nom} :', { nom: it.nom || '' }), message: it.desc || '' };
   }
 
   // it/Flask.getDesc — vide, en mission, ou habité.
   descBocal(index, alea) {
     const dedans = (this.carte.$faerie || []).find((f) => f && f.$pos === index);
     if (!dedans) {
-      return 'Il sert à abriter les fées. Pour y loger votre fée, cliquez dessus en appuyant sur Ctrl'
-        + ' (ou la barre espace) ; au doigt, touchez-le simplement.';
+      return T('minipixiz.inv.bocalVide', 'Il sert à abriter les fées. Pour y loger votre fée, cliquez dessus en appuyant sur Ctrl'
+        + ' (ou la barre espace) ; au doigt, touchez-le simplement.');
     }
     if (enMission(dedans)) return this.descMission(dedans);
     // floor((moral − 0,1) / 4) : un moral à zéro donnait −1 dans le jeu (et une
@@ -647,8 +684,10 @@ class Inventaire {
     const h = Math.max(0, Math.min(FLASK_ACTION.length - 1, Math.floor((nombre(dedans.$moral) - 0.1) / 4)));
     const l = FLASK_ACTION[h];
     const tirage = (alea || Math.random)();
-    const action = l[Math.min(l.length - 1, Math.floor(tirage * l.length))];
-    return dedans.$name + ' ( niv.' + (nombre(dedans.$level) + 1) + ' ) ' + action + ' dans ce bocal.';
+    const j = Math.min(l.length - 1, Math.floor(tirage * l.length));
+    return T('minipixiz.inv.dansCeBocal', '{nom} ( niv.{niveau} ) {action} dans ce bocal.', {
+      nom: dedans.$name, niveau: nombre(dedans.$level) + 1, action: dans('FLASK_ACTION', FLASK_ACTION, [h, j]),
+    });
   }
 
   // ── La main à la souris (inv/Hand.mt) ──
@@ -821,7 +860,8 @@ class Inventaire {
     this.extraIndex = 0;
     this.extraMax = this.extraList ? Math.min(this.extraList.length, 4) : 0;
     if (this.extraList) {
-      this.dire('Rangez vos nouveaux objets avant de partir!', 'Le sac était plein');
+      this.dire(T('minipixiz.inv.rangezAvantDePartir', 'Rangez vos nouveaux objets avant de partir!'),
+        T('minipixiz.inv.sacPlein', 'Le sac était plein'));
     } else {
       this.rendre();
     }
@@ -955,10 +995,11 @@ class Inventaire {
           ctx.textAlign = 'center';
           ctx.textBaseline = 'alphabetic';
           ctx.fillStyle = LETTRE_COULEUR;
-          const mes = ctx.measureText(LETTRES[i]);
+          const lettre = dans('LETTRES', LETTRES, i);
+          const mes = ctx.measureText(lettre);
           const asc = mes.actualBoundingBoxAscent, desc = mes.actualBoundingBoxDescent;
           const base = (asc > 0) ? (asc - (desc || 0)) / 2 : LETTRE_BASE;
-          ctx.fillText(LETTRES[i], BARRE.x + LETTRE_X, y + base);
+          ctx.fillText(lettre, BARRE.x + LETTRE_X, y + base);
           ctx.textBaseline = 'top';
           const val = nombre(fee.carac[i]);
           for (let p = 0; p < BARRE.points; p++) {
@@ -1205,7 +1246,7 @@ class Inventaire {
       const it = this.objetA(this.glisse.sac, this.glisse.case);
       if (this.extraList && this.glisse.sac === 'joueur' && it && it.famille === 'bocal'
         && (this.carte.$faerie || []).some((f) => f && f.$pos === this.glisse.case)) {
-        this.dire('Rangez vos nouveaux objets avant de déplacer ce bocal.');
+        this.dire(T('minipixiz.inv.rangezAvantBocal', 'Rangez vos nouveaux objets avant de déplacer ce bocal.'));
         this.glisse = null;
         return;
       }
@@ -1239,9 +1280,9 @@ class Inventaire {
       const bouge = (de.sac === 'extra' || vers.sac === 'extra')
         ? this.deplacerExtra(de, vers)
         : O.deplacer(this.carte, de, vers);
-      if (!bouge) { this.dire('Impossible de poser là.'); return; }
+      if (!bouge) { this.dire(T('minipixiz.inv.impossible', 'Impossible de poser là.')); return; }
       if (this.extraList && !this.resteARanger()) {
-        this.dire('Tout est rangé. Vous pouvez repartir.');
+        this.dire(T('minipixiz.inv.toutRange', 'Tout est rangé. Vous pouvez repartir.'));
       } else {
         this.dire('');
       }
@@ -1279,7 +1320,7 @@ class Inventaire {
     if (quoi === 'volet') {
       // Le bouton fait tourner les quatre volets, mais pas les mains pleines :
       // `if( me.hand == null )` dans initFaerieIntMode.
-      if (this.main) { this.dire('Reposez d\'abord ce que vous tenez.'); return; }
+      if (this.main) { this.dire(T('minipixiz.inv.reposez', 'Reposez d\'abord ce que vous tenez.')); return; }
       this.volet = (this.volet + 1) % 4;
       // Où mène le bouton se lit dans son infobulle ; le tableau de bois,
       // lui, retrouve son mot par défaut (« Prochain niveau », s'il y a lieu).
@@ -1312,7 +1353,7 @@ class Inventaire {
         const t = o ? d + ' (' + o + ')' : d;
         // Le tableau de bois tient trois lignes à 9 px : au-delà, un cran plus
         // petit, comme pour les goûts (montrerGouts).
-        this.dire(t, sort.nom() + ' :', t.length > 120 ? 8 : 0);
+        this.dire(t, T('minipixiz.inv.titre', '{nom} :', { nom: sort.nom() }), t.length > 120 ? 8 : 0);
       }
       return;
     }
@@ -1380,19 +1421,20 @@ class Inventaire {
       // inv/Slot.mt : `inv.updateCurrent()` — le panneau suit la fée qui vient
       // de sortir, il ne reste pas sur celle qu'on regardait avant.
       this.feeCourante = l.indexOf(dedans);
-      let msg = dedans.$name + ' sort de son bocal.';
+      let msg = T('minipixiz.inv.sortDuBocal', '{nom} sort de son bocal.', { nom: dedans.$name });
       if (courante && courante !== dedans && !enMission(courante) && !enBocal(courante)) {
         courante.$pos = index;
-        msg = dedans.$name + ' sort du bocal, ' + courante.$name + ' s\'y installe.';
+        msg = T('minipixiz.inv.echangeBocal', '{nom} sort du bocal, {autre} s\'y installe.',
+          { nom: dedans.$name, autre: courante.$name });
       }
       this.dire(msg);
       this.changer();
       return true;
     }
     const fs = l[this.feeCourante];
-    if (!fs) { this.dire('Aucune fée ne vous accompagne encore.'); return true; }
+    if (!fs) { this.dire(T('minipixiz.inv.aucuneFee', 'Aucune fée ne vous accompagne encore.')); return true; }
     if (enBocal(fs)) {
-      this.dire(fs.$name + ' est déjà dans un bocal.');
+      this.dire(T('minipixiz.inv.dejaEnBocal', '{nom} est déjà dans un bocal.', { nom: fs.$name }));
       return true;
     }
     fs.$pos = index;
@@ -1404,7 +1446,7 @@ class Inventaire {
       this.carte.$current = null;
     }
     this.dire(enMission(fs) ? this.descMission(fs)
-      : fs.$name + ' s\'installe dans le bocal. Gromelin l\'acceptera.');
+      : T('minipixiz.inv.entreEnBocal', '{nom} s\'installe dans le bocal. Gromelin l\'acceptera.', { nom: fs.$name }));
     this.changer();
     return true;
   }
@@ -1413,9 +1455,10 @@ class Inventaire {
   // « … Elle reviendra demain / après-demain / dans N jours. »
   descMission(fs) {
     const d = nombre(((this.carte.$mis || [])[fs.$mission] || {}).$d);
-    const quand = d === 1 ? ' demain.' : d === 2 ? ' après-demain.'
-      : ' dans ' + d + ' jours.';
-    return fs.$name + ' est actuellement en mission. Elle reviendra' + quand;
+    const p = { nom: fs.$name, n: d };
+    if (d === 1) return T('minipixiz.inv.enMissionDemain', '{nom} est actuellement en mission. Elle reviendra demain.', p);
+    if (d === 2) return T('minipixiz.inv.enMissionApresDemain', '{nom} est actuellement en mission. Elle reviendra après-demain.', p);
+    return T('minipixiz.inv.enMission', '{nom} est actuellement en mission. Elle reviendra dans {n} jours.', p);
   }
 
   toucher(sac, index) {
@@ -1437,12 +1480,12 @@ class Inventaire {
     // (inv/Slot.click : « PAS DE MANIP DE FEE EN FIN DE MATCH »).
     if (!this.main && this.extraList && sac === 'joueur' && it && it.famille === 'bocal'
       && (this.carte.$faerie || []).some((f) => f && f.$pos === index)) {
-      this.dire('Rangez vos nouveaux objets avant de déplacer ce bocal.');
+      this.dire(T('minipixiz.inv.rangezAvantBocal', 'Rangez vos nouveaux objets avant de déplacer ce bocal.'));
       return;
     }
     if (this.extraList && this.main && sac === 'joueur' && it && it.famille === 'bocal'
       && (this.carte.$faerie || []).some((f) => f && f.$pos === index)) {
-      this.dire('Rangez vos nouveaux objets avant de déplacer ce bocal.');
+      this.dire(T('minipixiz.inv.rangezAvantBocal', 'Rangez vos nouveaux objets avant de déplacer ce bocal.'));
       return;
     }
     if (!this.main) {
@@ -1463,9 +1506,9 @@ class Inventaire {
       const bouge = this.deplacerExtra(
         { sac: this.main.sac, case: this.main.case }, { sac, case: index });
       this.main = null;
-      if (!bouge) { this.dire('Impossible de poser là.'); return; }
+      if (!bouge) { this.dire(T('minipixiz.inv.impossible', 'Impossible de poser là.')); return; }
       if (this.extraList && !this.resteARanger()) {
-        this.dire('Tout est rangé. Vous pouvez repartir.');
+        this.dire(T('minipixiz.inv.toutRange', 'Tout est rangé. Vous pouvez repartir.'));
       } else {
         this.dire('');
       }
@@ -1475,7 +1518,7 @@ class Inventaire {
     const bouge = O.deplacer(this.carte,
       { sac: this.main.sac, case: this.main.case }, { sac, case: index });
     this.main = null;
-    if (!bouge) { this.dire('Impossible de poser là.'); return; }
+    if (!bouge) { this.dire(T('minipixiz.inv.impossible', 'Impossible de poser là.')); return; }
     this.changer();
   }
 
@@ -1488,16 +1531,17 @@ class Inventaire {
    */
   liberer() {
     const fs = (this.carte.$faerie || [])[this.feeCourante];
-    if (!fs) { this.dire('Aucune fée ne vous accompagne encore.'); return; }
+    if (!fs) { this.dire(T('minipixiz.inv.aucuneFee', 'Aucune fée ne vous accompagne encore.')); return; }
     if (this.aConfirmer !== this.feeCourante) {
       this.aConfirmer = this.feeCourante;
-      this.dire('Touchez encore pour rendre sa liberté à ' + fs.$name + '.', 'Êtes-vous sûr ?');
+      this.dire(T('minipixiz.inv.libererConfirme', 'Touchez encore pour rendre sa liberté à {nom}.', { nom: fs.$name }),
+        T('minipixiz.inv.etesVousSur', 'Êtes-vous sûr ?'));
       return;
     }
     this.aConfirmer = null;
-    let msg = fs.$name + ' est repartie au pays des fées ! ';
+    let msg = T('minipixiz.inv.liberee', '{nom} est repartie au pays des fées ! ', { nom: fs.$name });
     if (nombre(fs.$level) >= 15) {
-      msg += 'En souvenir de vos aventures, elle vous offre une étoile !';
+      msg += T('minipixiz.inv.etoile', 'En souvenir de vos aventures, elle vous offre une étoile !');
       this.carte.$star = nombre(this.carte.$star) + 1;
     }
     // Une fée en bocal doit d'abord en sortir, sinon le bocal garderait un
@@ -1541,21 +1585,25 @@ class Inventaire {
   toutJeter() {
     if (!this.resteARanger()) {
       this.poubelleAConfirmer = false;
-      this.dire('Prenez un objet, puis touchez la poubelle.');
+      this.dire(T('minipixiz.inv.prenezUnObjet', 'Prenez un objet, puis touchez la poubelle.'));
       return;
     }
     const n = this.extraList.filter((v) => v !== null && v !== undefined).length;
-    const objets = n + (n > 1 ? ' objets' : ' objet');
+    // n vaut au moins 1 (resteARanger) ; le pluriel est celui du jeu : « 1 objet ».
     if (!this.poubelleAConfirmer) {
       this.poubelleAConfirmer = true;
-      this.dire('Touchez encore la poubelle pour jeter ' + (n > 1 ? 'les ' + objets : 'l\'objet')
-        + ' à ranger.', 'Tout jeter ?');
+      this.dire(n > 1
+        ? T('minipixiz.inv.jeterLes', 'Touchez encore la poubelle pour jeter les {n} objets à ranger.', { n })
+        : T('minipixiz.inv.jeterLObjet', 'Touchez encore la poubelle pour jeter l\'objet à ranger.', { n }),
+      T('minipixiz.inv.toutJeter', 'Tout jeter ?'));
       return;
     }
     this.poubelleAConfirmer = false;
     for (let i = 0; i < this.extraList.length; i++) this.extraList[i] = null;
     this.extraIndex = 0;
-    this.dire(objets + (n > 1 ? ' jetés' : ' jeté') + '. Tout est rangé. Vous pouvez repartir.');
+    this.dire(n > 1
+      ? T('minipixiz.inv.jetes', '{n} objets jetés. Tout est rangé. Vous pouvez repartir.', { n })
+      : T('minipixiz.inv.jete', '{n} objet jeté. Tout est rangé. Vous pouvez repartir.', { n }));
     this.changer();
   }
 
@@ -1565,16 +1613,16 @@ class Inventaire {
     // Un bocal HABITÉ ne part pas à la poubelle avec sa locataire dedans.
     if (src.sac === 'joueur' && it && it.famille === 'bocal') {
       const dedans = (this.carte.$faerie || []).find((f) => f && f.$pos === src.case);
-      if (dedans) { this.dire('Sortez d\'abord ' + dedans.$name + ' du bocal.'); return; }
+      if (dedans) { this.dire(T('minipixiz.inv.sortezDAbord', 'Sortez d\'abord {nom} du bocal.', { nom: dedans.$name })); return; }
     }
     const liste = src.sac === 'joueur' ? this.carte.$inv
       : src.sac === 'extra' ? this.extraList
         : ((this.carte.$faerie || [])[src.sac] || {}).$inv;
     if (Array.isArray(liste)) liste[src.case] = null;
     if (this.extraList && !this.resteARanger()) {
-      this.dire('Tout est rangé. Vous pouvez repartir.');
+      this.dire(T('minipixiz.inv.toutRange', 'Tout est rangé. Vous pouvez repartir.'));
     } else {
-      this.dire(it ? (it.nom + ' jeté.') : '');
+      this.dire(it ? T('minipixiz.inv.objetJete', '{nom} jeté.', { nom: it.nom }) : '');
     }
     this.changer();
   }
@@ -1582,7 +1630,7 @@ class Inventaire {
   // Inventory.giveItem : l'objet tenu est consommé sur la fée.
   donnerALaFee() {
     const fee = this.fee();
-    if (!fee) { this.dire('Aucune fée ne vous accompagne encore.'); return; }
+    if (!fee) { this.dire(T('minipixiz.inv.aucuneFee', 'Aucune fée ne vous accompagne encore.')); return; }
     if (!this.main) {
       // setFaerieFace : la regarder, c'est apprendre ce qu'elle aime — le jeu
       // met son nom en titre du bandeau et ses goûts en dessous, et rien
@@ -1606,10 +1654,11 @@ class Inventaire {
   // portrait, ou l'objet qu'on y fait GLISSER (Inventory.giveItem).
   donnerDepuis(src) {
     const fee = this.fee();
-    if (!fee) { this.dire('Aucune fée ne vous accompagne encore.'); return false; }
+    if (!fee) { this.dire(T('minipixiz.inv.aucuneFee', 'Aucune fée ne vous accompagne encore.')); return false; }
     const it = this.objetA(src.sac, src.case);
     if (!it || !it.flUse) {
-      this.dire((it ? it.nom : 'Cet objet') + ' ne se donne pas à manger.');
+      this.dire(it ? T('minipixiz.inv.pasAManger', '{nom} ne se donne pas à manger.', { nom: it.nom })
+        : T('minipixiz.inv.cetObjetPasAManger', 'Cet objet ne se donne pas à manger.'));
       return false;
     }
     const r = O.donner(this.carte,
@@ -1622,13 +1671,18 @@ class Inventaire {
     fs.$hunger = fee.fs.$hunger; fs.$moral = fee.fs.$moral;
 
     let msg;
+    const nom = { nom: fee.fs.$name };
     if (r.effet.genre === 'repas') {
-      msg = fee.fs.$name + (r.effet.moral > 0 ? ' se régale !'
-        : r.effet.moral < 0 ? ' mange sans enthousiasme.' : ' mange.');
+      msg = r.effet.moral > 0 ? T('minipixiz.inv.seRegale', '{nom} se régale !', nom)
+        : r.effet.moral < 0 ? T('minipixiz.inv.sansEnthousiasme', '{nom} mange sans enthousiasme.', nom)
+          : T('minipixiz.inv.mange', '{nom} mange.', nom);
     } else {
-      msg = fee.fs.$name + ' récupère ' + r.effet.gagne + ' cœur' + (r.effet.gagne > 1 ? 's' : '') + '.';
+      // « 0 cœur », « 1 cœur », « 2 cœurs » : le pluriel du jeu, au-delà de un.
+      msg = r.effet.gagne > 1
+        ? T('minipixiz.inv.recupereCoeurs', '{nom} récupère {n} cœurs.', { nom: fee.fs.$name, n: r.effet.gagne })
+        : T('minipixiz.inv.recupereCoeur', '{nom} récupère {n} cœur.', { nom: fee.fs.$name, n: r.effet.gagne });
     }
-    if (r.pictos.length) msg += ' Album : +' + r.pictos.length + ' !';
+    if (r.pictos.length) msg += T('minipixiz.inv.album', ' Album : +{n} !', { n: r.pictos.length });
     this.dire(msg);
     this.changer();
     return true;
@@ -1643,7 +1697,7 @@ class Inventaire {
    */
   direSante(quoi) {
     const fee = this.fee();
-    if (!fee) { this.dire('Aucune fée ne vous accompagne encore.'); return; }
+    if (!fee) { this.dire(T('minipixiz.inv.aucuneFee', 'Aucune fée ne vous accompagne encore.')); return; }
     const fs = fee.fs;
     if (quoi === 'vie') {
       // On dit par quoi les cœurs remontent, et de COMBIEN. La nuit les rend à
@@ -1654,27 +1708,30 @@ class Inventaire {
       // regarde. Seule une potion soigne sur-le-champ.
       const v = nombre(fs.$life);
       const max = fee.vieMax();
-      let t = 'vie ' + v + ' / ' + max;
+      let t = T('minipixiz.inv.vie', 'vie {v} / {max}', { v, max });
       if (v < max) {
         const nuit = fee.vieDeLaNuit();
-        t += ' — la nuit les remonte à hauteur du ventre : ' + nuit + ' / ' + max
-          + ' avec ' + nombre(fs.$hunger) + ' de faim'
-          + (nuit < max ? ' (20 les rendrait tous)' : '');
+        const p = { nuit, max, faim: nombre(fs.$hunger) };
+        t += nuit < max
+          ? T('minipixiz.inv.vieLaNuitTous', ' — la nuit les remonte à hauteur du ventre : {nuit} / {max}'
+            + ' avec {faim} de faim (20 les rendrait tous)', p)
+          : T('minipixiz.inv.vieLaNuit', ' — la nuit les remonte à hauteur du ventre : {nuit} / {max}'
+            + ' avec {faim} de faim', p);
       }
-      if (v <= 0) t += ' ; une potion la soigne tout de suite.';
+      if (v <= 0) t += T('minipixiz.inv.potion', ' ; une potion la soigne tout de suite.');
       this.dire(t, fs.$name);
       return;
     }
     if (quoi === 'faim') {
       const f = nombre(fs.$hunger);
-      this.dire('faim ' + f + ' / 20'
-        + (f < 10 ? ' — elle a faim, donnez-lui à manger.' : ''), fs.$name);
+      this.dire(f < 10 ? T('minipixiz.inv.faimBasse', 'faim {f} / 20 — elle a faim, donnez-lui à manger.', { f })
+        : T('minipixiz.inv.faim', 'faim {f} / 20', { f }), fs.$name);
       return;
     }
     const m = nombre(fs.$moral);
-    this.dire('moral ' + m + ' / 20'
-      + (m > 0 ? '' : ' — à zéro, elle ne vous suit plus. Seul un aliment'
-        + ' qu\'elle aime le fait remonter.'), fs.$name);
+    this.dire(m > 0 ? T('minipixiz.inv.moral', 'moral {m} / 20', { m })
+      : T('minipixiz.inv.moralZero', 'moral {m} / 20 — à zéro, elle ne vous suit plus. Seul un aliment'
+        + ' qu\'elle aime le fait remonter.', { m }), fs.$name);
   }
 
   dire(message, titre, taille) {
@@ -1687,7 +1744,7 @@ class Inventaire {
   // « niveau 3 (42.3 %) » — Inventory.mt:384, la progression vers le suivant.
   libelleNiveau(fee) {
     const prc = Math.min(99.9, Math.round((nombre(fee.fs.$exp) / fee.limiteExp()) * 1000) / 10);
-    return 'niveau ' + (nombre(fee.fs.$level) + 1) + ' (' + prc + ' %)';
+    return T('minipixiz.inv.niveau', 'niveau {niveau} ({prc} %)', { niveau: nombre(fee.fs.$level) + 1, prc });
   }
 
   // Ce qu'elle aime, ce qu'elle déteste : en clair et en petit, au survol du
@@ -1697,9 +1754,11 @@ class Inventaire {
     if (!fee) return;
     const g = fee.goutsCourts ? fee.goutsCourts() : null;
     const t = g
-      ? ('Aime : ' + (g.aime.length ? g.aime.join(', ') : 'rien de spécial')
-        + '  ·  Déteste : ' + (g.deteste.length ? g.deteste.join(', ') : 'rien'))
-      : (fee.gouts() || 'Amenez un aliment ici pour la nourrir.');
+      ? T('minipixiz.inv.gouts', 'Aime : {aime}  ·  Déteste : {deteste}', {
+        aime: g.aime.length ? g.aime.join(', ') : T('minipixiz.inv.rienDeSpecial', 'rien de spécial'),
+        deteste: g.deteste.length ? g.deteste.join(', ') : T('minipixiz.inv.rien', 'rien'),
+      })
+      : (fee.gouts() || T('minipixiz.inv.amenezUnAliment', 'Amenez un aliment ici pour la nourrir.'));
     this.dire(t, fee.fs.$name, 8);
   }
 
@@ -1733,7 +1792,7 @@ class Inventaire {
     // Inventory.update : la porte est CONDAMNÉE tant que la rangée des objets
     // à ranger n'est pas vide — placés dans le sac, ou jetés à la poubelle.
     if (this.resteARanger()) {
-      this.dire('Rangez vos nouveaux objets avant de partir!');
+      this.dire(T('minipixiz.inv.rangezAvantDePartir', 'Rangez vos nouveaux objets avant de partir!'));
       return;
     }
     if (this.extraList) this.setExtraList(null);

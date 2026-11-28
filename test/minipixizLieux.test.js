@@ -225,7 +225,7 @@ test('l\'arbre creux ne fait parler personne : la fée du client est celle du li
   assert.doesNotMatch(ouvrir[0], /if \(this\.lieu\.fi\) this\.fee = this\.lieu\.fi;/);
   assert.match(js, /if \(nom === 'niveauDonjon' && this\.lieu\) \{[\s\S]*?this\.fee = this\.lieu\.fi \|\| null;/, 'et à chaque niveau du donjon');
   // Tout ce qui parle passe par `this.fee` : sans fée, pas un mot.
-  for (const m of [/\n  react\(rangees\) \{\n    const fee = this\.fee;\n    if \(!fee \|\| !rangees\) return;/,
+  for (const m of [/\n  react\(rangees, nom\) \{\n    const fee = this\.fee;\n    if \(!fee \|\| !rangees\) return;/,
     /if \(this\.fee && this\.fee\.salutObjet\)/,
     /&& this\.fee\n\s*&& !this\.dialogue && Math\.random\(\) \* 500 < pas\)/]) {
     assert.match(js, m);
@@ -298,7 +298,7 @@ test('le panneau d\'évolution n\'affiche rien sans survol', () => {
     'la bande du bas ne s\'écrit qu\'au survol');
   // Le nom vit dans le bandeau, à la place de « Faites votre choix ! » —
   // c'est le fieldName du jeu (initExpSlot.onRollOver).
-  assert.match(js, /noms\[sv\]\) \|\| 'Faites votre choix !'/);
+  assert.match(js, /noms\[sv\]\) \|\| T\('minipixiz\.evolution\.choix', 'Faites votre choix !'\)/);
   // Au doigt, le premier appui sur une case vaut survol, le second confirme.
   const toucher = js.match(/if \(this\.evolution\) \{[\s\S]*?preventDefault[\s\S]*?survole = c\.i;/);
   assert.ok(toucher, 'l\'appui de désignation existe au toucher');

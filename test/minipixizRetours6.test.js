@@ -117,7 +117,7 @@ test('la bande du panneau de pause porte sa consigne', () => {
   assert.match(src, /const PAUSE_CONSIGNE = 'Appuyez sur P pour continuer';/);
   // Au doigt, il n'y a pas de P : la même bande dit de toucher l'écran.
   assert.match(src, /const PAUSE_CONSIGNE_TACTILE = 'Touchez l\\'écran pour continuer';/);
-  assert.match(src, /ctx\.fillText\(this\.auDoigt\(\) \? PAUSE_CONSIGNE_TACTILE : PAUSE_CONSIGNE, 117\.35, 128\.5\);/,
+  assert.match(src, /ctx\.fillText\(this\.auDoigt\(\) \? T\('minipixiz\.pause\.consigneTactile', PAUSE_CONSIGNE_TACTILE\)\s*: T\('minipixiz\.pause\.consigne', PAUSE_CONSIGNE\), 117\.35, 128\.5\);/,
     'centrée dans la bande (x 42…193, y 123…134)');
   // La bande est bien là, dans le dessin du panneau : le rectangle #938dc3.
   const svg = fs.readFileSync(path.join(ROOT, 'public/minipixiz/sprites/shape1051.svg'), 'utf8');

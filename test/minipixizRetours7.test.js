@@ -78,7 +78,7 @@ test('le bouton des volets annonce le volet SUIVANT, en infobulle', () => {
   assert.deepEqual(I.SECTION_BULLE, ['Voir les caractéristiques', 'Voir les sortilèges',
     'Voir l\'équipement', 'Voir la santé']);
   const src = lire('public/minipixiz/inventaire.js');
-  assert.match(src, /this\.infobulle\(SECTION_BULLE\[\(this\.volet \+ 1\) % 4\]\)/);
+  assert.match(src, /this\.infobulle\(dans\('SECTION_BULLE', SECTION_BULLE, \(this\.volet \+ 1\) % 4\)\)/);
 });
 
 // ── Le bocal ──────────────────────────────────────────────────────────────

@@ -92,6 +92,44 @@ const NB_ALIMENTS_COURANTS = 5;       // les cinq premiers sont les aliments de 
 const borner = (min, v, max) => Math.max(min, Math.min(v, max));
 const nombre = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 
+// ── Les langues (/js/i18n.js) ─────────────────────────────────────────────
+// FPI18n est cherché à CHAQUE appel ; sans lui — sous Node : le serveur, qui
+// charge ce fichier, et les tests —, le français, gabarits remplis. Les
+// tables d'ici (NOM_CARAC, NOM_COMPORTEMENT…) restent françaises : ce sont
+// aussi des données. On traduit ce qu'on AFFICHE (nomCarac, resumeCarac,
+// nomComportement), et la phrase entière, jamais des morceaux recollés.
+//
+// LE HASARD NE PARLE PAS. Une phrase tirée au sort l'est dans la liste
+// française (sa longueur, ses trous), puis lue au même rang dans la langue
+// du joueur : la fée tire exactement la même chose dans les deux langues.
+function remplir(s, p) {
+  return String(s).replace(/\{(\w+)\}/g, (m, k) => (p && p[k] != null ? String(p[k]) : m));
+}
+function T(cle, fr, p) {
+  const I = racine.FPI18n;
+  return I && I.T ? I.T(cle, fr, p) : remplir(fr, p);
+}
+function dansLaLangue(cle, fr, i) {
+  const I = racine.FPI18n;
+  const t = (I && I.T && I.T.table) ? I.T.table(cle, null) : null;
+  return (t && typeof t[i] === 'string') ? t[i] : fr[i];
+}
+const majuscule = (s) => String(s).charAt(0).toUpperCase() + String(s).slice(1);
+const nomCarac = (i) => (NOM_CARAC[i] === undefined ? NOM_CARAC[i]
+  : dansLaLangue('minipixiz.fee.NOM_CARAC', NOM_CARAC, i));
+const resumeCarac = (i) => (RESUME_CARAC[i] === undefined ? RESUME_CARAC[i]
+  : dansLaLangue('minipixiz.fee.RESUME_CARAC', RESUME_CARAC, i));
+const nomComportement = (i) => (NOM_COMPORTEMENT[i] === undefined ? NOM_COMPORTEMENT[i]
+  : dansLaLangue('minipixiz.fee.NOM_COMPORTEMENT', NOM_COMPORTEMENT, i));
+// « a, b et c », le dernier lien dans la langue du joueur.
+function enumerer(noms) {
+  const et = T('minipixiz.liste.et', ' et ');
+  return noms.reduce((s, v, i) => {
+    if (i === 0) return v;
+    return s + (i === noms.length - 1 ? et : ', ') + v;
+  }, '');
+}
+
 // Le tirage du jeu : Std.random(n) = un entier de 0 à n-1, Math.random() = un
 // réel. Les deux viennent du même générateur pour qu'une graine donne toujours
 // la même fée.
@@ -492,8 +530,8 @@ class Fee {
   raisonDeRester() {
     if (this.preteAuCombat()) return null;
     const h = this.fs.$mood || [];
-    if (h[ENGOURDIE] === 1) return 'est engourdie et dort toute la journée';
-    if (h[MALADE] === 1) return 'est malade : elle ne quittera pas le sac aujourd\'hui';
+    if (h[ENGOURDIE] === 1) return T('minipixiz.fee.resteEngourdie', 'est engourdie et dort toute la journée');
+    if (h[MALADE] === 1) return T('minipixiz.fee.resteMalade', 'est malade : elle ne quittera pas le sac aujourd\'hui');
     // Manger ne rend PAS de vie — ni ici ni dans le jeu d'origine :
     // `FaerieInfo.eat` ne touche que la faim et le moral. La vie se répare la
     // nuit (`upkeep` la remonte à hauteur du ventre) ou d'un coup avec une
@@ -506,19 +544,21 @@ class Fee {
     // bug — il n'y en a pas, il manquait quatre bouchées.
     if (!(nombre(this.fs.$life) > 0)) {
       const nuit = this.vieDeLaNuit(), max = this.vieMax();
-      return 'est à bout de forces — la nuit lui rend les cœurs à hauteur de son'
-        + ' ventre : ' + nuit + ' sur ' + max
-        + ' avec ' + nombre(this.fs.$hunger) + ' de faim'
-        + (nuit < max ? ' (tous à 20)' : '');
+      const p = { nuit, max, faim: nombre(this.fs.$hunger) };
+      return nuit < max
+        ? T('minipixiz.fee.resteEpuiseeTous', 'est à bout de forces — la nuit lui rend les cœurs à hauteur de son'
+          + ' ventre : {nuit} sur {max} avec {faim} de faim (tous à 20)', p)
+        : T('minipixiz.fee.resteEpuisee', 'est à bout de forces — la nuit lui rend les cœurs à hauteur de son'
+          + ' ventre : {nuit} sur {max} avec {faim} de faim', p);
     }
     // Le moral ne remonte que de trois façons (les trois seuls `incMoral` du
     // jeu) : un aliment qu'elle aime, une montée de niveau, ou une nuit passée
     // au bocal. La dernière est un piège sous trois de moral — elle en profite
     // pour s'enfuir — donc on ne conseille que la première.
     if (!(nombre(this.fs.$moral) > 0)) {
-      return 'n\'a plus le moral — offrez-lui ce qu\'elle aime';
+      return T('minipixiz.fee.resteSansMoral', 'n\'a plus le moral — offrez-lui ce qu\'elle aime');
     }
-    return 'n\'est pas en état de vous suivre';
+    return T('minipixiz.fee.resteHorsDEtat', 'n\'est pas en état de vous suivre');
   }
 
   /**
@@ -544,8 +584,14 @@ class Fee {
     const alea = this.alea || Math.random;
     const n = nombre(type);
     const h = borner(0, nombre(this.fs.$humor), 8);
-    const dire = (liste) => (liste && liste.length
-      ? liste[Math.floor(alea() * liste.length)] : null);
+    // Le rang de la ligne, tiré dans la liste française ; la ligne, lue au même
+    // rang dans la langue du joueur (MinipixizLangue.dansLaLangue).
+    const tirer = (liste) => (liste && liste.length
+      ? Math.floor(alea() * liste.length) : null);
+    // L'anglais pose parfois le mot en tête de phrase : « $Food! » rend
+    // « Some bread! ». Les lignes françaises n'ont pas ce jeton.
+    const poser = (brut, jeton, mot) => brut.split('$' + majuscule(jeton)).join(majuscule(mot))
+      .split('$' + jeton).join(mot);
 
     if (n >= 300) {
       const id = Math.floor((n - 300) / 3);
@@ -554,13 +600,16 @@ class Fee {
       if (((gouts[0] || []).map(nombre).indexOf(id) >= 0)) rang = 0;
       if (((gouts[1] || []).map(nombre).indexOf(id) >= 0)) rang = 1;
       if (rang === null) rang = id >= 10 ? 2 : 3;
-      const brut = dire((L.SENT_GET_FOOD[rang] || [])[h]);
+      const j = tirer((L.SENT_GET_FOOD[rang] || [])[h]);
+      const brut = j === null ? null : L.dansLaLangue('SENT_GET_FOOD', [rang, h, j]);
       if (brut === null || brut === undefined) return null;
-      return brut.split('$food').join(O.ALIMENT_QT2[id] || 'de la nourriture');
+      return poser(brut, 'food', (O.aLUnite ? O.aLUnite(id) : O.ALIMENT_QT2[id])
+        || T('minipixiz.fee.nourriture', 'de la nourriture'));
     }
-    const brut = dire(L.SENT_GET_ITEM[h]);
+    const j = tirer(L.SENT_GET_ITEM[h]);
+    const brut = j === null ? null : L.dansLaLangue('SENT_GET_ITEM', [h, j]);
     if (brut === null || brut === undefined) return null;
-    return brut.split('$item').join(L.getItemFamily(n, alea));
+    return poser(brut, 'item', L.getItemFamily(n, alea));
   }
 
   /**
@@ -582,19 +631,19 @@ class Fee {
     fs.$life = Math.max(nombre(fs.$life), vieMax);
     if (vieMax === 0) {
       if (nombre(fs.$life) > 0) {
-        this.dire(fs.$name + ' a vraiment très faim !');
+        this.dire(T('minipixiz.fee.tresFaim', '{nom} a vraiment très faim !', { nom: fs.$name }));
         fs.$life--;
       } else {
         // FaerieInfo.upkeep : c'est la fée LIBRE — celle restée au sac — qui
         // meurt dans son bocal, et celle qu'on trimballe qui s'enfuit. Le sens
         // surprend, mais c'est celui de l'original, à la lettre.
         this.dire(libre
-          ? fs.$name + ' est morte de faim dans son bocal...'
-          : fs.$name + ' s\'est enfuie car elle avait trop faim !');
+          ? T('minipixiz.fee.morteDeFaim', '{nom} est morte de faim dans son bocal...', { nom: fs.$name })
+          : T('minipixiz.fee.enfuieDeFaim', '{nom} s\'est enfuie car elle avait trop faim !', { nom: fs.$name }));
         return { partie: true, messages: this.messages };
       }
     } else if (nombre(fs.$hunger) < 10) {
-      this.dire(fs.$name + ' a faim !');
+      this.dire(T('minipixiz.fee.faim', '{nom} a faim !', { nom: fs.$name }));
     }
 
     // La faim descend de quatre par nuit : il faut la nourrir souvent.
@@ -612,7 +661,7 @@ class Fee {
       if (nombre(fs.$moral) < 10) fs.$moral = nombre(fs.$moral) + 1;
       // UPKEEP_MORAL_PLANCHER : le test précède le redressement à zéro.
       if (nombre(fs.$moral) < 3) {
-        this.dire(fs.$name + ' s\'est enfuie pendant la nuit !');
+        this.dire(T('minipixiz.fee.enfuie', '{nom} s\'est enfuie pendant la nuit !', { nom: fs.$name }));
         return { partie: true, messages: this.messages };
       }
     }
@@ -673,13 +722,15 @@ class Fee {
   devorer(ctx) {
     for (const fso of this.soeurs(ctx)) {
       if (nombre(this.fs.$level) > nombre(fso.$level) * 2) {
-        this.dire(this.fs.$name + ' a dévoré ' + fso.$name + ', elle se sent beaucoup mieux à présent.');
+        this.dire(T('minipixiz.fee.devore', '{nom} a dévoré {autre}, elle se sent beaucoup mieux à présent.',
+          { nom: this.fs.$name, autre: fso.$name }));
         this.fs.$hunger = nombre(this.fs.$hunger) + 15;
         ctx.effacer(fso);
         return;
       }
       if (nombre(this.fs.$level) > nombre(fso.$level)) {
-        this.dire(this.fs.$name + ' a tellement faim qu\'elle a essayé de manger ' + fso.$name + ' !!');
+        this.dire(T('minipixiz.fee.essayeDeManger', '{nom} a tellement faim qu\'elle a essayé de manger {autre} !!',
+          { nom: this.fs.$name, autre: fso.$name }));
         return;
       }
     }
@@ -701,8 +752,8 @@ class Fee {
       const id1 = fso.$inv[i1];
       this.fs.$inv[i0] = id1;
       fso.$inv[i1] = (id0 === undefined) ? null : id0;
-      this.dire('Pendant la nuit, ' + fso.$name + ' a perdu l\'objet suivant : '
-        + ctx.nomObjet(id1) + '.');
+      this.dire(T('minipixiz.fee.vol', 'Pendant la nuit, {nom} a perdu l\'objet suivant : {objet}.',
+        { nom: fso.$name, objet: ctx.nomObjet(id1) }));
       return;
     }
   }
@@ -720,8 +771,10 @@ class Fee {
       const bl = fso.$behaviour || [];
       for (let n = 0; n < bl.length; n++) {
         if (bl[n] !== 1) continue;
-        this.dire(this.fs.$name + ' pense avoir décelé en ' + fso.$name
-          + ' une forme de ' + NOM_COMPORTEMENT[n] + '.');
+        this.dire(T('minipixiz.fee.psychanalyse', '{nom} pense avoir décelé en {autre} une forme de {travers}.',
+          // String() : le travers 5 (l'hypocondrie, que la naissance ne tire
+          // jamais) n'a pas de nom — le jeu écrivait « undefined », on aussi.
+          { nom: this.fs.$name, autre: fso.$name, travers: String(nomComportement(n)) }));
       }
     }
   }
@@ -744,29 +797,30 @@ class Fee {
     const bl = fs.$behaviour || [];
     const jour = nombre(ctx.jour);
     fs.$mood = [];
+    const nom = { nom: fs.$name };
     if (ctx.entier(30) === 0) {
       this.dire(ctx.choisir([
-        fs.$name + ' est un peu endormie aujourd\'hui !',
-        fs.$name + ' a un peu trop fait la fête hier soir.',
-        fs.$name + ' n\'a pas réussi à fermer l\'œil de la nuit.',
-        fs.$name + ' a du mal à se réveiller ce matin.',
-        fs.$name + ' n\'a pas du tout la forme ce matin.',
+        T('minipixiz.fee.endormie', '{nom} est un peu endormie aujourd\'hui !', nom),
+        T('minipixiz.fee.laFete', '{nom} a un peu trop fait la fête hier soir.', nom),
+        T('minipixiz.fee.nuitBlanche', '{nom} n\'a pas réussi à fermer l\'œil de la nuit.', nom),
+        T('minipixiz.fee.malAuReveil', '{nom} a du mal à se réveiller ce matin.', nom),
+        T('minipixiz.fee.pasLaForme', '{nom} n\'a pas du tout la forme ce matin.', nom),
       ]));
       fs.$mood[ENGOURDIE] = 1;
     } else if (bl[APATHIE] === 1 && jour % 3 === 0) {
-      this.dire(fs.$name + ' est un peu endormie aujourd\'hui !');
+      this.dire(T('minipixiz.fee.endormie', '{nom} est un peu endormie aujourd\'hui !', nom));
       fs.$mood[ENGOURDIE] = 1;
     }
     if (ctx.entier(50) === 0) {
       this.dire(ctx.choisir([
-        fs.$name + ' ne se sent pas très bien aujourd\'hui.',
-        fs.$name + ' n\'est pas dans son assiette ce matin.',
-        fs.$name + ' est malade aujourd\'hui, elle ne pourra pas vous aider.',
-        fs.$name + ' semble avoir de la fièvre ce matin.',
+        T('minipixiz.fee.pasBien', '{nom} ne se sent pas très bien aujourd\'hui.', nom),
+        T('minipixiz.fee.pasDansSonAssiette', '{nom} n\'est pas dans son assiette ce matin.', nom),
+        T('minipixiz.fee.malade', '{nom} est malade aujourd\'hui, elle ne pourra pas vous aider.', nom),
+        T('minipixiz.fee.fievre', '{nom} semble avoir de la fièvre ce matin.', nom),
       ]));
       fs.$mood[MALADE] = 1;
     } else if (bl[HYPOCONDRIE] === 1 && jour % 3 === 1) {
-      this.dire(fs.$name + ' ne se sent pas très bien aujourd\'hui.');
+      this.dire(T('minipixiz.fee.pasBien', '{nom} ne se sent pas très bien aujourd\'hui.', nom));
       fs.$mood[MALADE] = 1;
     }
   }
@@ -792,17 +846,16 @@ class Fee {
   gouts() {
     const O = (typeof module !== 'undefined' && module.exports)
       ? require('./items.js') : racine.MinipixizObjets;
-    const nom = (n) => (O && O.QUANTITE[n]) || 'ça';
-    const liste = (l) => l.map(nom).reduce((s, v, i) => {
-      if (i === 0) return v;
-      return s + (i === l.length - 1 ? ' et ' : ', ') + v;
-    }, '');
+    const nom = (n) => (O && (O.quantite ? O.quantite(n) : O.QUANTITE[n])) || T('minipixiz.fee.ca', 'ça');
+    const liste = (l) => enumerer(l.map(nom));
     const aime = (this.fs.$taste && this.fs.$taste[0]) || [];
     const deteste = (this.fs.$taste && this.fs.$taste[1]) || [];
+    const p = { nom: this.fs.$name, aime: liste(aime), deteste: liste(deteste) };
     let str = '';
-    if (aime.length) str += this.fs.$name + ' aime ' + liste(aime) + '. ';
+    if (aime.length) str += T('minipixiz.fee.aime', '{nom} aime {aime}. ', p);
     if (deteste.length) {
-      str += (aime.length ? 'Elle ' : this.fs.$name + ' ') + 'déteste ' + liste(deteste) + '.';
+      str += aime.length ? T('minipixiz.fee.elleDeteste', 'Elle déteste {deteste}.', p)
+        : T('minipixiz.fee.deteste', '{nom} déteste {deteste}.', p);
     }
     return str.trim();
   }
@@ -812,7 +865,7 @@ class Fee {
   goutsCourts() {
     const O = (typeof module !== 'undefined' && module.exports)
       ? require('./items.js') : racine.MinipixizObjets;
-    const nom = (n) => (O && O.ALIMENTS[n]) || '?';
+    const nom = (n) => (O && (O.nomAliment ? O.nomAliment(n) : O.ALIMENTS[n])) || '?';
     return {
       aime: ((this.fs.$taste && this.fs.$taste[0]) || []).map(nom),
       deteste: ((this.fs.$taste && this.fs.$taste[1]) || []).map(nom),
@@ -841,6 +894,7 @@ class Fee {
 const API = {
   Fee, genererGraine, genererNom, enrichirGraine,
   CARAC, NOM_CARAC, RESUME_CARAC, NB_CARAC, CARAC_MAX, NIVEAU_MAX, SORTS_DE_NAISSANCE,
+  nomCarac, resumeCarac, nomComportement,
   NOM_COMPORTEMENT, RARETE_COMPORTEMENT,
   PSYCHANALYSTE, CANNIBALISME, CLEPTOMANIE, APATHIE, SCHIZOPHRENIE, HYPOCONDRIE,
   ENGOURDIE, MALADE, SYLLABES_1, SYLLABES_2,

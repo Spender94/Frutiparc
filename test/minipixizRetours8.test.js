@@ -107,7 +107,7 @@ test('le cinquième donjon : cinq diamants, et c\'est le cinquième qui tombe à
   assert.match(js, /rendre\(s\.invDiamant, Math\.min\(5, Math\.max\(1, c\.diamant \+ 1\)\)/);
   // Et la clairière le dit : « 5 sur 5 ».
   const page = lire('public/minipixiz/index.html');
-  assert.match(page, /un diamant de plus dans le sac \('\s*\+ \(Number\(g\.diamant\) \+ 1\) \+ ' sur 5\)/);
+  assert.match(page, /un diamant de plus dans le sac \(\{n\} sur 5\) !',\s*\{ n: Number\(g\.diamant\) \+ 1 \}/);
   // L'inventaire dessine cinq alvéoles, remplies tant que $diam > i.
   const inv = lire('public/minipixiz/inventaire.js');
   assert.match(inv, /diamants: 5 \}/);

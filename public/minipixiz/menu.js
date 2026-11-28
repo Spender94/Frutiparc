@@ -46,6 +46,16 @@ const SCENE = 240;
 // navigateur ils se posent sur `window`. On prend ce qui existe.
 const enNode = () => (typeof module !== 'undefined' && !!module.exports);
 
+// LES LANGUES (/js/i18n.js). Le titre d'un lieu reste celui de LIEUX (le
+// français du fichier, au caractère près) ; on écrit sa traduction
+// (minipixiz.lieu.<nom>) au moment de l'afficher. FPI18n est cherché à CHAQUE
+// appel ; sans lui (Node), le français.
+function T(cle, fr) {
+  const I = racine.FPI18n;
+  return I && I.T ? I.T(cle, fr) : fr;
+}
+const titreDe = (lieu) => T('minipixiz.lieu.' + lieu.nom, lieu.titre);
+
 /**
  * Couper une phrase aux espaces pour qu'aucune ligne ne dépasse `large`.
  *
@@ -330,7 +340,7 @@ class Menu {
     // temps, donc on relit la zone APRÈS avoir déplacé le regard — sinon le nom
     // désignerait l'endroit qu'on vient de quitter.
     const z = this.lieuA(x, y);
-    const titre = z ? z.lieu.titre : '';
+    const titre = z ? titreDe(z.lieu) : '';
     // Menu.removeTitle : le nom qu'on quitte ne disparaît pas d'un coup, il est
     // versé dans `titleFadeList` où son alpha est HALVÉ à chaque image jusqu'à
     // s'éteindre — six images, un souffle.
@@ -508,7 +518,7 @@ class Menu {
     if (!this.message && !this.titre) {
       ctx.font = '9px Verdana, Arial, sans-serif';
       ctx.fillStyle = 'rgba(255,255,255,.55)';
-      ctx.fillText('glissez pour regarder autour · touchez un lieu pour y aller',
+      ctx.fillText(T('minipixiz.menu.consigne', 'glissez pour regarder autour · touchez un lieu pour y aller'),
         SCENE / 2, SCENE - 14);
     }
     if (this.message) {
@@ -556,7 +566,7 @@ class Menu {
           if (this.surCourrier) this.surCourrier();
           return;
         }
-        this.titre = z.lieu.titre;
+        this.titre = titreDe(z.lieu);
         if (this.surChoix) this.surChoix(z.lieu, z.etat);
         return;
       }

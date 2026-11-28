@@ -39,6 +39,35 @@ const CARAC = { FORCE: 0, RAPIDITE: 1, VIE: 2, INTELLIGENCE: 3, CONCENTRATION: 4
 const NOM_CARAC = ['force', 'rapidité', 'vie', 'intelligence', 'concentration', 'mana'];
 
 /*
+ * LES LANGUES (/js/i18n.js). Les tables de ce fichier restent FRANÇAISES : le
+ * serveur les charge (il n'a pas de langue), et les noms y servent de
+ * référence. Ce qu'on affiche — le \`nom\` et la \`desc\` que rend info(), les
+ * formes des aliments — passe par la langue du joueur : une table de même
+ * forme sous minipixiz.objets.<TABLE> (T.table), lue au même rang, et le
+ * français là où elle n'a rien. FPI18n est cherché à CHAQUE appel ; sans lui
+ * (Node), le français.
+ */
+function remplir(s, p) {
+  return String(s).replace(/\{(\w+)\}/g, (m, k) => (p && p[k] != null ? String(p[k]) : m));
+}
+function T(cle, fr, p) {
+  const I = racine.FPI18n;
+  return I && I.T ? I.T(cle, fr, p) : remplir(fr, p);
+}
+T.n = function (cle, n, formes, p) {
+  const I = racine.FPI18n;
+  if (I && I.T && I.T.n) return I.T.n(cle, n, formes, p);
+  const q = Object.assign({}, p, { n });
+  return remplir(Math.abs(n) < 2 ? formes.one : formes.other, q);   // la règle française
+};
+function dans(table, fr, i) {
+  const I = racine.FPI18n;
+  const t = (I && I.T && I.T.table) ? I.T.table('minipixiz.objets.' + table, null) : null;
+  const v = t ? t[i] : undefined;
+  return (v === undefined || v === null || typeof v !== typeof fr[i]) ? fr[i] : v;
+}
+
+/*
  * Parchemins et grimoires : DIRE LE SORT, pas l'évidence.
  *
  * Le jeu de 2006 les décrivait tous pareil — « Ce parchemin permet à la fée
@@ -67,7 +96,14 @@ function leSort(id) {
 function titreSort(prefixe, id) {
   const s = leSort(id);
   const nom = s && s.nom && s.nom();
-  return nom ? prefixe + ' : ' + nom : prefixe + ' de sort';
+  // « Parchemin : Météore » / « Scroll: Meteor » — la ponctuation est celle de
+  // la langue, d'où une phrase par préfixe.
+  if (prefixe === 'Parchemin') {
+    return nom ? T('minipixiz.objet.parchemin', 'Parchemin : {sort}', { sort: nom })
+      : T('minipixiz.objet.parcheminDeSort', 'Parchemin de sort');
+  }
+  return nom ? T('minipixiz.objet.livre', 'Livre : {sort}', { sort: nom })
+    : T('minipixiz.objet.livreDeSort', 'Livre de sort');
 }
 function descSort(id, defaut) {
   const s = leSort(id);
@@ -152,6 +188,13 @@ const TAILLES_ALIMENT = ['grande', 'moyenne', 'petite'];
 const PREMIER_ALIMENT = 300;
 const IT_BOCAL = 30, IT_CLE = 31, IT_SAC = 80;
 
+// Les trois formes d'un aliment, dans la langue du joueur — le nom (it.Food
+// .NAME), la forme « quantifiée » des goûts (qt) et celle « à l'unité » du
+// salut de la fée (qt2). Hors des tables : undefined, comme avant.
+const nomAliment = (id) => (ALIMENTS[id] === undefined ? undefined : dans('ALIMENTS', ALIMENTS, id));
+const quantite = (id) => (QUANTITE[id] === undefined ? undefined : dans('QUANTITE', QUANTITE, id));
+const aLUnite = (id) => (ALIMENT_QT2[id] === undefined ? undefined : dans('ALIMENT_QT2', ALIMENT_QT2, id));
+
 const nombre = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 
 /**
@@ -168,60 +211,68 @@ function info(type) {
     const car = Math.floor(n / 5), inc = (n % 5) + 1;
     return {
       type: n, famille: 'carac', car, inc,
-      nom: NOM_OBJET_CARAC[n] || (NOM_CARAC[car] + ' +' + inc),
-      desc: 'Augmente de ' + inc + ' point' + (inc > 1 ? 's' : '')
-        + ' la caractéristique ' + NOM_CARAC[car] + ' de la fée.',
+      nom: (NOM_OBJET_CARAC[n] && dans('NOM_OBJET_CARAC', NOM_OBJET_CARAC, n))
+        || (dans('NOM_CARAC', NOM_CARAC, car) + ' +' + inc),
+      desc: T.n('minipixiz.objet.caracDesc', inc, {
+        one: 'Augmente de {n} point la caractéristique {carac} de la fée.',
+        other: 'Augmente de {n} points la caractéristique {carac} de la fée.',
+      }, { carac: dans('NOM_CARAC', NOM_CARAC, car) }),
       flEquip: true,
     };
   }
   if (n === IT_BOCAL) {
-    return { type: n, famille: 'bocal', nom: 'Bocal résidentiel',
-      desc: 'Il sert à abriter les fées.' };
+    return { type: n, famille: 'bocal', nom: T('minipixiz.objet.bocal', 'Bocal résidentiel'),
+      desc: T('minipixiz.objet.bocalDesc', 'Il sert à abriter les fées.') };
   }
   if (n === IT_CLE) {
-    return { type: n, famille: 'cle', nom: 'Clé du donjon',
-      desc: 'Elle ouvre la porte du donjon.', flGeneral: true };
+    return { type: n, famille: 'cle', nom: T('minipixiz.objet.cle', 'Clé du donjon'),
+      desc: T('minipixiz.objet.cleDesc', 'Elle ouvre la porte du donjon.'), flGeneral: true };
   }
   if (n >= 40 && n < 50) {
     const p = POUVOIRS[n - 40];
     if (!p) return null;
-    return { type: n, famille: 'pouvoir', id: n - 40, nom: p.nom, desc: p.desc, flEquip: true };
+    const t = dans('POUVOIRS', POUVOIRS, n - 40);
+    return { type: n, famille: 'pouvoir', id: n - 40, nom: t.nom || p.nom, desc: t.desc || p.desc,
+      flEquip: true };
   }
   if (n >= 50 && n < 60) {
     const id = n - 50;
     if (!GLOBES[id]) return null;
-    return { type: n, famille: 'globe', id, nom: GLOBES[id],
-      desc: 'Augmente de 1 point la caractéristique ' + NOM_CARAC[id] + ' de toutes les fées.' };
+    return { type: n, famille: 'globe', id, nom: dans('GLOBES', GLOBES, id),
+      desc: T('minipixiz.objet.globeDesc', 'Augmente de 1 point la caractéristique {carac} de toutes les fées.',
+        { carac: dans('NOM_CARAC', NOM_CARAC, id) }) };
   }
   if (n >= 60 && n < 70) {
     const id = n - 60;
     if (COULEURS_CHEVEUX[id] === undefined) return null;
     return { type: n, famille: 'coloration', id, couleur: COULEURS_CHEVEUX[id],
-      nom: 'Coloration pour cheveux',
-      desc: 'Modifie la couleur des cheveux d\'une fée une fois équipée.', flEquip: true };
+      nom: T('minipixiz.objet.coloration', 'Coloration pour cheveux'),
+      desc: T('minipixiz.objet.colorationDesc', 'Modifie la couleur des cheveux d\'une fée une fois équipée.'),
+      flEquip: true };
   }
   if (n >= 70 && n < 80) {
     const p = POTIONS[n - 70];
     if (!p) return null;
-    return { type: n, famille: 'potion', id: n - 70, nom: p.nom, desc: p.desc,
+    const t = dans('POTIONS', POTIONS, n - 70);
+    return { type: n, famille: 'potion', id: n - 70, nom: t.nom || p.nom, desc: t.desc || p.desc,
       soin: p.soin, flUse: true };
   }
   if (n >= IT_SAC && n < 90) {
     const id = n - IT_SAC;
     if (!SACS[id]) return null;
-    return { type: n, famille: 'sac', id, nom: SACS[id],
-      desc: 'Agrandit votre inventaire.', flGeneral: true };
+    return { type: n, famille: 'sac', id, nom: dans('SACS', SACS, id),
+      desc: T('minipixiz.objet.sacDesc', 'Agrandit votre inventaire.'), flGeneral: true };
   }
   if (n >= 100 && n < 200) {
     return { type: n, famille: 'parchemin', sort: n - 100,
       nom: titreSort('Parchemin', n - 100),
-      desc: descSort(n - 100, 'Ce parchemin permet à la fée qui le porte de lancer ce sort.'),
+      desc: descSort(n - 100, T('minipixiz.objet.parcheminDesc', 'Ce parchemin permet à la fée qui le porte de lancer ce sort.')),
       flEquip: true };
   }
   if (n >= 200 && n < 300) {
     return { type: n, famille: 'grimoire', sort: n - 200,
       nom: titreSort('Livre', n - 200),
-      desc: descSort(n - 200, 'Ce grimoire permet à toutes les fées de lancer ce sort.') };
+      desc: descSort(n - 200, T('minipixiz.objet.grimoireDesc', 'Ce grimoire permet à toutes les fées de lancer ce sort.')) };
   }
   if (n >= PREMIER_ALIMENT && n < 400) {
     const id = Math.floor((n - PREMIER_ALIMENT) / 3);
@@ -229,9 +280,9 @@ function info(type) {
     if (!ALIMENTS[id]) return null;
     return {
       type: n, famille: 'aliment', id, taille,
-      nom: ALIMENTS[id], portion: TAILLES_ALIMENT[taille],
-      desc: 'La nourriture permet à vos fées de rester en forme et de regagner '
-        + 'leurs points de vie plus vite pendant la nuit.',
+      nom: nomAliment(id), portion: TAILLES_ALIMENT[taille],
+      desc: T('minipixiz.objet.alimentDesc', 'La nourriture permet à vos fées de rester en forme et de regagner '
+        + 'leurs points de vie plus vite pendant la nuit.'),
       flUse: true,
     };
   }
@@ -403,10 +454,10 @@ function donner(carte, source, fee) {
     : source.sac === 'joueur'
       ? (carte.$inv = carte.$inv || [])
       : (((carte.$faerie || [])[source.sac] || {}).$inv);
-  if (!Array.isArray(liste)) return { ok: false, message: 'sac introuvable' };
+  if (!Array.isArray(liste)) return { ok: false, message: T('minipixiz.objet.sacIntrouvable', 'sac introuvable') };
   const it = info(liste[source.case]);
-  if (!it || !it.flUse) return { ok: false, message: 'cet objet ne se consomme pas' };
-  if (!fee) return { ok: false, message: 'aucune fée' };
+  if (!it || !it.flUse) return { ok: false, message: T('minipixiz.objet.neSeConsommePas', 'cet objet ne se consomme pas') };
+  if (!fee) return { ok: false, message: T('minipixiz.objet.aucuneFee', 'aucune fée') };
 
   const r = utiliser(it, fee);
   liste[source.case] = r.reste;
@@ -431,6 +482,7 @@ const API = {
   PLACES_SAC, ALIMENTS, QUANTITE, ALIMENT_QT2, TAILLES_ALIMENT, POUVOIRS, GLOBES, POTIONS, SACS,
   COULEURS_CHEVEUX, NOM_OBJET_CARAC, NOM_CARAC, CARAC,
   PREMIER_ALIMENT, IT_BOCAL, IT_CLE, IT_SAC,
+  nomAliment, quantite, aLUnite,
 };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = API;

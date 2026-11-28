@@ -36,6 +36,18 @@ const Garde = window.GardeEntrees || { vraie() { return true; } };
 const CONCENTRATION = (window.MinipixizFee && window.MinipixizFee.CARAC.CONCENTRATION) || 4;
 const BASE = '/minipixiz/';
 const TS = E.TS;
+
+// LES LANGUES (/js/i18n.js, chargé en tête de page) : ce que le client écrit
+// lui-même sur le canevas, et les répliques de la fée. FPI18n est cherché à
+// CHAQUE appel ; sans lui (les bacs à sable des tests), le français.
+function remplir(s, p) {
+  return String(s).replace(/\{(\w+)\}/g, (m, k) => (p && p[k] != null ? String(p[k]) : m));
+}
+function T(cle, fr, p) {
+  const I = window.FPI18n;
+  return I && I.T ? I.T(cle, fr, p) : remplir(fr, p);
+}
+const majuscule = (s) => String(s).charAt(0).toUpperCase() + String(s).slice(1);
 /*
  * La CADENCE du jeu d'origine — quarante images par seconde, pas trente.
  *
@@ -410,10 +422,10 @@ function teinter(g, x, y, l, h, couleur, ajout) {
 // dessine donc directement, avec sa matrice — et ce qui coûte cher, la teinte,
 // se met en cache une fois par (fichier, couleur) au lieu d'une fois par image.
 const peintes = new Map();
-const PAUSE_CONSIGNE = 'Appuyez sur P pour continuer';   // la bande sous « Pause »
+const PAUSE_CONSIGNE = 'Appuyez sur P pour continuer';   // la bande sous « Pause » (minipixiz.pause.consigne)
 // Au doigt il n'y a pas de P : le bouton pause de la page, ou le plateau
 // lui-même, lèvent la pause (voir brancherCommandes et brancherToucher).
-const PAUSE_CONSIGNE_TACTILE = 'Touchez l\'écran pour continuer';
+const PAUSE_CONSIGNE_TACTILE = 'Touchez l\'écran pour continuer';   // minipixiz.pause.consigneTactile
 /*
  * LE VOILE DE PAUSE. Partout, celui du jeu d'origine : Manager.setPause teint
  * la scène vers 0x938DC3 jusqu'à 90 % (PAUSE_FADE).
@@ -1435,7 +1447,7 @@ class Client {
     }
     // Aventure.initStep(2) : le niveau gagné, la fée s'exclame en s'envolant.
     if (nom === 'finPartie' && d && d.gagne) {
-      this.react((window.MinipixizLangue || {}).END_CHEER);
+      this.react((window.MinipixizLangue || {}).END_CHEER, 'END_CHEER');
     }
     // base/Tree.gameOver : un record vaut mieux qu'un panneau de défaite — le
     // jeu montre alors l'écran de nouvelle à la place du « Game Over ».
@@ -1899,7 +1911,8 @@ class Client {
     ctx.textBaseline = 'top';
     ctx.fillStyle = 'rgb(126,16,1)';
     const salut = decouperTexte(ctx,
-      'Salut,\n' + (fee ? fee.fs.$name : '') + ' !\nDis-moi quels sont tes sorts préférés...',
+      T('minipixiz.ornegon.salut', 'Salut,\n{nom} !\nDis-moi quels sont tes sorts préférés...',
+        { nom: fee ? fee.fs.$name : '' }),
       ORNEGON.texteL);
     let sy = ORNEGON.texteY;
     for (const l of salut) { ctx.fillText(l, ORNEGON.texteX, sy); sy += 11; }
@@ -2080,7 +2093,8 @@ class Client {
       const infos = g.carte.$mission || [];
       const info = infos[g.index];
       if (!g.decrit || g.decrit.index !== g.index) {
-        g.decrit = info ? Object.assign({ index: g.index }, M.decrire(info)) : null;
+        g.decrit = info ? Object.assign({ index: g.index },
+          M.decrireDansLaLangue ? M.decrireDansLaLangue(info) : M.decrire(info)) : null;
       }
       // Les flèches (s0/s1) : dans le fichier, le « bouton » est le RAIL doré
       // lui-même — le clip 994 n'est que la bande de 26 × 192 posée à 16,75 et
@@ -2100,7 +2114,7 @@ class Client {
         ctx.font = '10px Verdana, Arial, sans-serif';
         ctx.fillStyle = 'rgb(81,61,47)';
         for (const [k, l] of decouperTexte(ctx,
-          'Gromelin n\'a plus rien à proposer aujourd\'hui. Repassez demain.', 160).entries()) {
+          T('minipixiz.gromelin.rienAProposer', 'Gromelin n\'a plus rien à proposer aujourd\'hui. Repassez demain.'), 160).entries()) {
           ctx.fillText(l, SCENE * 0.5, 90 + k * 12);
         }
         ctx.textAlign = 'left';
@@ -2126,8 +2140,11 @@ class Client {
         // fieldInfo — même boîte à gauche, sous l'énoncé (36,6 ; 171,45).
         const L = window.MinipixizLangue;
         const rang = (L.MISSION_DIF_RANK || [])[info[0]] || '';
-        const inf = ['type: ' + ((L.MISSION[info[1]] || {}).type || ''),
-          'difficulté: ' + rang, 'durée: ' + info[2] + ' jours'];
+        const type = L.MISSION[info[1]] ? (L.dansLaLangue ? L.dansLaLangue('MISSION', [info[1], 'type'])
+          : L.MISSION[info[1]].type) : '';
+        const inf = [T('minipixiz.mission.type', 'type: {type}', { type: type || '' }),
+          T('minipixiz.mission.difficulte', 'difficulté: {rang}', { rang }),
+          T('minipixiz.mission.duree', 'durée: {n} jours', { n: info[2] })];
         let iy = 173.4;
         for (const l of inf) { ctx.fillText(l, 36.6, iy); iy += 11; }
         // La récompense, dans son alvéole, à moitié de taille.
@@ -2141,7 +2158,7 @@ class Client {
         // « accepter la mission! » en rgb(213,185,151), boîte de 125 posée en
         // (57,3 ; 223,3), texte au ras de sa gouttière.
         ctx.fillStyle = 'rgb(213,185,151)';
-        ctx.fillText('accepter la mission!', 59.3, 225.3);
+        ctx.fillText(T('minipixiz.mission.accepter', 'accepter la mission!'), 59.3, 225.3);
         g.zones.push({ quoi: 'accepter', x: 57.3, y: 223.3, l: 125.5, h: 16 });
       }
     }
@@ -2154,8 +2171,8 @@ class Client {
       ctx.textAlign = 'left';
       ctx.font = '10px Verdana, Arial, sans-serif';
       ctx.fillStyle = 'rgb(239,230,216)';
-      ctx.fillText('selectionner une ou plusieurs fées', 10.1, 8.9);
-      ctx.fillText('pour cette mission', 10.1, 20.9);
+      ctx.fillText(T('minipixiz.mission.selectionner', 'selectionner une ou plusieurs fées'), 10.1, 8.9);
+      ctx.fillText(T('minipixiz.mission.pourCetteMission', 'pour cette mission'), 10.1, 20.9);
       // Une ligne par fée en bocal, sa case à cocher, et la chance de succès
       // qui bouge à chaque coche.
       for (let i = 0; i < g.fees.length; i++) {
@@ -2171,14 +2188,14 @@ class Client {
       // pourcentage (fieldPrc, EditText 1010 en 120,65 ; 202,9) — deux champs
       // alignés à gauche, comme dans le fichier.
       ctx.fillStyle = 'rgb(91,71,53)';
-      ctx.fillText('chance de succes:', 36.55, 204.95);
+      ctx.fillText(T('minipixiz.mission.chance', 'chance de succes:'), 36.55, 204.95);
       const cochees = g.fees.filter((f, i) => g.coches[i]);
       const prc = cochees.length
         ? Math.floor(M.chances(g.carte.$mission[g.index], cochees, g.carte) * 100) : 0;
       ctx.fillText(prc + '%', 120.65, 204.9);
       // butAccept de la frame 4 — même bouton-texte, même boîte.
       ctx.fillStyle = 'rgb(213,185,151)';
-      ctx.fillText('valider la mission', 59.3, 224.8);
+      ctx.fillText(T('minipixiz.mission.valider', 'valider la mission'), 59.3, 224.8);
       g.zones.push({ quoi: 'valider', x: 57.3, y: 222.8, l: 125.5, h: 16 });
     }
 
@@ -2326,9 +2343,10 @@ class Client {
     const etat = this.pause ? 'pause' : (this.peutPauser() ? 'jeu' : 'inerte');
     if (etat === this.etatBoutonPause) return;
     this.etatBoutonPause = etat;
-    b.textContent = this.pause ? '▶ reprendre' : '❚❚ pause';
+    b.textContent = this.pause ? T('minipixiz.pause.reprendre', '▶ reprendre') : T('minipixiz.pause.bouton', '❚❚ pause');
     b.setAttribute('aria-pressed', this.pause ? 'true' : 'false');
-    b.setAttribute('aria-label', this.pause ? 'Reprendre la partie' : 'Mettre en pause');
+    b.setAttribute('aria-label', this.pause ? T('minipixiz.pause.reprendreLaPartie', 'Reprendre la partie')
+      : T('minipixiz.pause.mettreEnPause', 'Mettre en pause'));
     if (b.classList) b.classList.toggle('inerte', etat === 'inerte');
   }
 
@@ -2411,7 +2429,8 @@ class Client {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillStyle = '#ffffff';
-      ctx.fillText(this.auDoigt() ? PAUSE_CONSIGNE_TACTILE : PAUSE_CONSIGNE, 117.35, 128.5);
+      ctx.fillText(this.auDoigt() ? T('minipixiz.pause.consigneTactile', PAUSE_CONSIGNE_TACTILE)
+        : T('minipixiz.pause.consigne', PAUSE_CONSIGNE), 117.35, 128.5);
       ctx.restore();
     }
   }
@@ -2434,16 +2453,22 @@ class Client {
    */
   reactCombo(somme) {
     const L = window.MinipixizLangue || {};
-    if (somme > 36) this.react(L.SUPER_COMBO_CHEER);
-    else if (somme > 16) this.react(L.COMBO_CHEER);
+    if (somme > 36) this.react(L.SUPER_COMBO_CHEER, 'SUPER_COMBO_CHEER');
+    else if (somme > 16) this.react(L.COMBO_CHEER, 'COMBO_CHEER');
   }
 
-  react(rangees) {
+  // \`nom\` : la table de langue.js d'où viennent les rangées. La rangée et la
+  // ligne se tirent dans la table FRANÇAISE (ses trous sont les silences de
+  // la fée) ; la ligne se lit ensuite au même rang dans la langue du joueur.
+  react(rangees, nom) {
     const fee = this.fee;
     if (!fee || !rangees) return;
-    const rang = rangees[nombreSur(fee.fs.$humor, rangees.length)];
+    const h = nombreSur(fee.fs.$humor, rangees.length);
+    const rang = rangees[h];
     if (!rang || !rang.length) return;
-    const brut = rang[Math.floor(Math.random() * rang.length)];
+    const j = Math.floor(Math.random() * rang.length);
+    const L = window.MinipixizLangue;
+    const brut = (nom && L && L.dansLaLangue) ? L.dansLaLangue(nom, [h, j]) : rang[j];
     const texte = this.enrichir(brut);
     if (texte) this.parler(texte);
   }
@@ -2455,8 +2480,8 @@ class Client {
     const L = window.MinipixizLangue || {};
     const O = window.MinipixizObjets;
     if (L.CLOUD_SHAPE && str.indexOf('$cloud') >= 0) {
-      str = str.split('$cloud').join(
-        L.CLOUD_SHAPE[Math.floor(Math.random() * L.CLOUD_SHAPE.length)]);
+      const k = Math.floor(Math.random() * L.CLOUD_SHAPE.length);
+      str = str.split('$cloud').join(L.dansLaLangue ? L.dansLaLangue('CLOUD_SHAPE', [k]) : L.CLOUD_SHAPE[k]);
     }
     str = str.split('$name').join(fee.fs.$name);
     if (str.indexOf('$other') >= 0) {
@@ -2469,7 +2494,7 @@ class Client {
       const l = ((fee.fs.$taste || [])[quel]) || [];
       const id = l.length ? 300 + l[Math.floor(Math.random() * l.length)] * 3 : 300;
       const it = O && O.info(id);
-      return (it && it.nom) || 'de la brioche';
+      return (it && it.nom) || T('minipixiz.fee.brioche', 'de la brioche');
     };
     if (str.indexOf('$like') >= 0) str = str.split('$like').join(gout(0));
     if (str.indexOf('$dislike') >= 0) str = str.split('$dislike').join(gout(1));
@@ -2490,12 +2515,12 @@ class Client {
     const L = window.MinipixizLangue || {};
     const jeu = this.jeu;
     if (!jeu || !jeu.coefRemplissage) return;
-    let liste = L.AMBIANCE_NORMAL, rnd = 3;
+    let nom = 'AMBIANCE_NORMAL', rnd = 3;
     const c = jeu.coefRemplissage();
-    if (c < 0.1) { liste = L.AMBIANCE_FINISH; rnd = 3; }
-    if (this.champ && this.champ.impList.length > 0) { liste = L.AMBIANCE_BATTLE; rnd = 1; }
-    if (c > 0.5) { liste = L.AMBIANCE_STRESS; rnd = 2; }
-    if (Math.floor(Math.random() * rnd) === 0) this.react(liste);
+    if (c < 0.1) { nom = 'AMBIANCE_FINISH'; rnd = 3; }
+    if (this.champ && this.champ.impList.length > 0) { nom = 'AMBIANCE_BATTLE'; rnd = 1; }
+    if (c > 0.5) { nom = 'AMBIANCE_STRESS'; rnd = 2; }
+    if (Math.floor(Math.random() * rnd) === 0) this.react(L[nom], nom);
   }
 
   dessinerDialogue(ctx, tmod) {
@@ -2683,8 +2708,9 @@ class Client {
       // écran gelé. On dit donc qu'il n'y a rien là.
       if (vide) continue;
       if (c.i === 0) {
-        noms[0] = '+1 en ' + ((F && F.NOM_CARAC[n]) || '?');
-        resumes[0] = (F && F.RESUME_CARAC[n]) || null;
+        noms[0] = T('minipixiz.evolution.plusUn', '+1 en {carac}', {
+          carac: (F && F.NOM_CARAC[n] && (F.nomCarac ? F.nomCarac(n) : F.NOM_CARAC[n])) || '?' });
+        resumes[0] = (F && F.RESUME_CARAC[n] && (F.resumeCarac ? F.resumeCarac(n) : F.RESUME_CARAC[n])) || null;
       } else {
         // `initExpSlot` lit le nom sur le SORT lui-même — `Spell.newSpell(n)
         // .getName()` — et sa description en bulle (`Mc.makeHint`, 120 px).
@@ -2692,7 +2718,7 @@ class Client {
         // porte pas : il retombait toujours sur « un nouveau sort », et le
         // joueur ne savait pas ce qu'on lui offrait.
         const sort = S && S.nouveauSort ? S.nouveauSort(n, null) : null;
-        noms[1] = (sort && sort.nom && sort.nom()) || 'un nouveau sort';
+        noms[1] = (sort && sort.nom && sort.nom()) || T('minipixiz.evolution.nouveauSort', 'un nouveau sort');
         resumes[1] = (sort && sort.description && sort.description()) || null;
       }
     }
@@ -2713,14 +2739,14 @@ class Client {
       ctx.fillText(t, x, y);
     };
     ctx.font = 'bold 9px Verdana, Arial, sans-serif';
-    ecrire((sv === null || sv === undefined ? null : noms[sv]) || 'Faites votre choix !',
+    ecrire((sv === null || sv === undefined ? null : noms[sv]) || T('minipixiz.evolution.choix', 'Faites votre choix !'),
       SCENE * 0.5, SCENE * 0.5 - 38);
     // La case sans offre garde sa note grise : nue, muette et sans survol, on
     // la prendrait pour un écran gelé.
     ctx.font = 'bold 8px Verdana, Arial, sans-serif';
     for (const c of this.casesEvolution()) {
       if (noms[c.i] || c.i !== 1) continue;
-      for (const [k, ligne] of decouperTexte(ctx, 'rien à apprendre', 84).entries()) {
+      for (const [k, ligne] of decouperTexte(ctx, T('minipixiz.evolution.rien', 'rien à apprendre'), 84).entries()) {
         ctx.lineWidth = 3;
         ctx.strokeStyle = 'rgba(24,12,40,.7)';
         ctx.strokeText(ligne, c.x, c.y + 34 + k * 9);
@@ -2764,8 +2790,9 @@ class Client {
     }
     // field0 — vingt pixels, vert pâle, centré. Les mots du jeu, tels quels.
     const texte = relais
-      ? 'Felicitations vous avez atteint ' + (n.nom || '') + ' !!'
-      : 'Bravo vous avez etabli un nouveau record !!\n' + (n.score || 0) + ' points!';
+      ? T('minipixiz.nouvelle.relais', 'Felicitations vous avez atteint {nom} !!', { nom: n.nom || '' })
+      : T('minipixiz.nouvelle.record', 'Bravo vous avez etabli un nouveau record !!\n{score} points!',
+        { score: n.score || 0 });
     ctx.font = 'bold 15px "Berlin Sans FB Demi", "Trebuchet MS", Verdana, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
@@ -3679,7 +3706,7 @@ class Client {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     ctx.fillStyle = XP_COULEUR;
-    ctx.fillText(prc === null ? 'niveau max' : 'XP ' + prc + ' %', cx, y);
+    ctx.fillText(prc === null ? T('minipixiz.xp.max', 'niveau max') : T('minipixiz.xp.prc', 'XP {prc} %', { prc }), cx, y);
     if (prc !== null) {
       const x0 = cx - XP_JAUGE.l * 0.5, y0 = y + 12;
       ctx.fillStyle = XP_JAUGE.fond;

@@ -141,13 +141,13 @@ test('le sac dit le % d\'XP et décrit les sorts', () => {
   const src = fs.readFileSync(path.join(ROOT, 'public/minipixiz/inventaire.js'), 'utf8');
   // La progression, écrite sous la pastille ET dite au toucher.
   assert.match(src, /fee\.limiteExp\(\)\) \* 1000\) \/ 10/, 'le pourcentage du bureau (une décimale)');
-  assert.match(src, /'niveau ' \+ \(nombre\(fee\.fs\.\$level\) \+ 1\) \+ ' \(' \+ prc \+ ' %\)'/,
+  assert.match(src, /'niveau \{niveau\} \(\{prc\} %\)', \{ niveau: nombre\(fee\.fs\.\$level\) \+ 1, prc \}/,
     'l\'infobulle du bureau, dite dans le bandeau');
   // Les sorts se présentent au toucher.
   // (Depuis le retour sur l'origine des sorts, la zone porte aussi ses
   // sources, et la phrase les ajoute à l'effet — voir minipixizRetours9.)
   assert.match(src, /zoneRect\(\{ sort: t, sources: k\.sources \}/, 'chaque sort est touchable');
-  assert.match(src, /const d = sort\.description\(\);[\s\S]{0,400}this\.dire\(t, sort\.nom\(\) \+ ' :'/,
+  assert.match(src, /const d = sort\.description\(\);[\s\S]{0,400}this\.dire\(t, T\('minipixiz\.inv\.titre', '\{nom\} :', \{ nom: sort\.nom\(\) \}\)/,
     'nom et effet dans le bandeau');
 });
 
@@ -792,7 +792,7 @@ test('l\'ouverture du jeu : l\'écran-titre, puis la clairière dans une ÉTOILE
   assert.match(page, /left: 16\.05px; top: 73\.85px/, 'le logo à sa place');
   assert.match(page, /left: 35\.95px; top: 126\.95px/, 'la bande à la sienne');
   assert.match(page, /chargement en cours/);
-  assert.match(page, /fillText\('chargement en cours', 47\.95, 140\.25\)/,
+  assert.match(page, /fillText\(T\('minipixiz\.chargement', 'chargement en cours'\), 47\.95, 140\.25\)/,
     'et la ligne de base du DefineText, décalage du premier glyphe compris');
 
   // 3. L'OUVERTURE : Manager.connected → fadeSlot("menu", 120, 120). La
@@ -1156,7 +1156,7 @@ test('quand la fée reste au sac, le jeu DIT pourquoi', () => {
   // Pain », en petit. L'état reste dit au départ, et dans le volet santé.
   const inv = fs.readFileSync(path.join(ROOT, 'public/minipixiz/inventaire.js'), 'utf8');
   assert.match(inv, /if \(!this\.main\) \{[\s\S]{0,400}this\.montrerGouts\(\);\s*\n\s*return;/);
-  assert.match(inv, /'Aime : ' \+ \(g\.aime\.length \? g\.aime\.join\(', '\) : 'rien de spécial'\)/);
+  assert.match(inv, /'Aime : \{aime\}  ·  Déteste : \{deteste\}', \{\s*aime: g\.aime\.length \? g\.aime\.join\(', '\) : T\('minipixiz\.inv\.rienDeSpecial', 'rien de spécial'\)/);
   assert.match(inv, /this\.dire\(t, fee\.fs\.\$name, 8\);/);
   const gouts = new F.Fee(Object.assign(F.genererGraine(tirage(2)), { $taste: [[5, 9], [0]] }), tirage(2), carte).goutsCourts();
   assert.deepStrictEqual(gouts, { aime: ['Glace', 'Brioche'], deteste: ['Pain'] });
@@ -1169,7 +1169,7 @@ test('la pastille de niveau : le bleu des caractéristiques, la progression en i
   assert.match(inv, /ctx\.font = 'bold 12px ' \+ FONTE;\s*\n\s*ctx\.fillStyle = LETTRE_COULEUR;/);
   assert.ok(!/this\.texte\(prc \+ ' %'/.test(inv), 'plus de pourcentage en vrac sous le niveau');
   assert.match(inv, /if \(this\.surPastille && fee && !\(this\.glisse && this\.glisse\.pris\)\) \{/);
-  assert.match(inv, /return 'niveau ' \+ \(nombre\(fee\.fs\.\$level\) \+ 1\) \+ ' \(' \+ prc \+ ' %\)';/);
+  assert.match(inv, /return T\('minipixiz\.inv\.niveau', 'niveau \{niveau\} \(\{prc\} %\)', \{ niveau: nombre\(fee\.fs\.\$level\) \+ 1, prc \}\);/);
 });
 
 test('la clairière coupe ses phrases aux mots plutôt que de déborder', () => {
