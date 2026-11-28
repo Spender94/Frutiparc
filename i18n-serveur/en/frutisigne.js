@@ -16,4 +16,12 @@ module.exports = {
   'frutisigne.orange': 'orange',
   'frutisigne.cerise': 'cherry',
   'frutisigne.banane': 'banana',
+
+  // ── Le mot du jour (frutisignes.js, phraseDuBonus) ──
+  'frutisigne.bonus.semaine': 'It\'s your week!',
+  'frutisigne.bonus.ascendant': 'It\'s your ascendant\'s day!',
+  'frutisigne.bonus.semaineEtAscendant': 'It\'s your week, and your ascendant\'s day!',
+  // {jeux} : « Kaluga », « Kaluga and Frutisnake », « Kaluga, Swapou and Frutisnake ».
+  'frutisigne.bonus.phrase': '{debut} The Frutisign gives you an extra game of {jeux} today.',
+  'frutisigne.bonus.et': ' and ',
 };

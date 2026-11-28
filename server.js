@@ -4338,7 +4338,7 @@ function padZ(n, l) {
   while (s.length < l) s = '0' + s;
   return s;
 }
-function displayScoreType(score, ty) {
+function displayScoreType(score, ty, lang) {
   const v = Number(score);
   if (!Number.isFinite(v)) return String(score == null ? '' : score);
   switch (ty) {
@@ -4349,7 +4349,7 @@ function displayScoreType(score, ty) {
       return (m > 0 ? m + "'" + padZ(s, 2) : String(s)) + '"' + padZ(ms, 3);
     }
     case 'xp':
-      return 'Niv. ' + getLevelForXp(v) + ', '
+      return (lang && lang !== 'fr' ? t(lang, 'classements.niv', 'Niv.') : 'Niv.') + ' ' + getLevelForXp(v) + ', '
         + padZ(Math.floor(xpLevelCompletionRate(v) * 100), 2) + '%';
     case 'rate':
       return (Math.round(v * 100) / 100) + '%';
@@ -5369,6 +5369,25 @@ const GAME_DISPLAY_NAMES = {
   minifever: 'Mini-Fever', jamajama: 'JamaJama',
 };
 const MEDAL_DISPLAY_NAMES = { or: "d'or", argent: "d'argent", bronze: 'de bronze' };
+/*
+ * Le nom d'une médaille en TEXTE TRADUISIBLE. Le français s'élide et se lit
+ * après « médaille » (« la médaille d'or ») ; l'anglais n'a que l'adjectif,
+ * devant (« the gold medal ») : chaque langue tient sa phrase, la médaille
+ * n'est qu'un paramètre (`classements.medaille.or` → « gold »).
+ */
+function nomDeMedaille(m) {
+  const fr = MEDAL_DISPLAY_NAMES[m];
+  return fr ? { k: 'classements.medaille.' + m, fr } : String(m || '');
+}
+/*
+ * Le nom d'un classement (RANKINGS) dans une langue. Les noms propres (jeux,
+ * circuits) restent ; « Classique », « Grappe », « Championnat »… se
+ * traduisent (`classements.<id>`, i18n-serveur/en/classements.js).
+ */
+function nomDeClassement(rkId, lang, repli) {
+  const fr = (RANKINGS[rkId] && RANKINGS[rkId].name) || repli || rkId;
+  return !lang || lang === 'fr' ? fr : t(lang, 'classements.' + rkId, fr);
+}
 
 /**
  * La VIGNETTE de médaille du bureau, pour un jeu donné.
@@ -6096,10 +6115,12 @@ function feutreDePref(brut) {
   return '';
 }
 // Les choix offerts à CE joueur : le multicolore seulement s'il le possède.
-function choixFeutreDefaut(user) {
-  const liste = [[0, 'Aucun feutre']].concat(NOMS_FEUTRES.map((nom, i) => [i + 1, nom]));
+// (Les noms dans la langue du lecteur : `prefs.feutre.<index>`, i18n-serveur/en/prefs.js.)
+function choixFeutreDefaut(user, lang = 'fr') {
+  const liste = [[0, t(lang, 'prefs.feutre.aucun', 'Aucun feutre')]]
+    .concat(NOMS_FEUTRES.map((nom, i) => [i + 1, t(lang, 'prefs.feutre.' + i, nom)]));
   if (user && Array.isArray(user.ownedFeutres) && user.ownedFeutres.includes('mc')) {
-    liste.push([FEUTRE_PREF_MULTICOLORE, 'Multicolore']);
+    liste.push([FEUTRE_PREF_MULTICOLORE, t(lang, 'prefs.feutre.multicolore', 'Multicolore')]);
   }
   return liste;
 }
@@ -28481,7 +28502,7 @@ const ACCESSOIRES_DEFAUT = DEFAULT_ACCESSORIES.map((a) => ({ id: a.u, name: a.n,
  * INCARNATIONS n'y sont pas : elles remplacent la bouille ENTIÈRE, quand cette
  * préférence-ci ne garde que les neuf caractères d'accessoire.
  */
-function choixAccessoireDefaut(user) {
+function choixAccessoireDefaut(user, lang = 'fr') {
   const vus = new Set();
   const liste = [];
   const ajouter = (suffix, label) => {
@@ -28490,12 +28511,12 @@ function choixAccessoireDefaut(user) {
     vus.add(s);
     liste.push({ v: s, label: String(label || 'Accessoire') });
   };
-  ajouter('000000000', 'Normal');
-  for (const a of ACCESSOIRES_DEFAUT) ajouter(a.suffix, a.name);
+  ajouter('000000000', t(lang, 'boutique.base.normal', 'Normal'));
+  for (const a of ACCESSOIRES_DEFAUT) ajouter(a.suffix, lang === 'fr' ? a.name : t(lang, 'boutique.base.' + a.id, a.name));
   for (const a of (user && user.customAccessories) || []) {
     if (!a || String(a.v || '').startsWith('wp:') || getAccessoryPrunelle(a)) continue;
     if (String(a.v || '').length !== 24) continue;
-    ajouter(String(a.v).substring(15, 24), a.n);
+    ajouter(String(a.v).substring(15, 24), nomPossede(a, lang));
   }
   return liste;
 }
@@ -28559,7 +28580,9 @@ app.get(['/do/prefForm', '/prefForm'], (req, res) => {
 // toutes les préférences effacerait celles qu'il ignore ; entrée par entrée,
 // ce risque n'existe pas.
 // ─────────────────────────────────────────────
-function prefsEnJson(user) {
+// Les libellés dans la langue du lecteur : `prefs.<nom>.label|desc`,
+// `prefs.<nom>.choix.<valeur>`, `prefs.categorie.<nom>` (i18n-serveur/en/prefs.js).
+function prefsEnJson(user, lang = 'fr') {
   const brute = (user && user.prefs) || '';
   const valeurs = {};
   for (const p of prefDefs) {
@@ -28568,7 +28591,7 @@ function prefsEnJson(user) {
   }
   const byId = Object.fromEntries(prefDefs.map((p) => [p.id, p]));
   const categories = PREF_CATEGORIES.map((cat) => ({
-    name: cat.name,
+    name: t(lang, 'prefs.categorie.' + cat.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(), cat.name),
     prefs: cat.ids.map((id) => byId[id]).filter(Boolean).map((def) => {
       const meta = PREF_LABELS[def.name] || { label: def.name, desc: '' };
       return {
@@ -28576,16 +28599,17 @@ function prefsEnJson(user) {
         name: def.name,
         type: def.type,
         def: def.def,
-        label: meta.label,
-        desc: meta.desc || '',
+        label: t(lang, `prefs.${def.name}.label`, meta.label),
+        desc: meta.desc ? t(lang, `prefs.${def.name}.desc`, meta.desc) : '',
         liste: !!meta.liste,
         // Une valeur de choix voyage en base 62, comme dans la chaîne stockée :
         // le client compare des chaînes, jamais des nombres. L'accessoire par
         // défaut fait exception — sa valeur EST déjà une chaîne de neuf
         // caractères, et ses choix sortent de l'inventaire du joueur.
         choices: def.name === 'default_accessory'
-          ? choixAccessoireDefaut(user)
-          : (def.name === 'default_pen' ? choixFeutreDefaut(user) : (meta.choices || []))
+          ? choixAccessoireDefaut(user, lang)
+          : (def.name === 'default_pen' ? choixFeutreDefaut(user, lang)
+            : (meta.choices || []).map(([v, lib]) => [v, t(lang, `prefs.${def.name}.choix.${v}`, lib)]))
             .map(([v, lib]) => ({ v: encode62(v), label: lib })),
       };
     }),
@@ -28596,7 +28620,7 @@ function prefsEnJson(user) {
 app.get('/api/light/prefs', (req, res) => {
   const username = resolveUsernameFromSid(String(req.query.sid || ''));
   if (!username) return res.status(401).json({ ok: false, error: 'auth_required' });
-  res.json({ ok: true, ...prefsEnJson(users[username] || {}) });
+  res.json({ ok: true, ...prefsEnJson(users[username] || {}, langueDeRequete(req)) });
 });
 
 /*
@@ -28631,7 +28655,7 @@ app.post('/api/light/prefs', (req, res) => {
     const v = demande[nom];
     if (appliquerPref(username, user, def.id, v === null || v === undefined ? '' : String(v))) ecrites++;
   }
-  res.json({ ok: true, saved: ecrites, ...prefsEnJson(user) });
+  res.json({ ok: true, saved: ecrites, ...prefsEnJson(user, langueDeRequete(req)) });
 });
 
 // ─────────────────────────────────────────────
@@ -30803,6 +30827,9 @@ app.get('/api/forum/me', (req, res) => {
   const username = forumAuth(req);
   if (!username) return res.json({ user: null });
   const u = users[username] || {};
+  // Les NOMS des accessoires et des incarnations dans la langue du lecteur
+  // (le sélecteur du forum, l'inventaire du light) ; l'identifiant ne change pas.
+  const L = langueDeRequete(req);
   // `shopId` et `revendable` : l'inventaire du light rend un accessoire à la
   // boutique d'un double-clic (voir /api/light/shop/vendre), et il lui faut
   // pour cela l'ARTICLE derrière la ligne — un accessoire d'époque, un fond ou
@@ -30813,14 +30840,15 @@ app.get('/api/forum/me', (req, res) => {
     // deux fois — une fois comme habit, une fois comme accessoire.
     .filter(a => a && !a.v?.startsWith('wp:') && !getAccessoryPrunelle(a))
     .map(a => {
-      const e = { id: a.id, name: a.n, value: a.v };
+      const e = { id: a.id, name: nomPossede(a, L), value: a.v };
       if (a.shopId) {
         e.shopId = a.shopId;
         if (accessoireRevendable(u, getShopPack(a.shopId))) e.revendable = true;
       }
       return e;
     });
-  const defaults = ACCESSOIRES_DEFAUT;
+  const defaults = L === 'fr' ? ACCESSOIRES_DEFAUT
+    : ACCESSOIRES_DEFAUT.map((a) => Object.assign({}, a, { name: t(L, 'boutique.base.' + a.id, a.name) }));
   // Expose mute status to the frontend so the topic page can pre-disable
   // the "Répondre" button rather than letting the user compose a message
   // that will be rejected on POST. The server still enforces the lockout
@@ -30852,7 +30880,8 @@ app.get('/api/forum/me', (req, res) => {
      * deux endroits, une seule source.
      */
     bouillePrincipale: bouillePrincipaleDe(u, username),
-    incarnations: incarnationsDe(u, username),
+    incarnations: incarnationsDe(u, username).map((i) => (L === 'fr' ? i
+      : Object.assign(i, { nom: nomPossede({ id: i.id, shopId: i.shopId, n: i.nom }, L) }))),
     // Mirror the Flash client's editbouille gating (see the f="0,1,..." attr in
     // onident) so the mobile client can force its own "Ma Frutibouille" editor
     // open under the exact same conditions: the user still has the default
@@ -30966,10 +30995,30 @@ function isForumModerator(username) {
   return !!(u && u.isModerator);
 }
 
+/*
+ * LES RUBRIQUES DU FORUM DANS LA LANGUE DU LECTEUR. Leur NOM est une clé (les
+ * règles des rubriques s'y fient : « Annonces » réservée à l'équipe…) : il ne
+ * change pas. On ajoute un `libelle` à afficher (`rubriques.<nom sans accents>`,
+ * i18n-serveur/en/rubriques.js) et, pour une rubrique livrée avec le code dont
+ * la description n'a pas été retouchée, sa description traduite.
+ */
+function cleRubrique(nom) {
+  return String(nom || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+function libelleRubrique(nom, lang) {
+  return !lang || lang === 'fr' ? nom : t(lang, 'rubriques.' + cleRubrique(nom), nom);
+}
+function descriptionRubrique(nom, description, lang) {
+  if (!lang || lang === 'fr') return description;
+  const def = FORUM_DEFAULT_STRUCTURE.flatMap((c) => c.boards).find((b) => b.name === nom);
+  return def && def.description === description ? t(lang, 'rubriques.desc.' + cleRubrique(nom), description) : description;
+}
+
 app.get('/api/forum/index', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json({ categories: [], boards: [] });
   try {
     const currentUser = forumAuth(req);
+    const L = langueDeRequete(req);
     const staff = isForumStaff(currentUser);
     const categories = await db.forumGetCategories();
     const boards = await db.forumGetBoards(currentUser);
@@ -30977,7 +31026,8 @@ app.get('/api/forum/index', async (req, res) => {
     for (const b of boards) {
       if (!boardsByCategory[b.category_id]) boardsByCategory[b.category_id] = [];
       boardsByCategory[b.category_id].push({
-        id: b.id, name: b.name, description: b.description,
+        id: b.id, name: b.name, libelle: libelleRubrique(b.name, L),
+        description: descriptionRubrique(b.name, b.description, L),
         topicCount: Number(b.topic_count), postCount: Number(b.post_count),
         lastActivity: b.last_activity, lastActivityBy: getDisplayName(b.last_activity_by),
         unread: !!b.unread,
@@ -30988,7 +31038,7 @@ app.get('/api/forum/index', async (req, res) => {
     );
     res.json({
       categories: visibleCats.map(c => ({
-        id: c.id, name: c.name,
+        id: c.id, name: c.name, libelle: libelleRubrique(c.name, L),
         boards: boardsByCategory[c.id] || [],
       })),
     });
@@ -31121,7 +31171,8 @@ app.get('/api/forum/board/:id', async (req, res) => {
     }));
     res.json({
       board: {
-        id: board.id, name: board.name, description: board.description,
+        id: board.id, name: board.name, libelle: libelleRubrique(board.name, langueDeRequete(req)),
+        description: descriptionRubrique(board.name, board.description, langueDeRequete(req)),
         postRestricted: isModPostOnlyBoard(board) || isStaffPostOnlyBoard(board),
         // À qui il est réservé, pour que le client le dise avec les bons mots.
         reservePour: reservationBoard(board),
@@ -32252,6 +32303,7 @@ async function livreDesRecords() {
 
 app.get('/api/club/records', async (req, res) => {
   const limit = Math.max(1, Math.min(20, Number(req.query.limit) || 10));
+  const L = langueDeRequete(req);
   const bestByRanking = await livreDesRecords();
 
   const out = [];
@@ -32273,7 +32325,7 @@ app.get('/api/club/records', async (req, res) => {
       { s: b.score, data: b.data, at: b.updatedAt }));
     const entry = {
       id: rkId,
-      name: meta.name,
+      name: nomDeClassement(rkId, L),
       game: meta.game,
       type: meta.type,
       lowerIsBetter: !!meta.lowerIsBetter,
@@ -32412,12 +32464,12 @@ app.get('/api/club/player', async (req, res) => {
       if (i < 0) continue;
       records.push({
         id: rkId,
-        nom: meta.name,
+        nom: nomDeClassement(rkId, langueDeRequete(req)),
         jeu: meta.game,
         jeuNom: GAME_DISPLAY_NAMES[meta.game] || meta.game,
         type: meta.type,
         score: tous[i].s,
-        label: formatChallengeScoreLabel(rkId, tous[i].s, tous[i].data),
+        label: formatChallengeScoreLabel(rkId, tous[i].s, tous[i].data, langueDeRequete(req)),
         rang: i + 1,
         sur: tous.length,
       });
@@ -32521,7 +32573,7 @@ app.get('/api/club/consecration', async (req, res) => {
 // /light client stays dumb: BKiwi is a chrono (ms → m:ss.cc), MotionBall packs
 // the completion % in its score (((score % 100) + 1)%), everything else is a
 // plain point total with a French thousands separator.
-function formatChallengeScoreLabel(rankingId, score, data) {
+function formatChallengeScoreLabel(rankingId, score, data, lang = 'fr') {
   const meta = RANKINGS[rankingId] || {};
   const n = Number(score);
   if (!Number.isFinite(n)) return String(score == null ? '' : score);
@@ -32531,7 +32583,7 @@ function formatChallengeScoreLabel(rankingId, score, data) {
   // offrir : il montre les points seuls — cf. LEGACY_RANKINGS, gs='1'.)
   if (rankingId === 'miniwave_classic') {
     const niveau = parseMiniwaveNiveau(data);
-    return n.toLocaleString('fr-FR') + (niveau !== null ? ` · niveau ${niveau}` : '');
+    return FPI18n.nombre(lang, n) + (niveau !== null ? t(lang, 'classements.etiquette.niveau', ' · niveau {niveau}', { niveau }) : '');
   }
   // Mini-Fever : la règle du tableau unique, lisible sur chaque ligne — les
   // points, puis d'où ils viennent : le compte d'épreuves et le palier joué
@@ -32543,9 +32595,11 @@ function formatChallengeScoreLabel(rankingId, score, data) {
     const p = MINIFEVER_PALIERS[palier];
     if (p && p.nom) {
       const niveau = dn !== undefined && Number.isFinite(Number(dn)) ? Math.trunc(Number(dn)) : Math.round(n / (MINIFEVER_POINTS * (1 + palier)));
-      return `${n.toLocaleString('fr-FR')} · ${niveau} épreuve${niveau > 1 ? 's' : ''} en ${p.nom}`;
+      return tn(lang, 'classements.etiquette.epreuves', niveau,
+        { one: '{points} · {n} épreuve en {palier}', other: '{points} · {n} épreuves en {palier}' },
+        { points: FPI18n.nombre(lang, n), palier: lang === 'fr' ? p.nom : t(lang, 'classements.palierMinifever.' + palier, p.nom) });
     }
-    return n.toLocaleString('fr-FR');
+    return FPI18n.nombre(lang, n);
   }
   // Les deux types d'époque qui ne sont pas des points : le chrono de Burning
   // Kiwi et le score empilé de MotionBall. `displayScoreType` les écrit comme
@@ -32557,7 +32611,7 @@ function formatChallengeScoreLabel(rankingId, score, data) {
   }
   // ÉCART ASSUMÉ sur les points : l'époque rend le nombre nu, on le groupe par
   // milliers. Un score à sept chiffres se lit, celui de 2005 se déchiffre.
-  return n.toLocaleString('fr-FR');
+  return FPI18n.nombre(lang, n);
 }
 
 // Today's daily-challenge scoreboard for the mobile (/light) client. Returns the
@@ -32585,6 +32639,7 @@ function formatChallengeScoreLabel(rankingId, score, data) {
  */
 app.get('/api/light/challenge', async (req, res) => {
   const me = resolveUsernameFromSid(req.query.sid || '');
+  const L = langueDeRequete(req);
   const meLower = me ? String(me).toLowerCase() : '';
   const limit = Math.max(1, Math.min(50, Number(req.query.limit) || 20));
   // Le jour demandé (navigation par flèches, comme le bas de la fenêtre du
@@ -32630,10 +32685,13 @@ app.get('/api/light/challenge', async (req, res) => {
   // Le libellé de chaque classement vient du descriptif du bureau (rn) : les
   // deux clients nomment les onglets pareil, sans table en double. Burning Kiwi
   // n'a pas de descripteur par circuit — son onglet emprunte celui de rk '0'.
+  // (Dans la langue du lecteur : `classements.onglet.<rk>` pour un libellé du
+  // bureau, `classements.<id>` pour un nom de classement.)
   const nomBureau = (rkId, repli) => {
     const cle = /^bkiwi_/.test(rkId) ? 'bkiwi_track5_classic' : rkId;
     const d = LEGACY_RANKINGS.find((x) => x.internal === cle);
-    return (d && d.rn) || repli;
+    if (d && d.rn) return L === 'fr' ? d.rn : t(L, 'classements.onglet.' + d.rk, d.rn);
+    return L === 'fr' ? repli : t(L, 'classements.' + rkId, repli);
   };
   // L'heure d'un score, telle que la colonne « Heure » du bureau l'affiche.
   const heureDe = (iso) => {
@@ -32687,7 +32745,7 @@ app.get('/api/light/challenge', async (req, res) => {
       user: getDisplayName(e.u),
       bouille: bouilleOf(users[e.u], e.u),
       score: e.s,
-      label: formatChallengeScoreLabel(rkId, e.s, e.data),
+      label: formatChallengeScoreLabel(rkId, e.s, e.data, L),
       time: heureDe(e.at),
       isMe: !!(meLower && String(e.u).toLowerCase() === meLower),
     };
@@ -32725,7 +32783,7 @@ app.get('/api/light/challenge', async (req, res) => {
       scores: all.slice(0, limit).map((e, i) => ligne(rkId, e, i + 1)),
       me: iMoi < 0 ? null : {
         pos: iMoi + 1, score: all[iMoi].s,
-        label: formatChallengeScoreLabel(rkId, all[iMoi].s, all[iMoi].data),
+        label: formatChallengeScoreLabel(rkId, all[iMoi].s, all[iMoi].data, L),
       },
     };
   };
@@ -32773,19 +32831,19 @@ app.get('/api/light/challenge', async (req, res) => {
         user: getDisplayName(e.u),
         bouille: bouilleOf(users[e.u], e.u),
         score: e.s,
-        label: e.label !== undefined ? e.label : Number(e.s).toLocaleString('fr-FR'),
+        label: e.label !== undefined ? e.label : FPI18n.nombre(L, e.s),
         time: '',
         isMe: !!(meLower && String(e.u).toLowerCase() === meLower),
       })),
       me: iMoi < 0 ? null : {
         pos: iMoi + 1, score: tout[iMoi].s,
-        label: tout[iMoi].label !== undefined ? tout[iMoi].label : Number(tout[iMoi].s).toLocaleString('fr-FR'),
+        label: tout[iMoi].label !== undefined ? tout[iMoi].label : FPI18n.nombre(L, tout[iMoi].s),
       },
     };
   };
   try {
     const kAll = (await getKikoozLeaderboard()).map((e) => ({
-      u: e.u, s: e.s, label: Number(e.s).toLocaleString('fr-FR') + ' kikooz',
+      u: e.u, s: e.s, label: FPI18n.nombre(L, e.s) + ' kikooz',
     }));
     games.push(permanent('kikooz', nomBureau('kikooz', 'Class. kikooz'), 'kikooz', kAll));
   } catch (e) { console.error('[LIGHT] kikooz ranking error:', e.message); }
@@ -32799,7 +32857,7 @@ app.get('/api/light/challenge', async (req, res) => {
       const s = rlist && rlist.bandas_champion;
       if (!s || !Number.isFinite(Number(s.score))) continue;
       bd.push({ u, s: Number(s.score), at: s.updatedAt || '',
-        label: Number(s.score).toLocaleString('fr-FR') });
+        label: FPI18n.nombre(L, s.score) });
     }
     bd.sort(scoreComparator('bandas_champion'));
     games.push(permanent('bandas_champion',
@@ -32813,7 +32871,7 @@ app.get('/api/light/challenge', async (req, res) => {
       const s = rlist && rlist.snake3_battle;
       if (!s || !Number.isFinite(Number(s.score))) continue;
       sn.push({ u, s: Number(s.score), at: s.updatedAt || '',
-        label: Number(s.score).toLocaleString('fr-FR') });
+        label: FPI18n.nombre(L, s.score) });
     }
     sn.sort(scoreComparator('snake3_battle'));
     if (!CHAMPIONNATS_MASQUES.has('snake3_battle')) games.push(permanent('snake3_battle',
@@ -32826,7 +32884,7 @@ app.get('/api/light/challenge', async (req, res) => {
       const s = rlist && rlist.grapiz_champion;
       if (!s || !Number.isFinite(Number(s.score))) continue;
       gz.push({ u, s: Number(s.score), at: s.updatedAt || '',
-        label: Number(s.score).toLocaleString('fr-FR') });
+        label: FPI18n.nombre(L, s.score) });
     }
     gz.sort(scoreComparator('grapiz_champion'));
     games.push(permanent('grapiz_champion',
@@ -32843,7 +32901,7 @@ app.get('/api/light/challenge', async (req, res) => {
         const s = rlist && rlist.snake3_tournoi;
         if (!s || !Number.isFinite(Number(s.score))) continue;
         tt.push({ u, s: Number(s.score), at: s.updatedAt || '',
-          label: Number(s.score).toLocaleString('fr-FR') });
+          label: FPI18n.nombre(L, s.score) });
       }
       tt.sort(scoreComparator('snake3_tournoi'));
       games.push(permanent('snake3_tournoi',
@@ -32871,10 +32929,10 @@ app.get('/api/light/challenge', async (req, res) => {
     // « niveau 95 » et perdait la seconde moitié. Le TRI reste sur l'XP — deux
     // joueurs de niveau 13 ne sont pas à égalité.
     const xp = [...fusion.entries()].map(([u, s]) => ({
-      u, s, label: displayScoreType(s, 'xp'),
+      u, s, label: displayScoreType(s, 'xp', L),
     }));
     xp.sort((a, b) => b.s - a.s || a.u.localeCompare(b.u));
-    games.push(permanent('_xp', 'Classement XP', 'xp', xp));
+    games.push(permanent('_xp', t(L, 'classements.onglet.xp', 'Classement XP'), 'xp', xp));
   } catch (e) { console.error('[LIGHT] xp ranking error:', e.message); }
   try {
     // La consécration : `displayScoreType(v, 'rate')` — deux décimales au plus
@@ -32882,7 +32940,7 @@ app.get('/api/light/challenge', async (req, res) => {
     // décimales du calcul et une espace de trop.
     const cons = (await getConsecrationLeaderboard())
       .map((e) => ({ u: e.u, s: e.s, label: displayScoreType(e.s, 'rate') }));
-    games.push(permanent('_rate', 'Class. consécration', 'consecration', cons));
+    games.push(permanent('_rate', t(L, 'classements.onglet.consecration', 'Class. consécration'), 'consecration', cons));
   } catch (e) { console.error('[LIGHT] consecration ranking error:', e.message); }
 
   // LES MÉDAILLÉS DU MOIS : qui a ramassé le plus de médailles du Challenge
@@ -33858,13 +33916,20 @@ function tablePays() {
 // Les deux lignes « Pays » et « Région » de l'onglet perso. À défaut d'index
 // résolvable, on montre le texte libre de la colonne `region` plutôt qu'un
 // blanc — une fiche à moitié vide est pire qu'une fiche approximative.
-function nomsPaysRegion(ud) {
+// Le nom d'un PAYS dans une langue (`profil.pays.<index>`, i18n-serveur/en/
+// profil.js) ; les régions gardent leur nom (des noms de lieux, déjà dans la
+// langue du pays), le nom du découpage se traduit (« département »).
+function nomDePays(code, nomFr, lang) {
+  return !lang || lang === 'fr' ? nomFr : FPI18n.traduire(lang, 'profil.pays.' + code, nomFr);
+}
+function nomsPaysRegion(ud, lang) {
   const t = tablePays();
-  const pays = t[String((ud && ud.countryIndex) || '')] || null;
+  const code = String((ud && ud.countryIndex) || '');
+  const pays = t[code] || null;
   const cible = String((ud && ud.regionIndex) || '');
   const region = pays && (pays.regions.find((r) => r.code === cible) || null);
   return {
-    pays: (pays && pays.nom) || '',
+    pays: (pays && nomDePays(code, pays.nom, lang)) || '',
     region: (region && region.nom) || (ud && ud.region) || '',
   };
 }
@@ -34112,6 +34177,7 @@ app.get('/api/light/profil', (req, res) => {
   if (!username || !users[username]) return res.status(401).json({ ok: false, error: 'auth' });
   const u = users[username];
   const t = tablePays();
+  const L = langueDeRequete(req);
   res.setHeader('Cache-Control', 'no-store');
   res.json({
     ok: true,
@@ -34127,11 +34193,12 @@ app.get('/api/light/profil', (req, res) => {
     accMaisonId: u.accMaisonId || accMaisonEquip[username.toLowerCase()] || '',
     accMaison: Object.values(accessoiresMaison).map((a) => ({ id: a.id, name: a.name })),
     pays: Object.keys(t).map((c) => ({
-      code: c, nom: t[c].nom,
+      code: c, nom: nomDePays(c, t[c].nom, L),
       // Le NOM du découpage (« département ») et le drapeau qui décide de
       // préfixer chaque région de son code : la recherche avancée du bureau
       // s'en sert pour titrer et libeller son menu, comme box.onCountryChange.
-      nomRegion: t[c].nomRegion || '',
+      nomRegion: L === 'fr' || !t[c].nomRegion ? (t[c].nomRegion || '')
+        : FPI18n.traduire(L, 'profil.decoupage.' + t[c].nomRegion, t[c].nomRegion),
       afficherCode: !!t[c].afficherCode,
       regions: t[c].regions.map((r) => ({ code: r.code, nom: r.nom })),
     })),
@@ -34223,7 +34290,9 @@ app.get('/api/light/fiche', async (req, res) => {
     jeuxVus.add(m.game);
     medailles.push({
       jeu: GAME_DISPLAY_NAMES[m.game] || m.game,
-      medaille: MEDAL_DISPLAY_NAMES[m.medal] || m.medal,
+      // « d'or » en français, « gold » en anglais : la phrase du client
+      // (light.ficheMedaille…) place le mot.
+      medaille: texteDe(langueDeRequete(req), nomDeMedaille(m.medal)),
       rang: m.rank,
       jour: m.awarded_day,
       // De quoi retrouver la VIGNETTE : le bureau la tire d'awards.swf avec
@@ -34235,8 +34304,10 @@ app.get('/api/light/fiche', async (req, res) => {
     });
   }
 
+  // `nom` nomme aussi l'image (/fb/signe_<nom>.png) : il reste français ;
+  // `libelle` le dit dans la langue du lecteur (nomDeFrutisigne).
   const signe = (n) => (Number.isFinite(Number(n)) && n >= 0 && n < SIGNES_FRUITS.length
-    ? { index: Number(n), nom: SIGNES_FRUITS[n] } : null);
+    ? { index: Number(n), nom: SIGNES_FRUITS[n], libelle: texteDe(langueDeRequete(req), nomDeFrutisigne(Number(n))) } : null);
 
   res.setHeader('Cache-Control', 'no-store');
   const moi = users[demandeur] || {};
@@ -34254,7 +34325,7 @@ app.get('/api/light/fiche', async (req, res) => {
   // n'y a pas de partie : `UserSlot.display` (0xc8241) essaie `internal`,
   // puis `external`, et ne retombe sur la présence qu'à défaut des deux.
   const absence = enLigne ? statusExternalOf(u) : '';
-  const lieuDit = nomsPaysRegion(ud);
+  const lieuDit = nomsPaysRegion(ud, langueDeRequete(req));
   res.json({
     ok: true,
     pseudo: getDisplayName(u),

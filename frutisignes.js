@@ -1,4 +1,5 @@
 'use strict';
+const FPI18n = require('./public/js/i18n.js');
 /*
  * ══ LES FRUTISIGNES DONNENT DES PARTIES ═════════════════════════════════════
  *
@@ -137,23 +138,30 @@ function bonusDuJour({ pseudo, signe, ascendant, cleJour, jeux }) {
   };
 }
 
-// « à Kaluga et à Frutisnake », « à Kaluga, à Swapou et à Frutisnake ».
-function enumerer(noms) {
-  const l = noms.map((n) => 'à ' + n);
+// « à Kaluga et à Frutisnake », « à Kaluga, à Swapou et à Frutisnake » ; en
+// anglais « Kaluga and Frutisnake » (la préposition est dans la phrase).
+function enumerer(noms, lang) {
+  const fr = !lang || lang === 'fr';
+  const l = fr ? noms.map((n) => 'à ' + n) : noms.slice();
   if (l.length <= 1) return l.join('');
-  return l.slice(0, -1).join(', ') + ' et ' + l[l.length - 1];
+  return l.slice(0, -1).join(', ') + FPI18n.traduire(lang || 'fr', 'frutisigne.bonus.et', ' et ') + l[l.length - 1];
 }
 
-// Le mot du jour, sobre. `libelle(jeu)` donne le nom affiché d'un jeu.
-function phraseDuBonus(bonus, libelle) {
+// Le mot du jour, sobre. `libelle(jeu)` donne le nom affiché d'un jeu ;
+// `lang`, la langue du joueur (le français par défaut — clés
+// `frutisigne.bonus.*`, i18n-serveur/en/frutisigne.js).
+function phraseDuBonus(bonus, libelle, lang) {
   if (!bonus || !bonus.jeux || !bonus.jeux.length) return '';
+  const L = lang || 'fr';
   const nom = typeof libelle === 'function' ? libelle : (j) => j;
   const noms = bonus.jeux.map(nom);
-  const debut = bonus.semaine && bonus.ascendant ? 'C\'est ta semaine, et le jour de ton ascendant !'
-    : bonus.semaine ? 'C\'est ta semaine !' : 'C\'est le jour de ton ascendant !';
+  const debut = bonus.semaine && bonus.ascendant ? FPI18n.traduire(L, 'frutisigne.bonus.semaineEtAscendant', 'C\'est ta semaine, et le jour de ton ascendant !')
+    : bonus.semaine ? FPI18n.traduire(L, 'frutisigne.bonus.semaine', 'C\'est ta semaine !')
+      : FPI18n.traduire(L, 'frutisigne.bonus.ascendant', 'C\'est le jour de ton ascendant !');
   // Une partie de plus À CHAQUE jeu nommé : le tirage ne donne jamais deux
   // parties au même jeu.
-  return `${debut} Le Frutisigne t'offre une partie de plus ${enumerer(noms)} aujourd'hui.`;
+  return FPI18n.traduire(L, 'frutisigne.bonus.phrase', '{debut} Le Frutisigne t\'offre une partie de plus {jeux} aujourd\'hui.',
+    { debut, jeux: enumerer(noms, L) });
 }
 
 module.exports = {
