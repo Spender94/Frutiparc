@@ -30,6 +30,26 @@ const P = (typeof module !== 'undefined' && module.exports)
   ? require('./plateforme.js')
   : window.MiniwavePlateforme;
 
+/*
+ * LES LANGUES. Dans la page, /js/i18n.js est chargé (FPI18n) et l'anglais vit
+ * dans /miniwave/lang/en.js ; sous Node (les tests), il n'y a que le
+ * français, gabarit rempli. Les tableaux du module (RUBRIQUES, SPECIAUX) et
+ * ceux de la plateforme (GRADES, BOUTIQUE) gardent leur français, que les
+ * tests et la fiche relisent : on traduit à l'AFFICHAGE, par l'identifiant.
+ *
+ * Ce qui ne se traduit pas : les noms des missions (levels.json, des jeux de
+ * mots qu'on adaptera plus tard), ceux des vaisseaux (des anagrammes —
+ * aliquet, gapatsa…) et des ennemis, les noms de modes (Arcade, Letter
+ * Invader, Endurance, Challenge).
+ */
+const I18N = (typeof window !== 'undefined' && window.FPI18n) || null;
+function tr(cle, fr, p) {
+  if (I18N) return I18N.T(cle, fr, p);
+  return String(fr).replace(/\{(\w+)\}/g, (m, k) => (p && p[k] != null ? String(p[k]) : m));
+}
+const nomGrade = (g) => (I18N ? I18N.T.table('miniwave.grades', P.GRADES) : P.GRADES)[g];
+const nomArticle = (a) => tr('miniwave.article' + a.id, a.nom);
+
 // ── Les mesures du jeu ────────────────────────────────────────────────────
 const LARGEUR = 240, HAUTEUR = 240;
 const MARGE = 10, MARGE_HAUT = 54;                    // Menu.margin / Menu.marginUp
@@ -111,8 +131,8 @@ function entrees(carte, niveaux) {
     arcade: [{
       id: 'arcade', nom: 'Arcade', ouvert: true,
       detail: (carte.$arcade.$bestLevel > 0)
-        ? ('meilleur : niveau ' + carte.$arcade.$bestLevel + ' · ' + carte.$arcade.$bestScore + ' pts')
-        : 'jamais joué',
+        ? tr('miniwave.meilleur', 'meilleur : niveau {niveau} · {score} pts', { niveau: carte.$arcade.$bestLevel, score: carte.$arcade.$bestScore })
+        : tr('miniwave.jamaisJoue', 'jamais joué'),
       lancement: {
         mode: 'arcade', niveaux: niveaux.main[0].levels,
         vies: niveaux.main[0].ship, nom: 'Arcade',
@@ -124,17 +144,17 @@ function entrees(carte, niveaux) {
       id: 'mission' + i, nom: p.name, ouvert: !!ouverts.missions[i],
       pourcent: carte.$cons.$bonus[i],
       detail: (carte.$cons.$bonus[i] > 0)
-        ? (carte.$cons.$bonus[i] + ' % · prime ' + p.prime + ' ¤')
-        : ('prime ' + p.prime + ' ¤'),
-      pourAcheter: 'À acheter au stand.',
+        ? tr('miniwave.missionDetail', '{pourcent} % · prime {prime} ¤', { pourcent: carte.$cons.$bonus[i], prime: p.prime })
+        : tr('miniwave.prime', 'prime {prime} ¤', { prime: p.prime }),
+      pourAcheter: tr('miniwave.aAcheter', 'À acheter au stand.'),
       lancement: {
         mode: 'mission', niveaux: p.levels, vies: p.ship,
         missionNum: i, prime: p.prime, nom: p.name,
       },
     })),
     special: SPECIAUX.map((s) => ({
-      id: s.id, nom: s.nom, ouvert: !!ouverts[s.id], detail: s.desc, index: s.index,
-      pourAcheter: 'À acheter au stand.',
+      id: s.id, nom: s.nom, ouvert: !!ouverts[s.id], detail: tr('miniwave.special.' + s.id, s.desc), index: s.index,
+      pourAcheter: tr('miniwave.aAcheter', 'À acheter au stand.'),
       lancement: (s.id === 'letter')
         ? { mode: 'letter', niveaux: niveaux.letter[0].levels, vies: 1, nom: s.nom }
         : { mode: 'survival', niveaux: [], vies: 1, nom: s.nom },
@@ -157,12 +177,12 @@ function rayon(carte) {
   return P.BOUTIQUE.map((a) => {
     const d = a.debloque;
     let ouvre = '';
-    if (d.ship !== undefined) ouvre = 'vaisseau ' + P.VAISSEAUX[d.ship];
+    if (d.ship !== undefined) ouvre = tr('miniwave.ouvreVaisseau', 'vaisseau {nom}', { nom: P.VAISSEAUX[d.ship] });
     else if (d.mission !== undefined) ouvre = 'mission ' + (d.mission + 1);
     else if (d.special !== undefined) ouvre = (d.special === 0 ? 'Letter Invader' : 'Endurance');
     else if (d.picto) ouvre = 'picto Frutiparc';
     return {
-      id: a.id, nom: a.nom, prix: a.prix, ouvre, ico: a.id + 1,
+      id: a.id, nom: nomArticle(a), prix: a.prix, ouvre, ico: a.id + 1,
       achete: P.estAchete(carte, a.id),
       abordable: carte.$credit >= a.prix,
     };
@@ -332,7 +352,7 @@ class Interface {
       this.boite({
         // box/Menu : cent sur vingt, toujours.
         gx: 0, gy: y[i], gw: 100, gh: 20, attente: i * 8,
-        texte: r.nom, action: { rubrique: r.id }, rubrique: i,
+        texte: tr('miniwave.rubrique.' + r.id, r.nom), action: { rubrique: r.id }, rubrique: i,
       });
     });
     // box/InfoMain : le panneau de droite. Il s'ouvre sur « bienvenue » et suit
@@ -348,7 +368,7 @@ class Interface {
     const g = (this.plateforme && this.plateforme.promouvoir) ? this.plateforme.promouvoir() : 0;
     if (g) {
       this.surSon('achat');
-      this.dire('Félicitation, votre nouveau grade est : ' + P.GRADES[g]);
+      this.dire(tr('miniwave.nouveauGrade', 'Félicitation, votre nouveau grade est : {grade}', { grade: nomGrade(g) }));
     }
   }
 
@@ -359,18 +379,21 @@ class Interface {
   infoContenu() {
     if (this.infoPage > 0) {
       const r = RUBRIQUES[this.infoPage - 1];
-      return r ? { titre: r.titre, texte: r.desc, illus: r.illus } : null;
+      return r ? {
+        titre: tr('miniwave.titre.' + r.id, r.titre), texte: tr('miniwave.desc.' + r.id, r.desc), illus: r.illus,
+      } : null;
     }
     const c = this.carte;
     const h = new Date().getHours();
-    const bonjour = (h > 5 && h < 16) ? 'Bonjour ' : 'Bonsoir ';
     // Le jeu affiche `grade + " " + client.getUser()`. Sans nom de joueur, le
     // SWF écrivait « Chef d'escadre undefined » — on s'arrête au grade.
     const nom = this.plateforme && this.plateforme.pseudo;
+    const p = { grade: nomGrade(P.grade(c)), nom: nom ? ' ' + nom : '' };
     return {
-      titre: 'bienvenue', illus: 1,
-      texte: bonjour + P.GRADES[P.grade(c)] + (nom ? ' ' + nom : '')
-        + ', choisissez votre section.',
+      titre: tr('miniwave.bienvenue', 'bienvenue'), illus: 1,
+      texte: (h > 5 && h < 16)
+        ? tr('miniwave.bonjour', 'Bonjour {grade}{nom}, choisissez votre section.', p)
+        : tr('miniwave.bonsoir', 'Bonsoir {grade}{nom}, choisissez votre section.', p),
     };
   }
 
@@ -406,7 +429,7 @@ class Interface {
         gx: 0, gy: (h + m) * i, gw: PAGE_L, gh: h, attente: 8 * i,
         verrou: !(s && s.ouvert), vignette: i + 1,
         action: (s && s.ouvert) ? { lancer: s.lancement }
-          : { refus: s ? s.pourAcheter : 'Ce mode n\'a jamais vu le jour.' },
+          : { refus: s ? s.pourAcheter : tr('miniwave.jamaisVuLeJour', 'Ce mode n\'a jamais vu le jour.') },
       });
     }
   }
@@ -462,8 +485,10 @@ class Interface {
         this.boite({
           gx: x * (w + m), gy: y * (h + m), gw: w, gh: h, attente: n * 3,
           article: a, verrou: a.achete,
-          action: a.achete ? { refus: 'Déjà acquis.' } : { acheter: a.id },
-          info: a.nom + ' — ' + a.ouvre + (a.achete ? ' (acquis)' : ' — ' + a.prix + ' ¤'),
+          action: a.achete ? { refus: tr('miniwave.dejaAcquis', 'Déjà acquis.') } : { acheter: a.id },
+          info: a.achete
+            ? tr('miniwave.infoAcquis', '{nom} — {ouvre} (acquis)', { nom: a.nom, ouvre: a.ouvre })
+            : tr('miniwave.infoPrix', '{nom} — {ouvre} — {prix} ¤', { nom: a.nom, ouvre: a.ouvre, prix: a.prix }),
         });
       }
     }
@@ -538,7 +563,7 @@ class Interface {
       // pourquoi quand elle n'est pas là.
       if (this.surChallenge) return this.surChallenge();
       this.surSon('refus');
-      return this.dire('La map du jour n\'est pas disponible.');
+      return this.dire(tr('miniwave.mapIndisponible', 'La map du jour n\'est pas disponible.'));
     }
     if (id === 'stand') return this.ouvrir('stand');
   }
@@ -564,7 +589,7 @@ class Interface {
     // ne compte donc jamais deux fois le même vaisseau, hormis l'aliquet.
     if (n !== 0 && e.choix.indexOf(n) >= 0) {
       this.surSon('refus');
-      this.dire('Un seul ' + (P.VAISSEAUX[n] || 'vaisseau') + ' par escadron !');
+      this.dire(tr('miniwave.unSeul', 'Un seul {vaisseau} par escadron !', { vaisseau: P.VAISSEAUX[n] || tr('miniwave.vaisseau', 'vaisseau') }));
       return;
     }
     e.choix.push(n);
@@ -584,11 +609,11 @@ class Interface {
     this.plateforme.acheter(id).then((r) => {
       if (!r.ok) {
         this.surSon('refus');
-        this.dire(r.raison === 'credit' ? ('Il manque ' + r.manque + ' ¤') : 'Déjà acquis.');
+        this.dire(r.raison === 'credit' ? tr('miniwave.ilManque', 'Il manque {manque} ¤', { manque: r.manque }) : tr('miniwave.dejaAcquis', 'Déjà acquis.'));
         return;
       }
       this.surSon('achat');
-      this.dire(r.article.nom + ' acheté !');
+      this.dire(tr('miniwave.achete', '{nom} acheté !', { nom: nomArticle(r.article) }));
       this.poserPage('stand');
     });
   }
@@ -753,7 +778,7 @@ class Interface {
       // (10 à 12) gardent leur taille d'origine, les autres remplissent la case.
       const a = b.article;
       ctx.font = '14px Jawbreaker, Verdana, sans-serif';
-      ctx.fillText(a.achete ? 'acquis' : String(a.prix), b.x + b.w / 2, b.y + 8);
+      ctx.fillText(a.achete ? tr('miniwave.acquis', 'acquis') : String(a.prix), b.x + b.w / 2, b.y + 8);
       const sp = this.sprites.shopIco;
       const etat = sp && sp.etats.find((e) => e.frame === a.ico);
       if (etat) {
@@ -809,7 +834,7 @@ class Interface {
         ctx.fillText(P.VAISSEAUX[v] || '', b.x + b.w / 2, b.y + b.h / 2 + 0.5);
       } else {
         ctx.font = '10px VerdanaPix, Verdana, sans-serif';
-        ctx.fillText('escadron selection', b.x + b.w / 2, b.y + b.h / 2 + 0.5);
+        ctx.fillText(tr('miniwave.selectionEscadron', 'escadron selection'), b.x + b.w / 2, b.y + b.h / 2 + 0.5);
       }
       return;
     }
