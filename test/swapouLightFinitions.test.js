@@ -48,7 +48,7 @@ test('le pack montre SES DEUX cadrans : les coups et l’étoile', () => {
   // La valeur ne se calcule pas : `Challenge.star_counter` DÉCOMPTE déjà les
   // fruits qui restent avant la prochaine étoile (cf. genFruitFlags).
   assert.match(JEU, /const e = \(this\.game && this\.game\.star_counter\) \|\| 0;/);
-  assert.match(JEU, /U\.text\(ctx, 'ÉTOILE', 88, 22 \+ ETOILE_DY,/);
+  assert.match(JEU, /U\.text\(ctx, tr\('swapou\.etoile', 'ÉTOILE'\), 88, 22 \+ ETOILE_DY,/);
   assert.match(JEU, /--this\.star_counter === 0/, 'le compteur d’époque, inchangé');
   // Le mode Classique n'a ni pouvoir ni étoile : le cadran s'y efface.
   assert.match(JEU, /etoilesEnabled = function \(\) \{\s*\n\s*return this\.movesEnabled\(\) && !\(this\.classicModeOn \|\| this\.classic\);/);

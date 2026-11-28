@@ -613,9 +613,12 @@ test('au doigt, sur un téléphone, « Rejouer » ferme le panneau dans les cinq
 
 // ── LES PAGES ───────────────────────────────────────────────────────────────
 
+// (une page traduite glisse entre les deux le module des langues et son
+// FPI18n.charger — docs/I18N.md, « Les jeux » : le panneau lit FPI18n.langue)
 test('les cinq pages chargent invite.js juste après sid-discret.js, avant tout autre script', () => {
+  const ORDRE = /<script src="\/js\/sid-discret\.js"><\/script>\n(<script src="\/js\/i18n\.js"><\/script>\n<script>FPI18n\.charger\(\[[^\]<]*\]\);<\/script>\n)?<script src="\/js\/invite\.js"><\/script>/;
   for (const jeu of ['swapou', 'snake3', 'kaluga', 'bkiwi', 'minifever']) {
     const html = fs.readFileSync(path.join(ROOT, 'public', jeu, 'index.html'), 'utf8');
-    assert.ok(html.includes('<script src="/js/sid-discret.js"></script>\n<script src="/js/invite.js"></script>'), jeu);
+    assert.match(html, ORDRE, jeu);
   }
 });

@@ -110,6 +110,14 @@ const SwapouAssets = (function () {
   let loadedCount = 0, totalCount = 0;
 
   function loadImages(onProgress) {
+    // Le logo sans son sous-titre gravé : seulement quand la langue de la
+    // page traduit ce sous-titre (le Menu l'écrit alors lui-même, cf.
+    // dessinerLogoTraduit dans screens.js). Un joueur francophone ne le
+    // télécharge pas.
+    try {
+      if (typeof T === 'function' && T('swapou.logo.sousTitre1', ''))
+        MANIFEST.logoSansSousTitre = '/swapou/ui/logo-sans-sous-titre.png';
+    } catch (e) { /* pas de module des langues : le logo d'origine */ }
     const names = Object.keys(MANIFEST);
     totalCount = names.length;
     return Promise.all(names.map(function (name) {
