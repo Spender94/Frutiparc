@@ -332,11 +332,14 @@ test('un refus s\'écrit au journal, et la page dit au joueur ce qu\'il advient 
   assert.equal(moindre.record, pb.niveau * 20, 'le record du jour, pour le dire au joueur');
   // La page : chaque issue a sa phrase, et un serveur injoignable se réessaie.
   const page = fs.readFileSync(path.join(ROOT, 'public/minifever/index.html'), 'utf8');
-  assert.match(page, /dire\('score NON enregistré : ' \+ \(MOTIFS\[r\.error\] \|\| MOTIFS\.reseau\)\)/);
-  assert.match(page, /session: 'ta session a expiré — reconnecte-toi, puis rejoue'/);
-  assert.match(page, /dire\('connecte-toi pour enregistrer tes scores'\)/);
-  assert.match(page, /dire\('aucune épreuve remportée : rien à classer'\)/);
-  assert.match(page, /' — ton meilleur du jour reste ' \+ r\.record/);
+  // Les phrases passent par T() (version anglaise) : le français reste écrit
+  // en repli, c'est lui qu'on relit ici.
+  assert.match(page, /T\('minifever\.nonEnregistre', 'score NON enregistré : \{motif\}', \{ motif \}\)/);
+  assert.match(page, /dire\(nonEnregistre\(MOTIFS\[r\.error\] \|\| MOTIFS\.reseau\)\)/);
+  assert.match(page, /session: T\('minifever\.motifSession', 'ta session a expiré — reconnecte-toi, puis rejoue'\)/);
+  assert.match(page, /dire\(T\('minifever\.connecteToi', 'connecte-toi pour enregistrer tes scores'\)\)/);
+  assert.match(page, /dire\(T\('minifever\.rienAClasser', 'aucune épreuve remportée : rien à classer'\)\)/);
+  assert.match(page, /' — ton meilleur du jour reste \{record\} : le classement garde le meilleur', \{ record: r\.record \}/);
   assert.match(page, /const ENVOI_ESSAIS = 12;/);
   assert.match(page, /if \(r\.error === 'reseau' && essais < ENVOI_ESSAIS\) \{[\s\S]*?setTimeout\(envoyer, ENVOI_DELAI\);/);
   assert.match(page, /\(hors classement\) — cliquer pour rejouer/, 'le fever dit qu\'il ne classe pas');

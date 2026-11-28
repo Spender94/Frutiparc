@@ -146,7 +146,9 @@ test('dans Chromium, sur le site : état caché, piège et touche simulée signa
     await q.close();
 
     // ── Mini-Fever : un appui fabriqué sur la scène.
-    const f = await navigateur.newPage({ viewport: { width: 600, height: 700 } });
+    // En français : l'attente qui suit guette le mot « chargement », et le
+    // Chromium des tests est américain (la page s'ouvrirait en anglais).
+    const f = await navigateur.newPage({ viewport: { width: 600, height: 700 }, locale: 'fr-FR' });
     await f.goto(`http://jeu.test:${PORT}/minifever/index.html?sid=${sid}`);
     await f.waitForFunction(() => window.GardeEntrees && document.querySelector('#etat') && !/chargement/.test(document.querySelector('#etat').textContent), null, { timeout: 20000 });
     await f.evaluate(() => {
