@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-184.95 -151.15 380.95 71.2" width="380.95" height="71.2">
+<g transform="matrix(1,0,0,1,0,0)">
+  <defs>
+    <linearGradient id="f1_g1" gradientUnits="userSpaceOnUse" x1="-16384" y1="0" x2="16384" y2="0" spreadMethod="pad" gradientTransform="matrix(0,0.00131,-0.00872,0,0.55,-123)"><stop offset="0" stop-color="#ac0202"/><stop offset="1" stop-color="#fe8b8b"/></linearGradient>
+    <linearGradient id="f1_g2" gradientUnits="userSpaceOnUse" x1="-16384" y1="0" x2="16384" y2="0" spreadMethod="pad" gradientTransform="matrix(0,0.00071,-0.0086,0,0.45,-116.25)"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#fe7474"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></linearGradient>
+  </defs>
+  <path d="M138.6 -126.2L185.05 -126.2L188.15 -125.75L188.25 -125.75Q190.6 -124.95 192.4 -123.3L192.8 -122.85Q196 -119.6 196 -115.2L196 -107.7L140.15 -107.7L140.15 -118.15Q140.1 -122.55 138.6 -126.2ZM-145.75 -107.7L-184.95 -107.7L-184.95 -115.1Q-184.85 -119.65 -181.7 -122.9L-181.65 -122.9L-181.65 -122.95Q-178.45 -126.1 -173.95 -126.2L-149.15 -126.2L-149.4 -122.25Q-149.35 -114.2 -145.75 -107.7ZM-126.15 -126.2L-115.65 -126.2Q-118 -121.55 -118 -115.7L-117.95 -114.5L-119.15 -114.55Q-122.6 -114.55 -124.8 -116.7L-125 -116.85Q-127.15 -119.15 -127.15 -122.25Q-127.2 -124.5 -126.15 -126.2Z" fill="#ffffff" fill-rule="evenodd"/><rect x="-172" y="-126.4" width="356" height="18.55" fill="#ffffff"/>
+  
+  
+  
+  
+
+</g>
+</svg>
