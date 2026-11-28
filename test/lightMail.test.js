@@ -220,7 +220,7 @@ test('le client mobile sait lister, lire, écrire et signaler', () => {
   const html = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
 
   // Le raccourci « Messagerie » de l'accueil ouvre bien la rubrique.
-  assert.match(html, /file: "Mail",\s+name: "Messagerie", go: "mail"/,
+  assert.match(html, /file: "Mail",\s+name: T\("light\.messagerie", "Messagerie"\), go: "mail"/,
     'le raccourci de l\'encart niveau est branché');
   assert.match(html, /tab === "mail"/, 'le panneau est piloté par activateTab');
 

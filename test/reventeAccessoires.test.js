@@ -447,16 +447,16 @@ test('le double-clic, la popin et l’admin sont branchés dans les pages', () =
   assert.doesNotMatch(LIGHT, /bo-revente/);
   // La question, dans la popin d'époque, Oui à droite, Non à gauche.
   const p = /function revendreAccessoire\(ac\) \{[\s\S]*?\n  \}/.exec(LIGHT)[0];
-  assert.match(p, /message: 'Voulez-vous vendre "' \+ xmlEscape\(nom\) \+ '" pour ' \+ \(Number\(o\.prix\) \|\| 0\) \+ ' kikooz \?',/);
-  assert.match(p, /okLabel: "Oui",\s*\n\s*cancelLabel: "Non",/);
+  assert.match(p, /message: T\("light\.confirmerVente", 'Voulez-vous vendre "\{nom\}" pour \{prix\} kikooz \?', \{ nom: xmlEscape\(nom\), prix: Number\(o\.prix\) \|\| 0 \}\),/);
+  assert.match(p, /okLabel: T\("light\.oui", "Oui"\),\s*\n\s*cancelLabel: T\("light\.non", "Non"\),/);
   assert.match(p, /"\/api\/light\/shop\/revente\?sid="/);
   assert.match(p, /fetch\("\/api\/light\/shop\/vendre", \{/);
   // Le premier clic du double-clic vient peut-être de POSER l'accessoire : on
   // se découvre aussi côté client, sans attendre que le serveur l'ait vu.
   assert.match(p, /if \(d\.bouille \|\| accSel\.suffix === ac\.suffix\) \{/);
   // La fiche de la boutique garde la phrase d'époque, et la signature.
-  assert.match(LIGHT, /\(achetable \? 'Prix : ' \+ prix \+ ' kikooz' : 'Vous possédez déjà ce produit'\)/);
-  assert.match(LIGHT, /'<div class="bo-auteur">Dessiné par ' \+ xmlEscape\(it\.auteur\) \+ '<\/div>'/);
+  assert.match(LIGHT, /\(achetable \? T\("light\.boPrix", "Prix : \{prix\} kikooz", \{ prix: prix \}\) : T\("light\.boDejaPossede", "Vous possédez déjà ce produit"\)\)/);
+  assert.match(LIGHT, /'<div class="bo-auteur">' \+ T\("light\.boDessinePar", "Dessiné par \{auteur\}", \{ auteur: xmlEscape\(it\.auteur\) \}\) \+ '<\/div>'/);
   // L'admin : l'auteur d'un article et d'une variante, le remplacement, la purge.
   assert.match(ADMIN, /<input id="pack-auteur"/);
   assert.match(ADMIN, /auteur: \$\('#pack-auteur'\)\.value\.trim\(\),/);

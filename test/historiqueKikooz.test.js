@@ -106,7 +106,7 @@ test('les numéros d’image sont ceux de onLog', () => {
 test('le libellé du vide est celui de la table', () => {
   const m = /langText\.kikooz_log\.empty = "([^"]*)"/.exec(LANG);
   assert.ok(m, 'kikooz_log.empty doit exister');
-  const nous = /vide: "([^"]*)",\n    \},\n  \};/.exec(LIGHT);
+  const nous = /vide: T\("light\.histoKikoozVide", "([^"]*)"\),\n    \},\n  \};/.exec(LIGHT);
   assert.ok(nous, 'le libellé du vide du journal kikooz doit exister');
   assert.strictEqual(sansAccents(nous[1]), sansAccents(m[1]));
 });
@@ -184,7 +184,7 @@ test('le parrain reçoit un nœud <g> qui NOMME son filleul', () => {
 test('le troisième journal est déclaré comme les deux autres', () => {
   const f = /kikoozlog: \{[\s\S]*?\n    \},/.exec(LIGHT);
   assert.ok(f, 'JOURNAUX.kikoozlog doit exister');
-  assert.match(f[0], /titre: "Historique Kikooz", route: "kikooz", raccourci: null/);
+  assert.match(f[0], /titre: T\("light\.histoKikooz", "Historique Kikooz"\), route: "kikooz", raccourci: null/);
   // Le repli est l'image 1 de la bande, pas celle d'un autre journal.
   assert.match(f[0], /repli: "kikooz_kcall"/);
   assert.match(LIGHT, /kikoozlog:  \{ nonLus: 0, liste: \[\], charge: false, page: 0 \}/);

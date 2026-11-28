@@ -79,8 +79,8 @@ test('l’achat en boutique dit ce que dit `shop.confirm_buy`', () => {
        « Êtes-vous sûr de vouloir acheter "$n" pour $p kikooz ? »
      Des guillemets droits autour du nom, et RIEN en gras — le portage mettait
      le nom en vert et le prix en gras. */
-  assert.match(LIGHT, /message: 'Êtes-vous sûr de vouloir acheter "' \+ xmlEscape\(it\.name\)\s*\n\s*\+ '" pour ' \+ \(Number\(it\.price\) \|\| 0\) \+ ' kikooz \?',/);
-  assert.match(LIGHT, /okLabel: "Acheter",\s*\n\s*cancelLabel: "Annuler",/);
+  assert.match(LIGHT, /message: T\("light\.boConfirmerAchat", 'Êtes-vous sûr de vouloir acheter "\{nom\}" pour \{prix\} kikooz \?',\s*\n\s*\{ nom: xmlEscape\(it\.name\), prix: Number\(it\.price\) \|\| 0 \}\),/);
+  assert.match(LIGHT, /okLabel: T\("light\.acheter", "Acheter"\),\s*\n\s*cancelLabel: T\("light\.annuler", "Annuler"\),/);
   assert.ok(!/« <strong>" \+ xmlEscape\(it\.name\)/.test(LIGHT), 'plus de nom en gras vert');
 });
 

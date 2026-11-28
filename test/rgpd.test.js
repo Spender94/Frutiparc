@@ -179,7 +179,7 @@ test('sans date de naissance, les clients n’affichent pas « 0 ans »', () => 
   assert.match(bureau, /\(i\.age \? i\.age \+ ' ans, ' : ''\)/);
   // Le light, lui, ne montrait déjà l'âge que s'il en avait un.
   const light = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
-  assert.match(light, /if \(d\.basic\.age !== null && d\.basic\.age !== undefined\) meta = d\.basic\.age \+ " ans";/);
+  assert.match(light, /if \(d\.basic\.age !== null && d\.basic\.age !== undefined\) meta = T\.n\("light\.ficheAge", d\.basic\.age, \{ one: "\{n\} ans", other: "\{n\} ans" \}\);/);
 });
 
 test('les trames de présence ne portent plus la date de naissance', () => {
@@ -358,7 +358,7 @@ test('la politique nomme le responsable, les tiers, les durées et la CNIL', asy
 
 test('les réglages de l’appli offrent l’export et la suppression', () => {
   const light = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
-  assert.match(light, /<div class="reg-titre">Mes données<\/div>/);
+  assert.match(light, /<div class="reg-titre" data-i18n="light\.donneesTitre">Mes données<\/div>/);
   assert.match(light, /id="reg-export-btn"/);
   assert.match(light, /id="reg-suppr-btn"/);
   assert.match(light, /window\.location\.href = "\/api\/light\/mes-donnees\?sid=" \+ encodeURIComponent\(state\.sid\);/);
@@ -367,4 +367,6 @@ test('les réglages de l’appli offrent l’export et la suppression', () => {
   // annonce. Le jeton d'appareil qui les accompagne n'est pas demandé au
   // joueur ; la politique le décrit (lutte contre les multi-comptes).
   assert.match(light, /var body = \{ username: user, password: pass, device_token: jetonAppareil\(\) \};/);
+  // La langue de la page, seule autre donnée envoyée : celle des messages du parc.
+  assert.match(light, /body\.lang = FPI18n\.langue;/);
 });

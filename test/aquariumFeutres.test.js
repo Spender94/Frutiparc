@@ -86,5 +86,5 @@ test('le texte ordinaire garde son chemin — l’émote comprise', () => {
   // Ce qui marchait déjà ne doit pas changer : la ligne ordinaire fait entrer
   // son auteur avec l'animation détectée (« mdr », « siffle »…), pas avec
   // « parle » forcé.
-  assert.match(BLOC, /if \(from && !isAdmin && !enRejeu\) showBouilleOverlay\(from, em\.anim, em\.label, salon\);/);
+  assert.match(BLOC, /if \(from && !isAdmin && !enRejeu\) showBouilleOverlay\(from, em\.anim, em\.label && legende\(em\.anim, em\.label\), salon\);/);
 });

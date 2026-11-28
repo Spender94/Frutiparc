@@ -165,7 +165,7 @@ test('light et bureau : /log, /logs, /chatlog, /chatlogs (et /histo) ouvrent les
   assert.match(LIGHT, /function envoyerDansSalon\(salon, texte, inp\) \{[\s\S]*?traiterCommande\(text, salon\)/);
   assert.match(LIGHT, /envoyerDansSalon\(c\.salon, inp \? inp\.value : "", inp\);/);
   // Le lien « … voir les messages précédents … » ouvre la même fenêtre.
-  assert.match(LIGHT, /systemAction\("", "\.\.\. voir les messages précédents \.\.\.", function \(\) \{\s*ouvrirLogs\(room\);/);
+  assert.match(LIGHT, /systemAction\("", T\("light\.voirMessagesPrecedents", "\.\.\. voir les messages précédents \.\.\."\), function \(\) \{\s*ouvrirLogs\(room\);/);
 });
 
 test('serveur : /log… répond au seul demandeur par le lien des logs, avant « Commande inconnue »', () => {

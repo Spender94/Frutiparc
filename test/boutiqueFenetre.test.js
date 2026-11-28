@@ -329,11 +329,11 @@ test('un article déjà acquis n\'a pas de bouton, mais la phrase à la place du
   const html = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
   const f = /function renderShopFiche\(\) \{[\s\S]*?\n  \}/.exec(html);
   assert.ok(f, 'renderShopFiche doit exister');
-  assert.match(f[0], /\? '<button type="button" class="bo-acheter" id="bo-acheter">Acheter<\/button>'\s*\n\s*: ''\)/,
+  assert.match(f[0], /\? '<button type="button" class="bo-acheter" id="bo-acheter">' \+ T\("light\.acheter", "Acheter"\) \+ '<\/button>'\s*\n\s*: ''\)/,
     'pas de bouton quand l\'article est déjà là');
   assert.doesNotMatch(f[0], /<button[^>]*bo-acheter[^>]*disabled/,
     'et surtout pas de bouton grisé qui le dirait');
-  assert.match(f[0], /\(achetable \? 'Prix : ' \+ prix \+ ' kikooz' : 'Vous possédez déjà ce produit'\)/,
+  assert.match(f[0], /\(achetable \? T\("light\.boPrix", "Prix : \{prix\} kikooz", \{ prix: prix \}\) : T\("light\.boDejaPossede", "Vous possédez déjà ce produit"\)\)/,
     'la ligne de prix devient la phrase');
 });
 

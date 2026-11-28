@@ -726,6 +726,8 @@ img[src$="/fb/Mail.svg"] { content: url("/fb/Mail-nuit.svg?v=f73aecd4"); filter:
 [style*="/fb/Mail.svg"] { background-image: url("/fb/Mail-nuit.svg?v=f73aecd4") !important; filter: none !important; }
 img[src$="/fb/MailRecu.svg"] { content: url("/fb/MailRecu-nuit.svg?v=1cde3d9c"); filter: none; }
 [style*="/fb/MailRecu.svg"] { background-image: url("/fb/MailRecu-nuit.svg?v=1cde3d9c") !important; filter: none !important; }
+img[src$="/fb/Niveau-en.svg"] { content: url("/fb/Niveau-en-nuit.svg?v=a0c27200"); filter: none; }
+[style*="/fb/Niveau-en.svg"] { background-image: url("/fb/Niveau-en-nuit.svg?v=a0c27200") !important; filter: none !important; }
 img[src$="/fb/Niveau.svg"] { content: url("/fb/Niveau-nuit.svg?v=55242955"); filter: none; }
 [style*="/fb/Niveau.svg"] { background-image: url("/fb/Niveau-nuit.svg?v=55242955") !important; filter: none !important; }
 img[src$="/fb/Warning.svg"] { content: url("/fb/Warning-nuit.svg?v=ca72ef3d"); filter: none; }

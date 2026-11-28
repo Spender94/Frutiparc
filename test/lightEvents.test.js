@@ -258,12 +258,12 @@ test('les événements exigent une session', async () => {
 test('le client mobile affiche, signale et date les événements', () => {
   const html = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
 
-  assert.match(html, /name: "Événements", go: "evenements"/, 'le raccourci est branché');
+  assert.match(html, /name: T\("light\.evenements", "Événements"\), go: "evenements"/, 'le raccourci est branché');
   // Le panneau est piloté par activateTab — depuis l'Historique Kikooz, c'est
   // la table JOURNAUX qui décide (elle en sert trois), plus une liste de noms.
   assert.match(html, /\$\("#evt-panel"\)\.classList\.toggle\("active", !!JOURNAUX\[tab\]\);/,
     'le panneau est piloté par activateTab');
-  assert.match(html, /evenements: \{\n\s+titre: "Événements", route: "events"/,
+  assert.match(html, /evenements: \{\n\s+titre: T\("light\.evenements", "Événements"\), route: "events"/,
     'et « evenements » est bien une de ses clés');
   assert.match(html, /id="evt-liste"/, 'la liste existe');
   assert.match(html, /function renderJournal/, 'le rendu existe');

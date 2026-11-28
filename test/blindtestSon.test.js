@@ -133,7 +133,10 @@ test('les deux clients lancent le lecteur dès l\'arrivée de l\'extrait — si 
   // et le lecteur né sonore au clic restait à l'arrêt (« son bloqué par le
   // navigateur », pour tout le monde).
   for (const [nom, b] of [['mobile', BLOC_LIGHT], ['bureau', BLOC_BUREAU]]) {
-    assert.match(b, /<iframe title="extrait" allow="autoplay \*"/,
+    // (Le titre du cadre du mobile passe par la table des langues.)
+    assert.match(b, nom === 'mobile'
+      ? /<iframe title="' \+ xmlEscape\(T\("light\.btExtrait", "extrait"\)\) \+ '" allow="autoplay \*"/
+      : /<iframe title="extrait" allow="autoplay \*"/,
       nom + ' : la permission de jouer suit le cadre jusqu\'à YouTube');
   }
 });
@@ -146,7 +149,7 @@ test('le bouton suit la parole du lecteur, jamais notre intention', () => {
   assert.match(BLOC_LIGHT,
     /function btSonne\(\) \{ return blindtest\.repond \? \(!blindtest\.muet && \(blindtest\.etat === 1 \|\| blindtest\.etat === 3\)\) : blindtest\.arme; \}/,
     'tant que le lecteur parle, c\'est lui qui décide de l\'étiquette — et il faut qu\'il joue');
-  assert.match(BLOC_LIGHT, /bouton\.textContent = btSonne\(\) \? "Couper" : "Écouter"/,
+  assert.match(BLOC_LIGHT, /bouton\.textContent = btSonne\(\) \? T\("light\.btCouper", "Couper"\) : T\("light\.btEcouter", "Écouter"\)/,
     'et l\'étiquette en découle');
   // Bureau.
   assert.match(BLOC_BUREAU,

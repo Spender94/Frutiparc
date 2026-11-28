@@ -80,7 +80,7 @@ test('les libellés sont ceux de lang_french.as, au mot près', () => {
   // Les chevrons du gabarit tactile tombent.
   assert.match(JS, /if \(ret\) ret\.textContent = 'Retour';/);
   assert.match(JS, /if \(ann\) ann\.textContent = 'Annuler';/);
-  assert.match(LIGHT, /id="mail-retour">‹ Retour<\/button>/, 'le mobile garde son chevron');
+  assert.match(LIGHT, /id="mail-retour" data-i18n="light\.retour">‹ Retour<\/button>/, 'le mobile garde son chevron');
 });
 
 test('les étiquettes portent leurs deux-points, et le A n’a pas d’accent', () => {
@@ -92,7 +92,7 @@ test('les étiquettes portent leurs deux-points, et le A n’a pas d’accent', 
   assert.match(JS, /if \(lblA\) lblA\.textContent = 'A :';/);
   assert.match(JS, /if \(lblS\) lblS\.textContent = 'Sujet :';/);
   // Le mobile garde les siens dans son gabarit.
-  assert.match(LIGHT, /<label for="mail-a">À<\/label>/);
+  assert.match(LIGHT, /<label for="mail-a" data-i18n="light\.mailA">À<\/label>/);
 });
 
 /* ── 3. LA CITATION ───────────────────────────────────────────────────────── */
@@ -120,7 +120,7 @@ test('ecrireMail accepte un corps, et le mobile n’en passe pas', () => {
   assert.match(LIGHT, /function ecrireMail\(dest, sujet, corps\) \{/);
   assert.match(LIGHT, /\$\("#mail-texte"\)\.value = corps \|\| "";/);
   // Les appels du light restent à deux arguments : rien ne change pour lui.
-  assert.match(LIGHT, /ecrireMail\(mailLu\.from \|\| "", \/\^re\\s\*:\/i\.test\(s\) \? s : \("Re : " \+ \(s \|\| "\(sans sujet\)"\)\)\);/);
+  assert.match(LIGHT, /ecrireMail\(mailLu\.from \|\| "", \/\^re\\s\*:\/i\.test\(s\) \? s : T\("light\.mailRe", "Re : \{sujet\}", \{ sujet: s \|\| T\("light\.sansSujet", "\(sans sujet\)"\) \}\)\);/);
 });
 
 /* ── 4. LE BANDEAU SUIT LA VUE ────────────────────────────────────────────── */

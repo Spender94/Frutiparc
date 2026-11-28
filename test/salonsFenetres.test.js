@@ -77,7 +77,7 @@ test('chaque salon a SON fil, et les lignes vont dans le fil de LEUR salon', () 
   const bloc = LIGHT.slice(t, LIGHT.indexOf('case "r":', t));
   // (`mi` : le numéro du message, qui fait taire un rejeu — cf. chatRejeuDoublons.)
   assert.match(bloc, /addEmoteMessage\(\{ from: emWho, time: h, label: emLabel, salon: salon, mi: mi,\s+pen: penColorFor\(attr\(xml, "p"\)\), feutre: attr\(xml, "p"\) \}\);/);
-  assert.match(bloc, /showBouilleOverlay\(from, em\.anim, em\.label, salon\);/);
+  assert.match(bloc, /showBouilleOverlay\(from, em\.anim, em\.label && legende\(em\.anim, em\.label\), salon\);/);
   // (`mentions` a rejoint la ligne avec les @mentions : le corps met en évidence
   // les pseudos que le serveur a reconnus, et le salon reste porté par `salon`.)
   // (`feutre` porte le NUMÉRO du feutre à côté de sa couleur : la nuit peut
@@ -88,7 +88,7 @@ test('chaque salon a SON fil, et les lignes vont dans le fil de LEUR salon', () 
   // propres allées et venues.
   // (Les mots sont ceux de `chat.userjoined`, sans point final — cf.
   // finitionsFenetre.test.js.)
-  assert.match(LIGHT, /if \(rj === state\.room \|\| aSonJournal\(rj\)\) \{[\s\S]*?systemLine\(uj \+ \(estPrive\(rj\) \? " est là\." : " a rejoint le salon"\), rj\);/);
+  assert.match(LIGHT, /if \(rj === state\.room \|\| aSonJournal\(rj\)\) \{[\s\S]*?systemLine\(estPrive\(rj\) \? T\("light\.priveEstLa", "\{nom\} est là\.", \{ nom: uj \}\)\s*\n\s*: T\("light\.salonRejoint", "\{nom\} a rejoint le salon", \{ nom: uj \}\), rj\);/);
   assert.match(LIGHT, /if \(rl === state\.room \|\| aSonJournal\(rl\)\) \{/);
 });
 
@@ -120,7 +120,7 @@ test('une invitation privée ouvre sa fenêtre, mais RANGÉE', () => {
   const bloc = LIGHT.slice(s, LIGHT.indexOf('case "ax":', s));
   assert.match(bloc, /BureauFrutiz\.ouvrirSalonEnFond\(idInvite\);/);
   // Le mobile, lui, garde son message : il ne bascule pas de force.
-  assert.match(bloc, /if \(!dejaLa\) systemLine\(deQui \+ " t'écrit en privé/);
+  assert.match(bloc, /if \(!dejaLa\) systemLine\(T\("light\.tEcritEnPrive", "\{nom\} t'écrit en privé/);
 });
 
 test('chaque fenêtre a SA colonne d’icônes, SES connectés, SA colonne de bouilles', () => {

@@ -369,6 +369,15 @@ input[type=text], input[type=password], input[type=email], input[type=date] {
 .err {
   color: hsl(325 58% 86.7%);
 }
+.lg-langues {
+  color: hsl(256 13% 84.9%);
+}
+.lg-langues button {
+  color: hsl(256 13% 84.6%);
+}
+.lg-langues button[aria-current="true"] {
+  color: hsl(256 13% 84.8%);
+}
 #messages {
   background: hsl(256 30% 25.8%);
   border: 1px solid hsl(256 26% 46.1%);
@@ -1267,6 +1276,9 @@ body:not(.bureau-frutiz) .fiche-page::-webkit-scrollbar-thumb:hover {
 .enc-trophy .val {
   color: hsl(256 13% 84.9%);
   text-shadow: 0 1px 0 hsl(256 26% 36% / 0.6);
+}
+html[lang="en"] img[src$="/fb/Niveau.svg"] {
+  content: url("/fb/Niveau-en-nuit.svg?v=a0c27200");
 }
 .enc-niv .lvl {
   color: hsl(256 13% 84.9%);
@@ -2748,6 +2760,8 @@ img[src$="/fb/Mail.svg"] { content: url("/fb/Mail-nuit.svg?v=f73aecd4"); filter:
 [style*="/fb/Mail.svg"] { background-image: url("/fb/Mail-nuit.svg?v=f73aecd4") !important; filter: none !important; }
 img[src$="/fb/MailRecu.svg"] { content: url("/fb/MailRecu-nuit.svg?v=1cde3d9c"); filter: none; }
 [style*="/fb/MailRecu.svg"] { background-image: url("/fb/MailRecu-nuit.svg?v=1cde3d9c") !important; filter: none !important; }
+img[src$="/fb/Niveau-en.svg"] { content: url("/fb/Niveau-en-nuit.svg?v=a0c27200"); filter: none; }
+[style*="/fb/Niveau-en.svg"] { background-image: url("/fb/Niveau-en-nuit.svg?v=a0c27200") !important; filter: none !important; }
 img[src$="/fb/Niveau.svg"] { content: url("/fb/Niveau-nuit.svg?v=55242955"); filter: none; }
 [style*="/fb/Niveau.svg"] { background-image: url("/fb/Niveau-nuit.svg?v=55242955") !important; filter: none !important; }
 img[src$="/fb/Warning.svg"] { content: url("/fb/Warning-nuit.svg?v=ca72ef3d"); filter: none; }

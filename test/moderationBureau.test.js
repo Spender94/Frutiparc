@@ -159,7 +159,7 @@ test('les deux trames de retour ont leur branche dans le light', () => {
   assert.match(LIGHT, /if \(attr\(xml, "k"\) === "1"\) \{/);
   // `bp` va aux modérateurs : « …rejoindre le salon ? »
   assert.match(LIGHT, /case "bp": \{/);
-  assert.match(LIGHT, /indique qu'il y a des problèmes sur "\s*\n?\s*\+ xmlEscape\(bpF\)/);
-  assert.match(LIGHT, /okLabel: "Oui", cancelLabel: "Non",/);
+  assert.match(LIGHT, /"\{nom\} indique qu'il y a des problèmes sur \{salon\} \[\{id\}\], rejoindre le salon \?",\s*\n\s*\{ nom: xmlEscape\(bpU\), salon: xmlEscape\(bpF\), id: xmlEscape\(bpG\) \}/);
+  assert.match(LIGHT, /okLabel: T\("light\.oui", "Oui"\), cancelLabel: T\("light\.non", "Non"\),/);
   assert.match(LIGHT, /window\.SalonsBureau\.rejoindre\(bpG\);/);
 });

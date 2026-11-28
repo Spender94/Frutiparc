@@ -255,7 +255,7 @@ test('le mobile pose le voyant à côté des pseudos', () => {
   assert.match(light, /vj\.src = srcVoyant\(jeu\);/);
   assert.match(light, /vj\.title = libelleActivite\(jeu\)/, 'avec l\'activité en infobulle');
   // Lire le forum n'est pas jouer : même emplacement, autre phrase.
-  assert.match(light, /jeu === "forum" \? "Lit le forum" : "Joue à " \+ VOYANTS_NOM\[jeu\]/,
+  assert.match(light, /jeu === "forum" \? T\("light\.litLeForum", "Lit le forum"\) : T\("light\.joueA", "Joue à \{jeu\}", \{ jeu: VOYANTS_NOM\[jeu\] \}\)/,
     'le forum a sa propre formule');
   assert.match(light, /\.u \.voyant \{/, 'et son style');
 });
@@ -285,7 +285,7 @@ test('le voyant remplace le point de présence, sans l\'écraser', () => {
   assert.match(light, /function peindreStatutFiche\(\) \{[\s\S]*?var s = statutDe\(ficheEtat\.pseudo\);/);
   assert.match(light, /st\.src = srcVoyant\(s\.jeu\);/,
     'la même icône que la liste des connectés');
-  assert.match(light, /st\.title = s\.jeu === "forum" \? "Lit le forum" : "En partie — " \+ VOYANTS_NOM\[s\.jeu\];/,
+  assert.match(light, /st\.title = s\.jeu === "forum" \? T\("light\.litLeForum", "Lit le forum"\) : T\("light\.enPartie", "En partie — \{jeu\}", \{ jeu: VOYANTS_NOM\[s\.jeu\] \}\);/,
     'et elle dit à quoi il joue — ou qu\'il lit le forum');
   // Sans partie, le point revient — et il dit lui aussi ce qu'il montre. Ce
   // sont les DESSINS DE LA BANDE `status` (#222) que le carnet pose déjà :
@@ -293,7 +293,7 @@ test('le voyant remplace le point de présence, sans l\'écraser', () => {
   // prenait pour « absent » le FOND de l'icône (#216), un cadre vide — un
   // joueur hors ligne n'avait donc pas de pastille du tout.
   assert.match(light, /st\.src = "\/frutiz\/sprites\/sl-presence-" \+ \(s\.enLigne \? "1" : "0"\) \+ "\.svg";/);
-  assert.match(light, /st\.title = s\.enLigne \? "En ligne" : "Hors ligne";/);
+  assert.match(light, /st\.title = s\.enLigne \? T\("light\.enLigne", "En ligne"\) : T\("light\.horsLigne", "Hors ligne"\);/);
   // Le voyant de JEU remplit le cadre — c'est lui, l'icône ; la pastille, elle,
   // n'en occupe que le centre (cf. le test de la taille, plus bas).
   assert.match(light, /\.fiche-nom-ligne \.statut\.en-partie \{ width: 18px; height: 18px; padding: 1\.5px; \}/);

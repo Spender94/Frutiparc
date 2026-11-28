@@ -131,7 +131,8 @@ test('la ligne ne porte que le NOM de la partie, comme la console d’époque', 
      portage y ajoutait « cheveux · 13/64 » ; ce n'est pas d'époque. */
   const src = LIGHT.substring(LIGHT.indexOf('function fbRefreshLabel'),
     LIGHT.indexOf('function fbRefreshLabels'));
-  assert.match(src, /l\.textContent = part\.label;/);
+  // (Le nom affiché passe par la table des langues ; en français c'est lui.)
+  assert.match(src, /l\.textContent = FB_LIBELLES\[part\.key\] \|\| part\.label;/);
   assert.ok(!/choix\.length/.test(src), 'plus de compteur dans le libellé');
 });
 

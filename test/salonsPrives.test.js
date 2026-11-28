@@ -108,7 +108,7 @@ test('le sujet canonique revient avec la réponse, avant le prochain <q>', () =>
 test('la demande porte un identifiant, et n’attend pas indéfiniment', () => {
   assert.match(LIGHT, /var creerSalonEnCours = \{\};/);
   assert.match(LIGHT, /wsSend\('<createChannel r="' \+ r \+ '" n="' \+ xmlEscape\(n\) \+ '" \/>'\);/);
-  assert.match(LIGHT, /ko\(new Error\("Le serveur n'a pas répondu\."\)\);/);
+  assert.match(LIGHT, /ko\(new Error\(T\("light\.serveurMuet", "Le serveur n'a pas répondu\."\)\)\);/);
 });
 
 /* ── 3. LA FENÊTRE ────────────────────────────────────────────────────────── */
