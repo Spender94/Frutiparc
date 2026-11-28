@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#ADE76B">
+<link rel="icon" href="/favicon.ico" type="image/x-icon">
+<link rel="alternate" hreflang="fr" href="/confidentialite?lang=fr">
+<title>Frutiparc — Privacy</title>
+<!--
+  LA TRADUCTION ANGLAISE de public/confidentialite.html, servie par la même
+  route (/confidentialite, server.js) quand la langue de la requête est
+  l'anglais (?lang=en, ou le navigateur). Mêmes gabarits que la page française
+  (RESPONSABLE et CONTACT, entre doubles accolades — pas ici : le serveur les
+  remplacerait jusque dans ce commentaire). C'est une traduction de commodité :
+  la version française fait foi, et la page le dit. Toute modification du texte
+  français se reporte ici.
+-->
+<style>
+  /* Même famille verte que /light, le forum et l'admin — mais cette page-ci
+     défile normalement : c'est un document, pas l'appli. */
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0;
+    background: #ADE76B;
+    color: #2C4A0F;
+    font-family: 'Verdana', Arial, sans-serif;
+    font-size: 14px;
+    line-height: 1.55;
+  }
+  a { color: #2f6b16; }
+  .page {
+    max-width: 680px;
+    margin: 0 auto;
+    padding: 18px 14px 40px;
+  }
+  header.titre {
+    text-align: center;
+    padding: 10px 0 16px;
+  }
+  header.titre img { height: 60px; image-rendering: pixelated; }
+  header.titre h1 {
+    font-size: 20px;
+    margin: 8px 0 0;
+  }
+  .langue { text-align: center; font-size: 12px; margin: 6px 0 0; }
+  .carte {
+    background: #fff;
+    border-radius: 12px;
+    padding: 16px 18px;
+    margin-bottom: 14px;
+    box-shadow: 0 2px 0 rgba(44, 74, 15, 0.15);
+  }
+  .carte h2 {
+    font-size: 15px;
+    margin: 0 0 8px;
+    color: #2f6b16;
+  }
+  .carte h3 { font-size: 13.5px; margin: 12px 0 4px; }
+  .carte p { margin: 8px 0; }
+  .carte ul { margin: 8px 0; padding-left: 22px; }
+  .carte li { margin: 4px 0; }
+  .enbref {
+    background: #f3fbe7;
+    border: 1px solid #cde9a4;
+  }
+  .traduction {
+    background: #fffbe6;
+    border: 1px solid #ecd98a;
+    font-size: 13px;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 8px 0; }
+  th, td { text-align: left; vertical-align: top; padding: 5px 6px; border-bottom: 1px solid #e3f0cf; }
+  th { color: #2f6b16; font-size: 12px; }
+  .maj {
+    text-align: center;
+    font-size: 12px;
+    color: #4c6b2c;
+    margin-top: 18px;
+  }
+  .retour { text-align: center; margin-top: 10px; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="titre">
+    <img src="/images/logo.gif" alt="Frutiparc">
+    <h1>Privacy policy</h1>
+    <p class="langue"><a href="/confidentialite?lang=fr" hreflang="fr" lang="fr">Version française</a></p>
+  </header>
+
+  <section class="carte traduction" id="traduction">
+    <p>This English version is a translation provided for convenience only. The
+    <a href="/confidentialite?lang=fr" hreflang="fr">French version</a> is the
+    reference text: in case of any difference between the two, the French
+    version prevails.</p>
+  </section>
+
+  <section class="carte enbref">
+    <h2>In short</h2>
+    <p>Frutiparc is a <b>volunteer-run, non-commercial</b> games site: a
+    re-creation of a 2000s fruit park. We only collect what's needed to play.
+    <b>No ads, no trackers, no selling of data</b> — ever. You can download
+    everything the park knows about you, and delete your account yourself, from
+    the app's settings.</p>
+  </section>
+
+  <section class="carte">
+    <h2>Who is responsible</h2>
+    <p>The controller of your data is <b>{{RESPONSABLE}}</b>.
+    For any question, request or complaint about your data, write to:
+    {{CONTACT}}. We reply within a month.</p>
+    <p>The site has no data protection officer: it isn't required to have one
+    (it is not a public authority, does no large-scale monitoring and handles
+    no sensitive data), and the address above is enough to answer you.</p>
+  </section>
+
+  <section class="carte">
+    <h2>What we collect, why, and on what basis</h2>
+    <table>
+      <tr><th>Data</th><th>Why</th><th>Legal basis</th></tr>
+      <tr><td>Username and secret code (hashed)</td>
+          <td>Creating and keeping your account</td>
+          <td>The contract: no account, no park</td></tr>
+      <tr><td>E-mail (optional)</td>
+          <td>Recovering a forgotten secret code; warning you before an inactive account is deleted</td>
+          <td>Your consent — you give it by entering your e-mail, you withdraw it by deleting it</td></tr>
+      <tr><td>Your profile: first name, last name, date of birth, city, country, occupation, website, comment, gender</td>
+          <td>Introducing you to the other players</td>
+          <td>Your consent — everything is optional, and can be changed</td></tr>
+      <tr><td>Your game data: scores, rankings, fruitz, inventory, accessories, frutibouille, medals, progress, kikooz (and your bets on tournaments and the Challenge — a “big win”, a bet that pays out big, is announced publicly with your username in the betting register and on the forum; once 3 of your bets are settled in the week, your username and your profit appear in the “Prunostiqueur of the week” rankings); your correspondence games of Grapiz and Frutibandas (the opponent, the state of the game between moves, the deadline, the outcome), preferences</td>
+          <td>So that you find your park life just where you left it</td>
+          <td>The contract</td></tr>
+      <tr><td>What you write: chat rooms, private messages, internal mail, forum</td>
+          <td>Delivering it to you, and keeping the public spaces alive</td>
+          <td>The contract; moderation falls under legitimate interest (a safe space)</td></tr>
+      <tr><td>IP address and device token at sign-up</td>
+          <td>Preventing multi-account abuse of referrals</td>
+          <td>Legitimate interest (fairness in the park)</td></tr>
+      <tr><td>Login log: day, IP address, device token, browser</td>
+          <td>Spotting multi-accounts (the same player behind several usernames, for rankings, tournaments or kikooz); for betting, an account from the same device counts as yourself</td>
+          <td>Legitimate interest (fairness in the park); read by the administrator alone, never shown to others</td></tr>
+      <tr><td>The course of your Swapou Challenge games: the moves played and their timing</td>
+          <td>Checking that scores are real, by replaying the game</td>
+          <td>Legitimate interest (fairness of rankings and tournaments)</td></tr>
+      <tr><td>Server technical logs</td>
+          <td>Running the service and keeping it secure</td>
+          <td>Legitimate interest</td></tr>
+      <tr><td>Notification delivery address</td>
+          <td>Letting you know when you're not in front of the screen (mail, messages, challenges, and your correspondence games: “X has played! Your turn”)</td>
+          <td>Your consent — the button that turns notifications on, and the one that turns them off to withdraw it</td></tr>
+      <tr><td>Moderation sanctions</td>
+          <td>Enforcing the rules</td>
+          <td>Legitimate interest</td></tr>
+    </table>
+    <p>Signing up asks for only <b>three things</b>: a username, a secret
+    code, and — if you like — an e-mail. No name, no age, no phone number.
+    Everything else is up to you to fill in.</p>
+    <p>The secret code is stored <b>hashed</b> (bcrypt): nobody, not even the
+    team, can read it.</p>
+  </section>
+
+  <section class="carte">
+    <h2>What others see of you</h2>
+    <p>Your username, your frutibouille, your level, your scores and your medals
+    are public: that's the game. Your <b>profile</b> (first name, last name,
+    city, occupation, website, comment) is public too — everything in it is
+    optional, and you can change it whenever you like. If you entered your date
+    of birth, others only see your <b>age</b> — never the date — and nothing at
+    all under 18. Your e-mail, your IP address and your secret code are never
+    shown.</p>
+  </section>
+
+  <section class="carte">
+    <h2>Age</h2>
+    <p>Frutiparc re-creates a 2000s park for those who knew it: it is aimed at
+    an <b>adult audience</b>. So we don't ask for your date of birth — that
+    would mean collecting one more piece of data from everyone, and we'd rather
+    keep only what's strictly necessary. It remains <b>optional</b>, in your
+    profile, if you want your age to be shown.</p>
+    <p>That said, French law requires a minor <b>under 15</b> to sign up only
+    with the consent of one of their parents (or of their legal guardian): if
+    that's you, ask them before creating your account. A parent who wants to
+    see, correct or delete their child's data can write to us at the address
+    above — we reply within a month.</p>
+  </section>
+
+  <section class="carte">
+    <h2>How long we keep it</h2>
+    <table>
+      <tr><th>What</th><th>How long</th></tr>
+      <tr><td>Your account and your game data</td>
+          <td>As long as you play. An account <b>with no login at all for 3 years</b> is
+              deleted, with a warning by e-mail 35 days before (if you gave an
+              e-mail). A single login is enough to keep it.</td></tr>
+      <tr><td>Chat room lines</td><td>24 hours</td></tr>
+      <tr><td>Private messages, internal mail, forum</td><td>As long as your account exists (the forum keeps the messages, anonymised, after deletion: see below)</td></tr>
+      <tr><td>IP address and device token from sign-up</td><td>6 months</td></tr>
+      <tr><td>Login log</td><td>6 months</td></tr>
+      <tr><td>The course of Swapou Challenge games</td><td>6 months</td></tr>
+      <tr><td>Correspondence games (Grapiz, Frutibandas)</td><td>7 days after the end of the game; an unanswered invitation, 3 days</td></tr>
+      <tr><td>Moderation sanctions</td><td>1 year</td></tr>
+      <tr><td>Login sessions</td><td>6 months without being renewed</td></tr>
+      <tr><td>Secret code recovery tokens</td><td>7 days</td></tr>
+      <tr><td>Notification addresses</td><td>Until you turn them off, or they stop responding</td></tr>
+      <tr><td>Technical logs</td><td>Those of the host, a few weeks</td></tr>
+    </table>
+  </section>
+
+  <section class="carte">
+    <h2>Your rights, and where to exercise them</h2>
+    <ul>
+      <li><b>Access and portability</b> — in the app, <i>Settings → My data →
+        Download my data</i>: a file with everything the server holds on your
+        account, table by table.</li>
+      <li><b>Rectification</b> — your profile can be edited at any time (<i>Edit my
+        profile</i>); for your username or e-mail, write to us.</li>
+      <li><b>Erasure</b> (deleting your account) — <i>Settings → My data →
+        Delete my account</i>,
+        with your secret code. The account is erased <b>7 days</b> later; logging
+        back in before then cancels the request. Your public messages (forum,
+        chat rooms) remain readable, but under the name “compte_supprime”: they
+        no longer identify you. Your username is reserved forever, so that nobody
+        can pass themselves off as you.</li>
+      <li><b>Objection and restriction</b> — write to us: we process nothing that
+        isn't necessary for the game, but every request is looked into.</li>
+      <li><b>Withdrawal of consent</b> — delete your e-mail or your profile, turn off
+        notifications: the effect is immediate.</li>
+      <li><b>Complaint</b> — if you believe your rights are not being respected,
+        you can refer the matter to the <b>CNIL</b>, the French data protection
+        authority (<a href="https://www.cnil.fr/fr/plaintes"
+        rel="noopener" target="_blank">cnil.fr/fr/plaintes</a>). We'd rather you
+        wrote to us first, but it's your right.</li>
+    </ul>
+  </section>
+
+  <section class="carte">
+    <h2>Who it passes through</h2>
+    <p>The data is not sold, rented, or passed on to third parties for their own
+    use. Four technical services see it go by:</p>
+    <ul>
+      <li><b>The host</b> of the server and of its database, on servers
+        located in the European Union.</li>
+      <li><b>Resend</b> (e-mail delivery) — your address, only for a forgotten
+        secret code and the inactivity warning. Resend is an American company:
+        the transfer is covered by the European Commission's standard
+        contractual clauses.</li>
+      <li><b>Your browser's notification service</b> (Google, Apple or
+        Mozilla depending on your device) — an encrypted delivery address that it
+        cannot read itself, and only if you turned notifications on.</li>
+      <li><b>YouTube</b>, for the chat-room blind tests — and <b>only if you
+        click “Listen”</b>. Nothing is loaded before your click. The player
+        comes from <i>youtube-nocookie.com</i>, which doesn't set advertising
+        cookies; YouTube still receives your IP address for the length of the
+        clip. “Mute” removes the player, and your choice is remembered on your
+        device until you mute it.</li>
+    </ul>
+  </section>
+
+  <section class="carte">
+    <h2>On your device</h2>
+    <p>The site keeps locally (<i>localStorage</i>) your login session, a few
+    display preferences, your blind test choice, and a <b>device token</b> (a
+    randomly drawn number that says nothing about you or your device) — that's
+    what saves you from retyping your secret code, and what makes it possible to
+    recognise two accounts opened from the same browser. These are strictly
+    necessary data: no cookie banner is required. <b>No third-party cookies, no
+    audience measurement tools, no ad networks.</b></p>
+  </section>
+
+  <section class="carte">
+    <h2>Security</h2>
+    <p>Encrypted connections (HTTPS), hashed secret codes, access to the
+    administration restricted to the team and logged. In the event of a data
+    breach that would put you at risk, you would be informed, and so would the
+    CNIL within 72 hours.</p>
+  </section>
+
+  <p class="maj">Last updated: September 2026. This page evolves with the
+  site; important changes are announced in the park.</p>
+  <p class="retour"><a href="/">← Back to the park</a></p>
+</div>
+</body>
+</html>
