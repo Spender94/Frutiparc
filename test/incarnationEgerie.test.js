@@ -105,7 +105,7 @@ test('la base et le light savent qu’une incarnation peut être une bouille ent
   const serveur = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
   assert.match(serveur, /if \(def && def\.incarnation && !p\.incarnation\) p\.incarnation = def\.incarnation;/);
   const light = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
-  assert.match(light, /if \(i\.entiere\) return \{ nom: i\.nom \|\| "Incarnation", etat: e \};/);
+  assert.match(light, /if \(i\.entiere\) return \{ nom: i\.nom \|\| T\("light\.incarnation", "Incarnation"\), etat: e \};/);
   const vignette = fs.readFileSync(path.join(ROOT, 'public/js/bouille-vignette.js'), 'utf8');
   assert.match(vignette, /var FAMILLES = \[[^\]]*\b14\b/, 'le lecteur sait dessiner la famille 14');
 });

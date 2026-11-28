@@ -487,11 +487,11 @@ test('la page d’admin propose les paires, et les dessine', () => {
 });
 
 test('le light range les incarnations à part, et on en sort d’un clic', () => {
-  assert.match(LIGHT, /<button class="inv-onglet" data-rub="incarnations">Incarnations<\/button>/);
+  assert.match(LIGHT, /<button class="inv-onglet" data-rub="incarnations" data-i18n="light\.incarnations">Incarnations<\/button>/);
   assert.match(LIGHT, /id="inv-incarnations-grid"/);
   // La première case est TOUJOURS « Ma bouille » : c'est le geste de retrait,
   // le même que « Normal » chez les accessoires.
-  assert.match(LIGHT, /\{ nom: "Ma bouille", etat: fbPad\(myBase\), sienne: true \}/);
+  assert.match(LIGHT, /\{ nom: T\("light\.maBouille", "Ma bouille"\), etat: fbPad\(myBase\), sienne: true \}/);
   assert.match(LIGHT, /function porterIncarnation\(c\)/);
   // `myBase` ne suit PAS l'incarnation : c'est ce qui permet de la retirer.
   assert.match(LIGHT, /\/\/ `myBase` ne bouge pas : l'incarnation est un habit, pas un visage\./);
