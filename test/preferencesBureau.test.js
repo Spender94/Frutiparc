@@ -410,7 +410,7 @@ test('la liste des présents se met à jour même quand la ligne se tait', () =>
     'la liste se met à jour AVANT le test de la préférence');
   // Se faire expulser SOI-MÊME se dit toujours.
   const kb = /var kDire = \(tag === "ah"\)[\s\S]*?\n        \}/.exec(LIGHT);
-  assert.match(kb[0], /if \(sameName\(kWho, state\.user\)\) \{\s*\n\s+systemLine\("Tu as été " \+ kVerb/);
+  assert.match(kb[0], /if \(sameName\(kWho, state\.user\)\) \{\s*\n\s+systemLine\(kBan\s*\n\s*\? \(kBy \? T\("light\.tuBanniPar"/);
 });
 
 test('le feutre par défaut : un entier, ses choix selon le joueur, et hors du formulaire Flash', () => {

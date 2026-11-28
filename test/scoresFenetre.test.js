@@ -286,7 +286,7 @@ test('le panneau du light reproduit la fenêtre : barre de titre, deux volets, p
   // Le contenu du volet droit, dans l'ordre du bureau.
   assert.match(html, /class="sc-podium"/, 'les médaillés de la veille en tête');
   assert.match(html, /medal_' \+ p\.medal \+ '_/, 'avec leur vraie médaille');
-  assert.match(html, /Je suis ' \+ g\.me\.pos/, 'puis « Je suis Nème avec … »');
+  assert.match(html, /T\.n\("light\.scJeSuis", g\.me\.pos, \{ one: "Je suis \{n\}er avec \{score\}", other: "Je suis \{n\}ème avec \{score\}" \}/, 'puis « Je suis Nème avec … »');
   // `cp.Score` compose l'en-tête dans cet ordre-là, les COLONNES ANNEXES
   // glissées entre le score et l'heure (cf. test/scoresAnnexes.test.js).
   assert.match(html, /<span class="f">Frutiz<\/span>[\s\S]{0,120}Score[\s\S]{0,300}Heure/,
@@ -295,7 +295,7 @@ test('le panneau du light reproduit la fenêtre : barre de titre, deux volets, p
   assert.match(html, /xmlEscape\(s\.time/, 'ainsi que l\'heure de son score');
 
   // Les sections sont celles du serveur, pas une liste recopiée.
-  assert.match(html, /\[\["C", "Challenge", "score_podium"\], \["L", "Championnat", "score_coupe"\]\]/,
+  assert.match(html, /\[\["C", T\("light\.scChallenge", "Challenge"\), "score_podium"\], \["L", T\("light\.scChampionnat", "Championnat"\), "score_coupe"\]\]/,
     'les deux sections sont pilotées par le champ `section` de l\'API');
 
   // Et l'ancienne grammaire du mobile a bien disparu.

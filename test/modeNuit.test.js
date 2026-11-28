@@ -540,9 +540,9 @@ test('le thème est posé avant le premier rendu, et après les feuilles de jour
 });
 
 test('trois positions, par appareil, et le système suivi', () => {
-  assert.match(LIGHT, /\{ v: "0",\s+lib: "Jour" \}/);
-  assert.match(LIGHT, /\{ v: "1",\s+lib: "Nuit" \}/);
-  assert.match(LIGHT, /\{ v: "auto", lib: "Comme mon téléphone" \}/);
+  assert.match(LIGHT, /\{ v: "0",\s+lib: T\("light\.nuitJour", "Jour"\) \}/);
+  assert.match(LIGHT, /\{ v: "1",\s+lib: T\("light\.nuitNuit", "Nuit"\) \}/);
+  assert.match(LIGHT, /\{ v: "auto", lib: T\("light\.nuitAuto", "Comme mon téléphone"\) \}/);
   assert.match(LIGHT, /matchMedia\("\(prefers-color-scheme: dark\)"\)\.matches/);
   // Le choix vit dans l'appareil, pas dans le compte.
   assert.match(LIGHT, /localStorage\.setItem\(NUIT_CLE, v\)/);
@@ -1367,7 +1367,7 @@ test('l’arbre des réglages du bureau désigne ses cartes par identifiant', ()
   for (const e of entrees) {
     const i = LIGHT.indexOf('<div class="reg-carte" id="' + e.id + '">');
     assert.ok(i > 0, 'la carte ' + e.id + ' n’existe pas dans light.html');
-    const titre = /<div class="reg-titre">([^<]+)</.exec(LIGHT.slice(i, i + 400))[1];
+    const titre = /<div class="reg-titre"(?: data-i18n="[\w.]+")?>([^<]+)</.exec(LIGHT.slice(i, i + 400))[1];
     assert.strictEqual(titre.replace(/&nbsp;/g, ' '), e.label,
       e.id + ' : l’arbre annonce « ' + e.label + ' » et ouvre « ' + titre + ' »');
   }

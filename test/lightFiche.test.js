@@ -280,7 +280,7 @@ test('la fiche suit le style de l\'intégration : carte, plaque, dépliant', () 
   assert.match(html, /\.fiche-onglets button\.actif \{ color: #811C22; \}/, 'l\'onglet actif en rouge brique');
   // Le titre de section entre deux filets — la réponse à l'encart « frutisigne ».
   assert.match(html, /\.fiche-titre::before, \.fiche-titre::after \{/, 'le titre entre deux filets');
-  assert.match(html, /t\.textContent = "FrutiSigne"/, 'nommé comme sur l\'intégration');
+  assert.match(html, /t\.textContent = T\("light\.frutiSigne", "FrutiSigne"\)/, 'nommé comme sur l\'intégration');
   assert.match(html, /border-bottom: 1\.5px solid #a7dc6b;/, 'les signes posés sur leur séparateur');
   // Et l'onglet perso encadre ses lignes.
   assert.match(html, /"fiche-lignes encadre"/, 'perso encadré de ses séparateurs');
@@ -475,7 +475,7 @@ test('la liste des connectés n\'affiche plus d\'enveloppe à côté des pseudos
   assert.ok(!/content: "\\2709"/.test(html), 'ni son glyphe nulle part ailleurs');
   // Le geste, lui, ne change pas : la ligne reste cliquable et mène à la fiche.
   assert.match(html, /#users-drawer \.u\.mp \{ cursor: pointer/, 'la ligne reste un bouton');
-  assert.match(html, /u\.title = "Voir la fiche de " \+ pseudo;/, 'et dit ce qu\'elle ouvre');
+  assert.match(html, /u\.title = T\("light\.voirFicheDe", "Voir la fiche de \{nom\}", \{ nom: pseudo \}\);/, 'et dit ce qu\'elle ouvre');
 });
 
 test('l\'onglet Scores tient la mise en page de main.swf : les médailles, puis le jour', () => {

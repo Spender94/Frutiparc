@@ -87,7 +87,7 @@ test('la ligne ne se répète pas à chaque message refusé', () => {
   assert.match(f[0], /if \(mNeuf\) \{/);
   // Et la levée existe : `bc` (endmute) rend la parole.
   assert.match(LIGHT, /case "bc": \/\/ endmute/);
-  assert.match(LIGHT, /systemLine\("Tu peux de nouveau parler\."\);/);
+  assert.match(LIGHT, /systemLine\(T\("light\.peuxParler", "Tu peux de nouveau parler\."\)\);/);
 });
 
 /* ── 2. LE KICK ───────────────────────────────────────────────────────────── */
@@ -98,8 +98,10 @@ test('l’expulsion vise le salon de la TRAME, pas celui qu’on regarde', () =>
   assert.match(f[0], /var kOu = attr\(xml, "g"\) \|\| state\.room;/);
   assert.match(f[0], /if \(state\.usersByRoom\[kOu\]\) delete state\.usersByRoom\[kOu\]\[kWho\];/);
   // La ligne s'écrit DANS le fil de ce salon-là.
-  assert.match(f[0], /systemLine\("Tu as été " \+ kVerb[^\n]*, kOu\);/);
-  assert.match(f[0], /systemLine\(kWho \+ " a été " \+ kVerb[^\n]*, kOu\);/);
+  // (Une phrase par cas — expulsé ou banni, par quelqu'un ou non — dans la
+  // table des langues ; le salon, lui, est toujours celui de la trame.)
+  assert.match(f[0], /systemLine\(kBan\s*\n\s*\? \(kBy \? T\("light\.tuBanniPar"[^\n]*\n\s*: \(kBy \? T\("light\.tuExpulsePar"[^\n]*\)\), kOu\);/);
+  assert.match(f[0], /if \(kDire\) systemLine\(kBan\s*\n\s*\? \(kBy \? T\("light\.ilBanniPar"[^\n]*\n\s*: \(kBy \? T\("light\.ilExpulsePar"[^\n]*\)\), kOu\);/);
 });
 
 test('l’expulsé quitte vraiment le salon', () => {

@@ -302,7 +302,7 @@ test('les trois rubriques à voyant ont leur tuile sur l\'accueil', () => {
   for (const [go, ico, fichier, label] of [['mail', 'Mail', 'icone_messagerie', 'Messagerie'],
                                            ['evenements', 'Warning', 'icone_evenements', 'Événements'],
                                            ['historique', 'Historique', 'icone_historique', 'Historique']]) {
-    const tuile = new RegExp(`data-go="${go}" data-ico="${ico}"[\\s\\S]{0,200}?<span class="lbl">${label}</span>`);
+    const tuile = new RegExp(`data-go="${go}" data-ico="${ico}"[\\s\\S]{0,200}?<span class="lbl" data-i18n="light\\.\\w+">${label}</span>`);
     assert.match(html, tuile, `tuile ${label}`);
     // Les tuiles portent les icônes du BUREAU, comme leurs voisines (linkScore,
     // linkShop, inventory…) — pas les petits tracés de la rangée de raccourcis.
@@ -360,7 +360,7 @@ test('les trois rubriques à voyant ont leur tuile sur l\'accueil', () => {
 test('le client mobile sert les deux journaux avec un seul code', () => {
   const html = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
 
-  assert.match(html, /name: "Historique", go: "historique"/, 'le raccourci est branché');
+  assert.match(html, /name: T\("light\.historique", "Historique"\), go: "historique"/, 'le raccourci est branché');
   assert.match(html, /voyant: "HistoriqueAlerte"/, 'avec son icône d\'alerte');
 
   // Un seul gabarit, un seul panneau : deux copies auraient fini par diverger.
@@ -370,7 +370,7 @@ test('le client mobile sert les deux journaux avec un seul code', () => {
   assert.match(html, /route: "history"/, 'celle de l\'historique pointe la bonne route');
   assert.match(html, /\$\("#evt-panel"\)\.classList\.toggle\("active", !!JOURNAUX\[tab\]\);/,
     'le même panneau les sert toutes');
-  assert.match(html, /historique: \{\n\s+titre: "Historique", route: "history"/,
+  assert.match(html, /historique: \{\n\s+titre: T\("light\.historique", "Historique"\), route: "history"/,
     'et « historique » est bien une de ses clés');
   assert.match(html, /function loadJournal\(cle\)/, 'un seul chargement');
   assert.match(html, /function renderJournal\(cle\)/, 'un seul rendu');

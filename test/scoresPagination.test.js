@@ -33,6 +33,9 @@ const ROOT = path.join(__dirname, '..');
 const LIGHT = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
 const CSS = fs.readFileSync(path.join(ROOT, 'public/bureau-frutiz.css'), 'utf8');
 const SERVEUR = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+// Le code extrait du light écrit ses textes par T() (la table des langues) :
+// le module, chargé hors navigateur, rend le français.
+const { T } = require(path.join(ROOT, 'public/js/i18n.js'));
 
 // Les trois fonctions de pagination, telles qu'elles sont livrées.
 function moteurPagination() {
@@ -48,12 +51,12 @@ function moteurPagination() {
   }
   assert.ok(bouts.length === 3);
   // eslint-disable-next-line no-new-func
-  return new Function(src.join('\n') + `
+  return new Function('T', src.join('\n') + `
     return {
       page: (g, d) => { scoresDebut = d; return scPage(g); },
       pied: (g, d) => { scoresDebut = d; return scPagination(g); },
       pas: SC_PAR_PAGE,
-    };`)();
+    };`)(T);
 }
 
 function classement(n, total) {
@@ -155,7 +158,7 @@ test('le classement XP montre le NIVEAU, et le tri reste sur l’XP', () => {
   const t = /function titreColonneScore\(g\) \{[\s\S]*?\n  \}/.exec(LIGHT);
   assert.ok(t, 'le titre de colonne doit exister');
   // eslint-disable-next-line no-new-func
-  const titre = new Function(t[0] + '; return titreColonneScore;')();
+  const titre = new Function('T', t[0] + '; return titreColonneScore;')(T);
   assert.strictEqual(titre({ id: '_xp' }), 'Expérience');
   assert.strictEqual(titre({ id: '_rate' }), 'Consécration');
   assert.strictEqual(titre({ id: 'mb2_classic', lowerIsBetter: true }), 'Temps');
@@ -209,12 +212,12 @@ test('un score s’écrit comme `Standard.displayScoreType`', () => {
 test('« Je ne suis pas classé pour le moment » — la phrase de lang_french.as', () => {
   // `win.Score.displayMyRank` (0xc2fb9) pose `score.my_rank.empty` quand le
   // joueur n'a pas de rang. Le portage ne posait rien.
-  assert.match(LIGHT, /html \+= '<div class="sc-moi">Je ne suis pas classé pour le moment<\/div>';/);
+  assert.match(LIGHT, /html \+= '<div class="sc-moi">' \+ T\("light\.scPasClasse", "Je ne suis pas classé pour le moment"\) \+ '<\/div>';/);
   // …et seulement si l'on est identifié : un visiteur n'a pas à se voir dire
   // qu'il n'est pas classé.
-  assert.match(LIGHT, /\} else if \(state\.user\) \{\s*\n\s*html \+= '<div class="sc-moi">Je ne suis pas classé/);
+  assert.match(LIGHT, /\} else if \(state\.user\) \{\s*\n\s*html \+= '<div class="sc-moi">' \+ T\("light\.scPasClasse", "Je ne suis pas classé/);
   // L'autre branche reste celle d'époque : « Je suis $p avec $s ».
-  assert.match(LIGHT, /'<div class="sc-moi">Je suis ' \+ g\.me\.pos \+ \(g\.me\.pos === 1 \? "er" : "ème"\)/);
+  assert.match(LIGHT, /'<div class="sc-moi">' \+ T\.n\("light\.scJeSuis", g\.me\.pos, \{ one: "Je suis \{n\}er avec \{score\}", other: "Je suis \{n\}ème avec \{score\}" \}/);
 });
 
 test('le nom d’un médaillé est en gras', () => {

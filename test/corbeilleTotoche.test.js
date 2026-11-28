@@ -248,7 +248,7 @@ test('côté client, la ligne de la peine s’en va avec la peine', () => {
   assert.match(LIGHT, /function oublierLeMuselage\(\) \{/);
   assert.match(LIGHT, /querySelectorAll\("\[data-totoche\]"\)/);
   assert.match(LIGHT, /if \(o\.totoche\) row\.setAttribute\("data-totoche", "1"\);/);
-  assert.match(LIGHT, /systemLine\("Tu as été réduit au silence \(totoché\) pour " \+ mMin \+ " minutes\.",\s*\n\s*null, \{ totoche: true \}\);/);
+  assert.match(LIGHT, /systemLine\(T\.n\("light\.totoche", mMin, \{ one: "Tu as été réduit au silence \(totoché\) pour \{n\} minutes\.",\s*\n\s*other: "Tu as été réduit au silence \(totoché\) pour \{n\} minutes\." \}\), null, \{ totoche: true \}\);/);
   // Une peine DÉJÀ ÉCHUE n'en est plus une : un `bb` au passé ne remuselle pas.
   assert.match(LIGHT, /if \(mJusqua <= Date\.now\(\)\) \{ poserMuselage\(0\); break; \}/);
 });

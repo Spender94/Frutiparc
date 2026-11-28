@@ -127,9 +127,10 @@ test('les phrases sont celles de lang_french.as, au mot près', () => {
 
   // Et le portage les recopie — « desormais » sans accent compris, c'est le
   // texte qu'ont lu les joueurs.
-  assert.match(LIGHT, /return conv\s*\n\s*\? "Vous pouvez desormais discuter avec " \+ conv\.avec \+ "\."\s*\n\s*: "Vous discutez maintenant sur le salon " \+ roomLabel\(room\);/);
-  assert.match(LIGHT, /systemLine\(uj \+ \(estPrive\(rj\) \? " est là\." : " a rejoint le salon"\), rj\);/);
-  assert.match(LIGHT, /systemLine\(ul \+ \(estPrive\(rl\) \? " a quitté la discussion" : " a quitté le salon"\), rl\);/);
+  // (Une phrase, une clé de la table des langues : le français en est le repli.)
+  assert.match(LIGHT, /return conv\s*\n\s*\? T\("light\.entreePrive", "Vous pouvez desormais discuter avec \{nom\}\.", \{ nom: conv\.avec \}\)\s*\n\s*: T\("light\.entreeSalon", "Vous discutez maintenant sur le salon \{salon\}", \{ salon: roomLabel\(room\) \}\);/);
+  assert.match(LIGHT, /systemLine\(estPrive\(rj\) \? T\("light\.priveEstLa", "\{nom\} est là\.", \{ nom: uj \}\)\s*\n\s*: T\("light\.salonRejoint", "\{nom\} a rejoint le salon", \{ nom: uj \}\), rj\);/);
+  assert.match(LIGHT, /systemLine\(estPrive\(rl\) \? T\("light\.priveQuitte", "\{nom\} a quitté la discussion", \{ nom: ul \}\)\s*\n\s*: T\("light\.salonQuitte", "\{nom\} a quitté le salon", \{ nom: ul \}\), rl\);/);
   // Plus de « — Salon Citron — », qui n'était de nulle part.
   assert.doesNotMatch(LIGHT, /systemLine\("— " \+/);
   // Les lignes système sont en italique, comme les <i> de la table.

@@ -73,8 +73,8 @@ test('ni « staff » ni « toi » dans la liste des connectés du bureau', () =>
   // Et plus de règle qui les habillerait : elles ne s'affichent plus du tout.
   assert.doesNotMatch(CSS, /#users-drawer \.u \.badge \{\s*\n\s*flex: 0 0 auto;/);
   // Le mobile les garde — `ligneConnecte` continue de les poser.
-  assert.match(LIGHT, /if \(staff\) \{ var s = el\("span", "badge staff"\); s\.textContent = "staff";/);
-  assert.match(LIGHT, /var b = el\("span", "badge moi"\); b\.textContent = "toi";/);
+  assert.match(LIGHT, /if \(staff\) \{ var s = el\("span", "badge staff"\); s\.textContent = T\("light\.badgeStaff", "staff"\);/);
+  assert.match(LIGHT, /var b = el\("span", "badge moi"\); b\.textContent = T\("light\.badgeToi", "toi"\);/);
 });
 
 /* ── 5. LA BANDE DES CONTACTS ─────────────────────────────────────────────── */

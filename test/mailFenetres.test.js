@@ -262,7 +262,7 @@ test('le gabarit TACTILE garde ses couleurs et ses mots', () => {
       r + ' doit rester derrière body.bureau-frutiz');
   }
   // Le mobile garde son bandeau, ses étiquettes et son fond vert clair.
-  assert.match(LIGHT, /<label for="mail-a">À<\/label>/);
-  assert.match(LIGHT, /<label for="mail-texte">Message<\/label>/);
+  assert.match(LIGHT, /<label for="mail-a" data-i18n="light\.mailA">À<\/label>/);
+  assert.match(LIGHT, /<label for="mail-texte" data-i18n="light\.mailMessage">Message<\/label>/);
   assert.match(LIGHT, /\.mail-entete \{ flex-shrink: 0; padding: 10px 12px 8px; background: #E4F7C4;/);
 });

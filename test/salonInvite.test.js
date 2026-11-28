@@ -142,5 +142,5 @@ test('le light lit l’invitation : une ligne et un bouton « Rejoindre »', () 
   const bloc = LIGHT.slice(LIGHT.indexOf('case "ab": {'), LIGHT.indexOf('// ── Invitation reçue : quelqu\'un nous écrit en privé ──'));
   assert.ok(bloc.length > 50, 'le case "ab" existe');
   assert.match(bloc, /if \(!salonInvite \|\| attr\(xml, "r"\) \|\| attr\(xml, "k"\)\) break;/, 'les accusés ne sont pas des invitations');
-  assert.match(bloc, /systemAction\([\s\S]*?t'invite dans le salon[\s\S]*?"Rejoindre", function \(\) \{ ouvrirSalon\(salonInvite\); \}\);/);
+  assert.match(bloc, /systemAction\([\s\S]*?t'invite dans le salon[\s\S]*?T\("light\.rejoindre", "Rejoindre"\), function \(\) \{ ouvrirSalon\(salonInvite\); \}\);/);
 });

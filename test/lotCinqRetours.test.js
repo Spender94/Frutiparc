@@ -43,7 +43,7 @@ test('un classement permanent n’a pas de colonne « Heure »', () => {
   assert.match(LIGHT, /var avecHeure = !g\.allTime;/);
   assert.match(LIGHT, /box\.classList\.toggle\("sans-heure", !avecHeure\);/);
   // L'en-tête ET la cellule disparaissent ensemble.
-  assert.match(LIGHT, /\+ \(avecHeure \? '<span class="h">Heure<\/span>' : ""\) \+ '<\/div>';/);
+  assert.match(LIGHT, /\+ \(avecHeure \? '<span class="h">' \+ T\("light\.scHeure", "Heure"\) \+ '<\/span>' : ""\) \+ '<\/div>';/);
   assert.match(LIGHT, /\+ \(avecHeure \? '<span class="h">' \+ xmlEscape\(s\.time \|\| ""\) \+ '<\/span>' : ""\)/);
   // …et la piste de 38 px avec elles, sinon le score flotterait loin du bord.
   // (La première piste est `--sc-rang` : 25, 35 ou 45 px selon le plus grand

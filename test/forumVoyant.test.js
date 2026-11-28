@@ -479,7 +479,7 @@ test('le raccourci Forum a son icône d\'alerte, et de quoi l\'allumer', () => {
   const html = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
   // Le raccourci déclare son voyant — sans quoi `majVoyant` ne l'allumerait
   // jamais, quel que soit le compte (`n > 0 && !!def.voyant`).
-  assert.match(html, /\{ file: "Forum",\s+name: "Forum", go: "forum",\s+voyant: "ForumAlerte",\s+mot: "sujet" \}/);
+  assert.match(html, /\{ file: "Forum",\s+name: T\("light\.forum", "Forum"\), go: "forum",\s+voyant: "ForumAlerte",\s+nonLus: \["light\.nonLusForum", \{ one: "\{nom\} — \{n\} sujet non lu", other: "\{nom\} — \{n\} sujets non lus" \}\] \}/);
   assert.match(html, /var allume = n > 0 && !!def\.voyant;/, 'la porte est bien celle-là');
   // Et le compte lui parvient : au chargement du profil, et à la construction
   // de la grille.
