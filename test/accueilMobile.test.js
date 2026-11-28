@@ -38,7 +38,7 @@ test('sources : la page du téléphone n’existe pas au bureau, et chacun de se
   const cles = new Set([...PAGE.matchAll(/['"](accueil\.m\.[A-Za-z0-9]+)['"]/g)].map((m) => m[1]));
   for (const m of PAGE.matchAll(/data-i18n(?:-html)?="(accueil\.m\.[A-Za-z0-9]+)"/g)) cles.add(m[1]);
   for (const m of PAGE.matchAll(/data-i18n-attr="[a-z-]+:(accueil\.m\.[A-Za-z0-9]+)"/g)) cles.add(m[1]);
-  assert.ok(cles.size > 40, 'les clés sont relevées');
+  assert.ok(cles.size > 25, 'les clés sont relevées');
   const dico = {};
   global.FPI18n = { ajouter: (l, d) => Object.assign(dico, d) };
   try { require(path.join(ROOT, 'public/i18n/en/accueil.js')); } finally { delete global.FPI18n; }

@@ -387,10 +387,11 @@
        Le BUREAU garde l'accueil d'époque au pixel près : rien de ce qui suit ne
        le touche (tout est sous la requête média, et les éléments `.m-only`
        n'y paraissent pas). Les téléphones n'existaient pas pour cet accueil-là :
-       on s'y permet une vraie page d'accueil, dans les codes du parc — le vert,
-       les cartes blanches arrondies, le rose des boutons, le logo et la grappe
-       de fruits, les icônes du bureau Frutiz, les frutibouilles, et la fonte
-       ronde de Frutisnake (Alba) pour les titres. Elle suit la devise :
+       on s'y permet une vraie page d'accueil, ÉPURÉE, dans les codes du parc :
+       les verts de sa palette (le vert feuille #73B01E pour l'action, comme les
+       boutons du light et du mode invité ; pas de rose inventé), les cartes
+       blanches arrondies, le Verdana, le logo et la grappe de fruits, les
+       frutibouilles. Elle suit la devise :
 
          · la SCÈNE   — logo, devise, grappe de fruits, « Jouer maintenant » ;
          · DES JEUX   — les jeux en carrousel, à jouer en invité d'un doigt ;
@@ -406,8 +407,6 @@
        sinon sur la page du bureau, pied de page fixe en travers de l'écran. La
        même requête est reprise par le script (ecranEtroit). ─────────────── */
     .m-only { display: none; }
-    @font-face { font-family: 'Alba'; src: url('/snake3/fontes/alba.woff') format('woff'); font-display: swap; }
-    @keyframes m-flotte { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
     @keyframes m-pouls { 0%, 100% { box-shadow: 0 0 0 3px rgba(60,194,60,.25); } 50% { box-shadow: 0 0 0 6px rgba(60,194,60,.08); } }
     @keyframes m-monte { from { transform: translateY(100%); } to { transform: none; } }
     @keyframes m-tombe { from { transform: translateY(-140%); } to { transform: none; } }
@@ -451,33 +450,26 @@
       .m-hero .m-connexion {
         position: absolute; top: 10px; right: 12px; z-index: 6;
         font: bold 13px Verdana, Geneva, sans-serif; color: #335511;
-        background: #fff; border: 2px solid #94DB39; border-radius: 16px; padding: 7px 14px;
-        box-shadow: 0 2px 0 rgba(44,74,15,.2); cursor: pointer;
+        background: #fff; border: 0; border-radius: 16px; padding: 8px 14px; cursor: pointer;
       }
-      .m-logo { display: block; width: 236px; height: auto; margin: 0 auto; filter: drop-shadow(0 6px 10px rgba(44,74,15,.22)); }
-      .m-grappe { display: block; width: 196px; height: auto; margin: 10px auto -4px; animation: m-flotte 4.5s ease-in-out infinite; }
-      .m-devise {
-        margin: 12px 0 10px; font: 400 31px/1.05 'Alba', 'Arial Rounded MT Bold', 'Trebuchet MS', sans-serif;
-        color: #f05a8c; letter-spacing: .5px; -webkit-text-stroke: 1.6px #a8174a; paint-order: stroke fill;
-        text-shadow: 2px 2px 0 #fff, 3px 3px 0 #a8174a; transform: rotate(-2deg);
-      }
+      .m-logo { display: block; width: 216px; height: auto; margin: 0 auto; }
+      .m-grappe { display: block; width: 156px; height: auto; margin: 10px auto 0; }
+      .m-devise { margin: 14px 0 8px; font: bold 22px/1.25 Verdana, Geneva, sans-serif; color: #335511; }
       .m-devise br { display: block; }
-      .m-accroche { max-width: 340px; margin: 0 auto 18px; font-size: 15px; line-height: 1.45; color: #2e3a1d; }
-      .m-actions { display: flex; flex-direction: column; gap: 12px; max-width: 340px; margin: 0 auto; }
+      .m-accroche { max-width: 320px; margin: 0 auto 22px; font-size: 15px; line-height: 1.5; color: #4b6a24; }
+      .m-actions { display: flex; flex-direction: column; gap: 10px; max-width: 320px; margin: 0 auto; }
+      /* Les boutons du parc : plats, arrondis, en Verdana gras — le vert
+         feuille pour agir, le blanc pour le reste. */
       .m-btn {
-        display: block; width: 100%; border-radius: 28px; padding: 15px 20px 14px; cursor: pointer;
-        font: 400 20px/1 'Alba', 'Trebuchet MS', Verdana, sans-serif; letter-spacing: .6px;
+        display: block; width: 100%; border-radius: 14px; padding: 15px 18px; cursor: pointer;
+        font: bold 16px/1.1 Verdana, Geneva, sans-serif;
       }
-      .m-btn:active { transform: translateY(2px); }
-      .m-btn-rose {
-        color: #fff; background: linear-gradient(#ff8fb8, #e2367a); border: 2px solid #a8174a;
-        box-shadow: 0 4px 0 #a8174a, 0 10px 20px rgba(168,23,74,.22); text-shadow: 0 1px 0 #a8174a;
-      }
-      .m-btn-rose:active { box-shadow: 0 2px 0 #a8174a; }
-      .m-btn-jouer::before { content: '\25B6\00A0'; font: 14px/1 Verdana, sans-serif; vertical-align: 2px; }
-      .m-btn-vert { color: #4f7d1e; background: #fff; border: 2px solid #94DB39; box-shadow: 0 4px 0 #73B01E; }
-      .m-btn-vert:active { box-shadow: 0 2px 0 #73B01E; }
-      .m-enligne { margin: 16px 0 0; font-size: 13px; font-weight: bold; color: #335511; }
+      .m-btn:active { transform: translateY(1px); }
+      .m-btn-plein { color: #fff; background: #73B01E; border: 0; box-shadow: 0 3px 0 #4f7d1e; }
+      .m-btn-plein:active { box-shadow: 0 2px 0 #4f7d1e; }
+      .m-btn-jouer::before { content: '\25B6\00A0\00A0'; font-size: 13px; vertical-align: 1px; }
+      .m-btn-blanc { color: #335511; background: #fff; border: 0; }
+      .m-enligne { margin: 16px 0 0; font-size: 13px; color: #335511; }
       .m-enligne i {
         display: inline-block; width: 9px; height: 9px; margin-right: 8px; border-radius: 50%;
         background: #3cc23c; animation: m-pouls 1.8s ease-in-out infinite;
@@ -485,55 +477,44 @@
 
       /* ── Les cartes des trois parties ── */
       .m-carte {
-        margin: 0 max(12px, calc((100% - 560px) / 2)) 16px; padding: 22px 16px 18px; border-radius: 22px; background: #fff;
-        box-shadow: 0 8px 22px rgba(44,74,15,.16);
+        margin: 0 max(12px, calc((100% - 560px) / 2)) 14px; padding: 20px 18px; border-radius: 18px; background: #fff;
       }
-      .m-titre {
-        display: flex; align-items: center; justify-content: center; gap: 10px; margin: 0;
-        font: 400 30px/1 'Alba', 'Trebuchet MS', sans-serif; color: #84c22d; letter-spacing: .5px;
-        -webkit-text-stroke: 1.2px #4f7d1e; paint-order: stroke fill; text-shadow: 2px 2px 0 #E8F8D3;
-      }
-      .m-titre img { width: 42px; height: 42px; }
-      .m-sous { margin: 10px 4px 16px; text-align: center; font-size: 14px; line-height: 1.45; color: #5A7D33; }
+      .m-titre { display: flex; align-items: center; gap: 10px; margin: 0; font: bold 19px/1.2 Verdana, Geneva, sans-serif; color: #335511; }
+      .m-titre img { width: 30px; height: 30px; }
+      .m-sous { margin: 6px 0 16px; font-size: 14px; line-height: 1.5; color: #5A7D33; }
 
       /* Des jeux : un carrousel qui déborde jusqu'aux bords de la carte. */
       .m-carrousel {
         display: flex; gap: 12px; overflow-x: auto; overscroll-behavior-x: contain;
-        scroll-snap-type: x mandatory; scroll-padding: 0 16px; scrollbar-width: none;
-        margin: 0 -16px; padding: 4px 16px 12px;
+        scroll-snap-type: x mandatory; scroll-padding: 0 18px; scrollbar-width: none;
+        margin: 0 -18px; padding: 0 18px 4px;
       }
       .m-carrousel::-webkit-scrollbar { display: none; }
       .m-jeu {
-        flex: 0 0 144px; scroll-snap-align: start; padding: 0; border: 0; background: none;
+        flex: 0 0 128px; scroll-snap-align: start; padding: 0; border: 0; background: none;
         font: inherit; color: inherit; text-align: left; cursor: pointer;
       }
       .m-jeu-image {
-        position: relative; display: block; width: 144px; height: 144px; overflow: hidden;
-        border-radius: 20px; border: 3px solid #E8F8D3; background: #E8F8D3;
-        box-shadow: 0 4px 10px rgba(44,74,15,.18);
+        position: relative; display: block; width: 128px; height: 128px; overflow: hidden;
+        border-radius: 16px; background: #E8F8D3;
       }
       .m-jeu-image img { display: block; width: 100%; height: 100%; object-fit: cover; }
-      .m-jeu:active .m-jeu-image { transform: scale(.97); }
+      .m-jeu:active .m-jeu-image { opacity: .85; }
       .m-jeu-jouer {
-        position: absolute; right: 8px; bottom: 8px; width: 36px; height: 36px; border-radius: 50%;
-        background: linear-gradient(#ff8fb8, #e2367a); border: 2px solid #fff; color: #fff;
-        font: 13px/32px Verdana, sans-serif; text-align: center; box-shadow: 0 2px 6px rgba(0,0,0,.3);
+        position: absolute; right: 7px; bottom: 7px; width: 30px; height: 30px; border-radius: 50%;
+        background: #73B01E; color: #fff; font: 11px/30px Verdana, sans-serif; text-align: center;
       }
       .m-jeu-badge {
-        position: absolute; left: 7px; top: 7px; padding: 4px 8px; border-radius: 10px;
-        background: #fff; color: #a8174a; font: bold 10px/1 Verdana, sans-serif; box-shadow: 0 1px 4px rgba(0,0,0,.2);
+        position: absolute; left: 7px; top: 7px; padding: 4px 7px; border-radius: 8px;
+        background: #fff; color: #335511; font: bold 10px/1 Verdana, sans-serif;
       }
-      .m-jeu-genre {
-        display: block; margin: 9px 0 2px 2px; font-size: 10px; font-weight: bold; letter-spacing: .6px;
-        text-transform: uppercase; color: #84b935;
-      }
-      .m-jeu-nom { display: block; margin-left: 2px; font-size: 15px; font-weight: bold; color: #2C4A0F; }
-      .m-jeu-accroche { display: block; margin: 3px 0 0 2px; font-size: 12px; line-height: 1.35; color: #5A7D33; }
+      .m-jeu-nom { display: block; margin: 8px 0 0 2px; font-size: 14px; font-weight: bold; color: #335511; }
+      .m-jeu-genre { display: block; margin: 2px 0 0 2px; font-size: 12px; color: #7a9a55; }
 
       /* Du chat : la fenêtre d'un salon, comme au bureau. */
-      .m-salon { padding: 8px; border: 3px solid #444; border-radius: 16px; background: #fff; box-shadow: 0 5px 0 #DDDDDD; }
-      .m-salon-barre { display: flex; align-items: center; gap: 6px; margin: 0 2px 8px; font: bold 15px Verdana, Geneva, sans-serif; color: #444; }
-      .m-salon-barre img { width: 22px; height: auto; }
+      .m-salon { padding: 10px; border: 2px solid #E8F8D3; border-radius: 16px; background: #fff; }
+      .m-salon-barre { display: flex; align-items: center; gap: 6px; margin: 0 2px 10px; font: bold 13px Verdana, Geneva, sans-serif; color: #5A7D33; }
+      .m-salon-barre img { width: 18px; height: auto; }
       .m-ecrans { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 8px; }
       .m-ecran { min-width: 0; text-align: center; }
       .m-ecran-cadre {
@@ -545,37 +526,33 @@
       .m-ecran.parle .m-ecran-cadre { transform: translateY(-4px); filter: drop-shadow(0 4px 4px rgba(44,74,15,.3)); }
       .m-ecran-nom { display: block; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: bold 10px Verdana, sans-serif; }
       .m-fil {
-        display: flex; flex-direction: column; justify-content: flex-end; height: 138px; overflow: hidden;
-        padding: 6px 9px; border: 3px solid #b5e57a; border-radius: 12px;
-        background: linear-gradient(#dcf9b3, #c8f08f); font: 12.5px/1.45 Verdana, Geneva, sans-serif;
+        display: flex; flex-direction: column; justify-content: flex-end; height: 132px; overflow: hidden;
+        padding: 8px 10px; border-radius: 12px; background: #F4FBE8; font: 12.5px/1.5 Verdana, Geneva, sans-serif;
       }
       .m-ligne { flex: none; animation: m-entre .35s ease-out; overflow-wrap: anywhere; }
       .m-ligne .h { opacity: .75; }
       .m-ligne.emote { font-style: italic; }
-      .m-atouts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 16px 0 0; padding: 0; list-style: none; }
-      .m-atouts li { padding: 10px 4px 9px; border-radius: 14px; background: #E8F8D3; text-align: center; font-size: 12px; font-weight: bold; color: #4f7d1e; }
-      .m-atouts img { display: block; width: auto; height: 42px; margin: 0 auto 6px; }
+      .m-aussi { margin: 14px 0 0; font-size: 13px; line-height: 1.5; color: #7a9a55; }
 
       /* Des fruits : une frutibouille, une autre, encore une autre… */
-      .m-atelier { display: flex; flex-direction: column; align-items: center; gap: 14px; margin: 0 0 20px; }
+      .m-atelier { display: flex; flex-direction: column; align-items: center; gap: 8px; margin: 0 0 18px; }
       .m-tete {
-        position: relative; width: 172px; height: 172px; padding: 0; border: 0; border-radius: 28px; cursor: pointer;
+        position: relative; width: 150px; height: 150px; padding: 0; border: 0; border-radius: 24px; cursor: pointer;
         background: url('/fb/cadre_bouille.svg') center / 100% 100% no-repeat;
-        filter: drop-shadow(0 6px 10px rgba(44,74,15,.2));
       }
       .m-tete canvas { position: absolute; left: 4%; top: 4%; width: 92% !important; height: 92% !important; }
       .m-autre {
-        padding: 9px 18px; border: 2px solid #94DB39; border-radius: 18px; background: #E8F8D3; cursor: pointer;
-        font: bold 14px Verdana, Geneva, sans-serif; color: #335511;
+        padding: 8px 12px; border: 0; background: none; cursor: pointer;
+        font: bold 14px Verdana, Geneva, sans-serif; color: #4f7d1e;
       }
       .m-autre::before { content: '\21BB\00A0'; }
-      .m-fruits .m-btn { max-width: 340px; margin: 0 auto; }
-      .m-deja { margin: 16px 0 0; text-align: center; font-size: 14px; color: #5A7D33; }
+      .m-fruits .m-btn { max-width: 320px; margin: 0 auto; }
+      .m-deja { margin: 14px 0 0; text-align: center; font-size: 14px; color: #5A7D33; }
       .m-deja a { font-weight: bold; color: #335511; }
 
       /* Les parties paraissent en glissant vers le haut (si le visiteur ne
          demande pas moins d'animations : la classe n'est alors pas posée). */
-      .m-anime .m-carte { opacity: 0; transform: translateY(18px); transition: opacity .5s ease, transform .5s ease; }
+      .m-anime .m-carte { opacity: 0; transform: translateY(12px); transition: opacity .45s ease, transform .45s ease; }
       .m-anime .m-carte.vu { opacity: 1; transform: none; }
 
       /* ── Les feuilles : connexion (la barre d'époque), inscription, oubli ── */
@@ -610,10 +587,7 @@
       .topbar .logo { display: none; }
       .feuille-tete.m-only { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 2px 12px; }
       #register-form .feuille-tete { order: -1; }
-      .feuille-tete strong {
-        font: 400 25px/1.1 'Alba', 'Trebuchet MS', sans-serif; color: #84c22d; letter-spacing: .4px;
-        -webkit-text-stroke: 1px #4f7d1e; paint-order: stroke fill;
-      }
+      .feuille-tete strong { font: bold 19px/1.2 Verdana, Geneva, sans-serif; color: #335511; }
       .feuille-fermer {
         flex: none; width: 38px; height: 38px; border-radius: 50%; border: 2px solid #ADE76B; background: #fff;
         color: #335511; font: bold 16px/1 Verdana, sans-serif; cursor: pointer;
@@ -663,14 +637,13 @@
       .mode-ring circle { display: none; }
       .btn { padding: 0 14px; font-size: 16px; line-height: 1; }
       .btn-primary, #forgot-submit {
-        flex: 1 1 100%; height: 52px; margin-top: 12px; border-radius: 26px; color: #fff;
-        background: linear-gradient(#ff8fb8, #e2367a); border: 2px solid #a8174a; box-shadow: 0 4px 0 #a8174a;
-        font: 400 20px/1 'Alba', 'Trebuchet MS', Verdana, sans-serif; letter-spacing: 1px; text-shadow: 0 1px 0 #a8174a;
+        flex: 1 1 100%; height: 50px; margin-top: 12px; border-radius: 14px; color: #fff;
+        background: #73B01E; border: 0; box-shadow: 0 3px 0 #4f7d1e; font: bold 16px/1 Verdana, Geneva, sans-serif;
       }
-      .btn-primary:active, #forgot-submit:active { transform: translateY(2px); box-shadow: 0 2px 0 #a8174a; }
+      .btn-primary:active, #forgot-submit:active { transform: translateY(1px); box-shadow: 0 2px 0 #4f7d1e; }
       .btn-secondary {
-        flex: 1 1 100%; height: 48px; margin: 10px 0 0; padding: 0 14px; border-radius: 24px;
-        border: 2px solid #94DB39; color: #4f7d1e; background: #fff; text-decoration: none; font-size: 15px;
+        flex: 1 1 100%; height: 48px; margin: 10px 0 0; padding: 0 14px; border-radius: 14px;
+        border: 2px solid #E8F8D3; color: #4f7d1e; background: #fff; text-decoration: none; font-size: 15px;
       }
       .btn-secondary:active { background: #f1f9e4; }
       .register-simple { max-width: none; }
@@ -679,7 +652,7 @@
       .register-actions .btn-primary, .register-actions .btn-secondary { flex: 1 1 0; margin-top: 0; }
       #forgot-form > div:first-of-type { gap: 10px !important; }
       #forgot-form .btn { flex: 1 1 0; margin-top: 0; }
-      #forgot-box strong { font: 400 24px/1.1 'Alba', 'Trebuchet MS', sans-serif; color: #84c22d !important; -webkit-text-stroke: 1px #4f7d1e; paint-order: stroke fill; }
+      #forgot-box strong { font: bold 19px/1.2 Verdana, Geneva, sans-serif; color: #335511 !important; }
       #forgot-box p { font-size: 14px !important; line-height: 1.45; }
 
       /* Les messages : une bulle en haut de l'écran, par-dessus les feuilles. */
@@ -699,7 +672,7 @@
     }
     @media (max-width: 760px) and (prefers-reduced-motion: reduce),
            (pointer: coarse) and (max-height: 500px) and (prefers-reduced-motion: reduce) {
-      .m-grappe, .m-enligne i { animation: none; }
+      .m-enligne i { animation: none; }
       .topbar, #register-form, #forgot-box, .status, .m-ligne { animation: none !important; }
     }
   </style>
@@ -741,44 +714,40 @@
       <img loading="lazy" decoding="async" class="m-logo" src="/images/m/logo.webp" width="236" height="105" alt="Frutiparc" />
       <img loading="lazy" decoding="async" class="m-grappe" src="/images/m/fruits.webp" width="196" height="195" alt="" />
       <h1 class="m-devise" data-i18n-html="accueil.m.devise">Des fruits, des jeux,<br>du chat !</h1>
-      <p class="m-accroche" data-i18n-html="accueil.m.accroche">Le parc fruité de 2002 est de retour. Joue <strong>gratuitement</strong>, tout de suite, sans même t'inscrire.</p>
+      <p class="m-accroche" data-i18n="accueil.m.accroche">Le parc fruité est de retour. Joue tout de suite, sans inscription.</p>
       <div class="m-actions">
-        <button type="button" class="m-btn m-btn-rose m-btn-jouer" id="m-jouer" data-i18n="accueil.m.jouer">Jouer maintenant</button>
-        <button type="button" class="m-btn m-btn-vert" data-m-inscription data-i18n="accueil.m.creerCompte">Créer mon compte</button>
+        <button type="button" class="m-btn m-btn-plein m-btn-jouer" id="m-jouer" data-i18n="accueil.m.jouer">Jouer maintenant</button>
+        <button type="button" class="m-btn m-btn-blanc" data-m-inscription data-i18n="accueil.m.creerCompte">Créer mon compte</button>
       </div>
       <p class="m-enligne hidden" id="m-enligne"><i aria-hidden="true"></i><span></span></p>
     </section>
 
     <section class="m-carte m-jeux" id="m-jeux" aria-labelledby="m-titre-jeux">
       <h2 class="m-titre" id="m-titre-jeux"><img loading="lazy" decoding="async" src="/fb/signe_kiwi.png" alt="" /><span data-i18n="accueil.m.titreJeux">Des jeux</span></h2>
-      <p class="m-sous" data-i18n="accueil.m.sousJeux">Complets et gratuits. Touche un jeu pour y jouer tout de suite, sans inscription.</p>
+      <p class="m-sous" data-i18n="accueil.m.sousJeux">Gratuits, complets, à essayer sans compte.</p>
       <div class="m-carrousel" id="m-carrousel" role="group" aria-labelledby="m-titre-jeux"></div>
     </section>
 
     <section class="m-carte m-chat" id="m-chat" aria-labelledby="m-titre-chat">
       <h2 class="m-titre" id="m-titre-chat"><img loading="lazy" decoding="async" src="/fb/signe_cerise.png" alt="" /><span data-i18n="accueil.m.titreChat">Du chat</span></h2>
-      <p class="m-sous" data-i18n="accueil.m.sousChat">Des salons où l'on papote, se lance des défis et fait des bulles de chewing-gum, avec sa frutibouille.</p>
+      <p class="m-sous" data-i18n="accueil.m.sousChat">Papote, lance des défis, fais des bulles de chewing‑gum.</p>
       <!-- Un salon qui vit tout seul (voir salonDeDemo) : décor, pas contenu. -->
       <div class="m-salon" aria-hidden="true">
         <div class="m-salon-barre"><img loading="lazy" decoding="async" src="/fb/icone_salon.png" alt="" /><span data-i18n="accueil.m.salon">Salon Pomme</span></div>
         <div class="m-ecrans" id="m-ecrans"></div>
         <div class="m-fil" id="m-fil"></div>
       </div>
-      <ul class="m-atouts">
-        <li><img loading="lazy" decoding="async" src="/fb/icone_messagerie.svg" alt="" /><span data-i18n="accueil.m.atoutMessagerie">Messagerie</span></li>
-        <li><img loading="lazy" decoding="async" src="/fb/icone_forum.png" alt="" /><span data-i18n="accueil.m.atoutForums">Forums</span></li>
-        <li><img loading="lazy" decoding="async" src="/fb/icone_scores.png" alt="" /><span data-i18n="accueil.m.atoutClassements">Classements</span></li>
-      </ul>
+      <p class="m-aussi" data-i18n="accueil.m.aussi">Et aussi : la messagerie, les forums, les classements et les défis du jour.</p>
     </section>
 
     <section class="m-carte m-fruits" id="m-fruits" aria-labelledby="m-titre-fruits">
       <h2 class="m-titre" id="m-titre-fruits"><img loading="lazy" decoding="async" src="/fb/signe_fraise.png" alt="" /><span data-i18n="accueil.m.titreFruits">Des fruits</span></h2>
-      <p class="m-sous" data-i18n="accueil.m.sousFruits">Ta frutibouille t'attend : yeux, coiffure, couleurs, accessoires… compose la tête qui te ressemble.</p>
+      <p class="m-sous" data-i18n="accueil.m.sousFruits">Compose la frutibouille qui te ressemble.</p>
       <div class="m-atelier">
         <button type="button" class="m-tete" id="m-tete" aria-label="Faire réagir la frutibouille" data-i18n-attr="aria-label:accueil.m.faireReagir"></button>
         <button type="button" class="m-autre" id="m-autre" data-i18n="accueil.m.uneAutre">Une autre !</button>
       </div>
-      <button type="button" class="m-btn m-btn-rose" data-m-inscription data-i18n="accueil.m.creerCompte">Créer mon compte</button>
+      <button type="button" class="m-btn m-btn-plein" data-m-inscription data-i18n="accueil.m.creerCompte">Créer mon compte</button>
       <p class="m-deja"><span data-i18n="accueil.m.dejaFrutiz">Déjà frutiz ?</span> <a href="#" data-m-connexion data-i18n="accueil.m.seConnecter">Se connecter</a></p>
     </section>
   </main>
@@ -1302,21 +1271,21 @@
     });
 
     /* ── DES JEUX. Les mêmes jeux que la liste du bureau (et Mini-Fever, qui
-       n'a jamais eu sa vignette d'accueil), avec ce qu'il faut pour donner
-       envie : le genre et une phrase. Les images sont les vignettes d'époque
-       agrandies pour les écrans de téléphone (scripts/accueil-mobile-images.js). */
+       n'a jamais eu sa vignette d'accueil) : la vignette, le nom, le genre —
+       pas plus. Les images sont les vignettes d'époque agrandies pour les
+       écrans de téléphone (scripts/accueil-mobile-images.js). */
     const FICHES = {
-      bk: ['accueil.m.genreCourse', 'Course', 'accueil.m.accBk', 'Des courses de kiwis à toute allure.'],
-      frutisnake: ['accueil.m.genreArcade', 'Arcade', 'accueil.m.accSnake', 'Croque les fruits sans te mordre la queue.'],
-      swapou: ['accueil.m.genreReflexion', 'Réflexion', 'accueil.m.accSwapou', 'Échange, aligne, enchaîne les combos.'],
-      mb: ['accueil.m.genreAdresse', 'Adresse', 'accueil.m.accMb', 'Guide la bille dans des labyrinthes infernaux.'],
-      kaluga: ['accueil.m.genreAdresse', 'Adresse', 'accueil.m.accKaluga', 'Des épreuves loufoques, une pomme et du doigté.'],
-      mpixiz: ['accueil.m.genreReflexion', 'Réflexion', 'accueil.m.accPixiz', 'Des blocs qui tombent, une fée contre les démons.'],
-      mwave: ['accueil.m.genreTir', 'Tir', 'accueil.m.accWave', 'Tire, esquive et lâche la bombe.'],
-      jamajama: ['accueil.m.genrePlateformes', 'Plateformes', 'accueil.m.accJama', 'Mène Tiki le petit fantôme jusqu\'à la sortie.'],
-      minifever: ['accueil.m.genreArcade', 'Arcade', 'accueil.m.accFever', 'Une avalanche de mini-épreuves.'],
-      fb: ['accueil.m.genreStrategie', 'Stratégie', 'accueil.m.accBandas', 'Le duel de stratégie face aux autres frutiz.'],
-      grapiz: ['accueil.m.genreStrategie', 'Stratégie', 'accueil.m.accGrapiz', 'Un jeu de pions où chaque coup compte.'],
+      bk: ['accueil.m.genreCourse', 'Course'],
+      frutisnake: ['accueil.m.genreArcade', 'Arcade'],
+      swapou: ['accueil.m.genreReflexion', 'Réflexion'],
+      mb: ['accueil.m.genreAdresse', 'Adresse'],
+      kaluga: ['accueil.m.genreAdresse', 'Adresse'],
+      mpixiz: ['accueil.m.genreReflexion', 'Réflexion'],
+      mwave: ['accueil.m.genreTir', 'Tir'],
+      jamajama: ['accueil.m.genrePlateformes', 'Plateformes'],
+      minifever: ['accueil.m.genreArcade', 'Arcade'],
+      fb: ['accueil.m.genreStrategie', 'Stratégie'],
+      grapiz: ['accueil.m.genreStrategie', 'Stratégie'],
     };
     const ORDRE_MOBILE = ['bk', 'frutisnake', 'swapou', 'mb', 'kaluga', 'mpixiz', 'mwave', 'jamajama', 'minifever', 'fb', 'grapiz'];
     const MINIFEVER = { id: 'minifever', name: 'Mini-Fever', image: 'fd_minifever.svg', page: '/minifever/' };
@@ -1349,13 +1318,11 @@
         const jouer = document.createElement('span');
         jouer.className = 'm-jeu-jouer'; jouer.textContent = '▶'; jouer.setAttribute('aria-hidden', 'true');
         cadre.appendChild(jouer);
-        const genre = document.createElement('span');
-        genre.className = 'm-jeu-genre'; genre.textContent = T(fiche[0], fiche[1]);
         const nom = document.createElement('span');
         nom.className = 'm-jeu-nom'; nom.textContent = game.name;
-        const accroche = document.createElement('span');
-        accroche.className = 'm-jeu-accroche'; accroche.textContent = T(fiche[2], fiche[3]);
-        b.append(cadre, genre, nom, accroche);
+        const genre = document.createElement('span');
+        genre.className = 'm-jeu-genre'; genre.textContent = T(fiche[0], fiche[1]);
+        b.append(cadre, nom, genre);
         b.addEventListener('click', () => ouvrirJeu(game));
         hote.appendChild(b);
       });
