@@ -231,9 +231,15 @@
   }
 </style>
 <script src="/js/sid-discret.js"></script>
+<!-- Les langues du parc (voir /js/i18n.js) : en anglais, le vocabulaire
+     commun, les widgets partagés (le panneau des parties en différé) et le
+     dictionnaire du jeu (/grapiz/lang/en.js) arrivent pendant l'analyse de la
+     page ; en français, rien n'est chargé — le français est écrit ici même. -->
+<script src="/js/i18n.js"></script>
+<script>FPI18n.charger(['commun', 'widgets', '/grapiz/lang/{lang}.js']);</script>
 </head>
 <body>
-  <div id="status">Connexion…</div>
+  <div id="status" data-i18n="grapiz.connexion">Connexion…</div>
 
   <div id="screen-connect" class="screen on"></div>
 
@@ -247,9 +253,9 @@
     </div>
     <div class="mode-list">
       <!-- Championnat et matches amicaux : EN DIFFÉRÉ (trois jours par coup). -->
-      <div class="mode active" id="mode-champ" data-salle="champ"><div class="mname">CHAMPIONNAT</div><div class="mstats"><div class="j"><span>À TOI DE JOUER</span><span id="dc-j">0</span></div><div class="p"><span>PARTIES</span><span id="dc-p">0</span></div></div><div class="mnote" id="ma-note">En différé · 3 jours par coup</div></div>
-      <div class="mode active" id="mode-amical" data-salle="amical"><div class="mname">MATCHES AMICAUX</div><div class="mstats"><div class="j"><span>À TOI DE JOUER</span><span id="da-j">0</span></div><div class="p"><span>PARTIES</span><span id="da-p">0</span></div></div><div class="mnote">En différé · 3 jours par coup</div></div>
-      <div class="mode active" id="mode-chall"><div class="mname">CHALLENGE</div><div class="mstats"><div class="j"><span>JOUEURS</span><span id="ch-j">0</span></div><div class="p"><span>PARTIES</span><span id="ch-p">0</span></div></div></div>
+      <div class="mode active" id="mode-champ" data-salle="champ"><div class="mname" data-i18n="grapiz.championnat">CHAMPIONNAT</div><div class="mstats"><div class="j"><span data-i18n="grapiz.aToiDeJouer">À TOI DE JOUER</span><span id="dc-j">0</span></div><div class="p"><span data-i18n="grapiz.parties">PARTIES</span><span id="dc-p">0</span></div></div><div class="mnote" id="ma-note" data-i18n="grapiz.differeRegle">En différé · 3 jours par coup</div></div>
+      <div class="mode active" id="mode-amical" data-salle="amical"><div class="mname" data-i18n="grapiz.amicaux">MATCHES AMICAUX</div><div class="mstats"><div class="j"><span data-i18n="grapiz.aToiDeJouer">À TOI DE JOUER</span><span id="da-j">0</span></div><div class="p"><span data-i18n="grapiz.parties">PARTIES</span><span id="da-p">0</span></div></div><div class="mnote" data-i18n="grapiz.differeRegle">En différé · 3 jours par coup</div></div>
+      <div class="mode active" id="mode-chall"><div class="mname">CHALLENGE</div><div class="mstats"><div class="j"><span data-i18n="grapiz.joueursMaj">JOUEURS</span><span id="ch-j">0</span></div><div class="p"><span data-i18n="grapiz.parties">PARTIES</span><span id="ch-p">0</span></div></div></div>
     </div>
   </div>
 
@@ -259,40 +265,40 @@
       <div class="lobby-bar">
         <span class="title">CHALLENGE</span>
         <span class="sp"></span>
-        <button id="btn-create">Créer une partie</button>
-        <span class="x" id="lobby-back" title="Retour">✕</span>
+        <button id="btn-create" data-i18n="grapiz.creerPartie">Créer une partie</button>
+        <span class="x" id="lobby-back" title="Retour" data-i18n-attr="title:grapiz.retour">✕</span>
       </div>
       <div class="lobby-tabs">
-        <button data-tab="players" class="on">Joueurs</button>
+        <button data-tab="players" class="on" data-i18n="grapiz.ongletJoueurs">Joueurs</button>
         <button data-tab="chat">Chat</button>
-        <button data-tab="defis">Défis</button>
+        <button data-tab="defis" data-i18n="grapiz.ongletDefis">Défis</button>
       </div>
       <div class="lobby-main">
         <!-- Vert : défis du joueur sélectionné (replié par défaut, s'ouvre au clic d'un joueur) -->
         <div class="lpanel green collapsed" id="panel-defis">
-          <div class="lp-strip" data-exp="defis" title="Déplier">»</div>
+          <div class="lp-strip" data-exp="defis" title="Déplier" data-i18n-attr="title:grapiz.deplier">»</div>
           <div class="lp-full">
-            <div class="lp-head"><span class="lp-title" id="defis-title">Liste des défis</span><span class="lp-x" data-col="defis" title="Replier">✕</span></div>
+            <div class="lp-head"><span class="lp-title" id="defis-title" data-i18n="grapiz.listeDefis">Liste des défis</span><span class="lp-x" data-col="defis" title="Replier" data-i18n-attr="title:grapiz.replier">✕</span></div>
             <div class="lp-body" id="defis-body"></div>
             <div class="lp-foot" id="defis-foot"></div>
           </div>
         </div>
         <!-- Jaune : chat du lobby -->
         <div class="lpanel yellow" id="panel-chat">
-          <div class="lp-strip" data-exp="chat" title="Déplier">»</div>
+          <div class="lp-strip" data-exp="chat" title="Déplier" data-i18n-attr="title:grapiz.deplier">»</div>
           <div class="lp-full">
-            <div class="lp-head"><span class="lp-title">Chat</span><span class="lp-x" data-col="chat" title="Replier">✕</span></div>
+            <div class="lp-head"><span class="lp-title">Chat</span><span class="lp-x" data-col="chat" title="Replier" data-i18n-attr="title:grapiz.replier">✕</span></div>
             <div class="lp-body chat-log" id="lobby-chat"></div>
-            <div class="lp-foot chat-input"><input id="lobby-say" placeholder="Écris un message…" maxlength="200"><button id="lobby-send">»</button></div>
+            <div class="lp-foot chat-input"><input id="lobby-say" placeholder="Écris un message…" maxlength="200" data-i18n-attr="placeholder:grapiz.ecrisMessage"><button id="lobby-send">»</button></div>
           </div>
         </div>
         <!-- Rose : liste des joueurs -->
         <div class="lpanel pink" id="panel-players">
-          <div class="lp-strip" data-exp="players" title="Déplier">»</div>
+          <div class="lp-strip" data-exp="players" title="Déplier" data-i18n-attr="title:grapiz.deplier">»</div>
           <div class="lp-full">
-            <div class="lp-head"><span class="lp-title">liste des joueurs</span><span class="lp-x" data-col="players" title="Replier">✕</span></div>
+            <div class="lp-head"><span class="lp-title" data-i18n="grapiz.listeJoueurs">liste des joueurs</span><span class="lp-x" data-col="players" title="Replier" data-i18n-attr="title:grapiz.replier">✕</span></div>
             <div class="lp-body players-list" id="players"></div>
-            <div class="lp-foot"><span class="arrow" data-col="players" title="Replier">»</span></div>
+            <div class="lp-foot"><span class="arrow" data-col="players" title="Replier" data-i18n-attr="title:grapiz.replier">»</span></div>
           </div>
         </div>
       </div>
@@ -303,9 +309,9 @@
   <div id="screen-differe" class="screen">
     <div class="lobby-window">
       <div class="lobby-bar">
-        <span class="title" id="differe-title">CHAMPIONNAT</span>
+        <span class="title" id="differe-title" data-i18n="grapiz.championnat">CHAMPIONNAT</span>
         <span class="sp"></span>
-        <span class="x" id="differe-back" title="Retour">✕</span>
+        <span class="x" id="differe-back" title="Retour" data-i18n-attr="title:grapiz.retour">✕</span>
       </div>
       <div id="differe-box"></div>
     </div>
@@ -318,15 +324,15 @@
       <div class="g-main">
         <div class="g-board-wrap">
           <div id="board"></div>
-          <span class="g-ferme" id="game-ferme" title="Fermer — la partie t'attend">Fermer</span>
-          <span class="close x" id="game-quit" title="Abandonner la partie">✕</span>
+          <span class="g-ferme" id="game-ferme" title="Fermer — la partie t'attend" data-i18n="grapiz.fermer" data-i18n-attr="title:grapiz.fermerAttend">Fermer</span>
+          <span class="close x" id="game-quit" title="Abandonner la partie" data-i18n-attr="title:grapiz.abandonner">✕</span>
         </div>
         <div class="g-side">
-          <div class="g-warn">ATTENTION : Les touches F5, Alt-F4, Control-W, ou autres ferment ou relancent Frutiparc et vous font perdre la partie. Ne les utilisez pas !</div>
+          <div class="g-warn" data-i18n="grapiz.attention">ATTENTION : Les touches F5, Alt-F4, Control-W, ou autres ferment ou relancent Frutiparc et vous font perdre la partie. Ne les utilisez pas !</div>
           <div id="g-spec" class="g-spec"></div>
           <div id="g-end" class="g-end" style="display:none"></div>
           <div class="g-chat" id="game-chat"></div>
-          <div class="g-input"><input id="game-say" placeholder="Discuter…" maxlength="200"></div>
+          <div class="g-input"><input id="game-say" placeholder="Discuter…" maxlength="200" data-i18n-attr="placeholder:grapiz.discuter"></div>
         </div>
       </div>
     </div>
@@ -351,6 +357,12 @@
   function esc(s) { var d = document.createElement("div"); d.textContent = String(s == null ? "" : s); return d.innerHTML; }
   function each(l, f) { Array.prototype.forEach.call(l, f); }
   function xml(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+
+  // LES LANGUES (/js/i18n.js, chargé dans le <head>) : le français reste écrit
+  // ici, argument de repli de T() ; l'anglais vit dans /grapiz/lang/en.js. Les
+  // textes du HTML portent leur clé (data-i18n) et passent d'un coup ; en
+  // français, appliquer() ne touche à rien.
+  FPI18n.appliquer(document);
 
   // "Moi" : le serveur met u=username (MINUSCULE) mais state.user = nom
   // d'affichage (casse propre) → comparaison insensible à la casse, sinon
@@ -381,8 +393,8 @@
   function showFdPopin(kind) {
     if (document.getElementById("fd-popin")) return;
     var msg = (kind === "opp-no-fd")
-      ? "Ton adversaire n’a plus de disque Challenge aujourd’hui. Proposez-lui un entraînement contre les bots (toujours libre), ou réessayez demain."
-      : "Nom d’un Pamplefrousse ! Tu as perdu tous tes disques Challenge pour aujourd’hui ! Continue à t’entraîner librement contre les bots, retente demain ou achète un pass en boutique !";
+      ? T("grapiz.fdAdversaire", "Ton adversaire n’a plus de disque Challenge aujourd’hui. Proposez-lui un entraînement contre les bots (toujours libre), ou réessayez demain.")
+      : T("grapiz.fdMoi", "Nom d’un Pamplefrousse ! Tu as perdu tous tes disques Challenge pour aujourd’hui ! Continue à t’entraîner librement contre les bots, retente demain ou achète un pass en boutique !");
     var wrap = document.createElement("div");
     wrap.id = "fd-popin";
     wrap.style.cssText = "position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.30)";
@@ -395,7 +407,7 @@
           '</div>' +
           '<p style="font-family:Verdana,Arial,sans-serif;font-size:14px;line-height:1.5;margin:0 0 20px">' + msg + '</p>' +
           '<div style="text-align:center">' +
-            '<button id="fd-popin-close" style="width:124px;height:30px;border:0;padding:0 0 2px;background:url(/fb/bouton_popin.png) no-repeat center/100% 100%;font-family:Verdana,Arial,sans-serif;font-weight:bold;font-size:13px;color:#660000;cursor:pointer">Fermer</button>' +
+            '<button id="fd-popin-close" style="width:124px;height:30px;border:0;padding:0 0 2px;background:url(/fb/bouton_popin.png) no-repeat center/100% 100%;font-family:Verdana,Arial,sans-serif;font-weight:bold;font-size:13px;color:#660000;cursor:pointer">' + esc(T("grapiz.fermer", "Fermer")) + '</button>' +
           '</div>' +
         '</div>' +
       '</div>';
@@ -408,14 +420,14 @@
 
   // ── Connexion ────────────────────────────────────────────────────────────
   function start() {
-    if (!sid) { setStatus("Session manquante (?sid=)."); return; }
+    if (!sid) { setStatus(T("grapiz.sessionManquante", "Session manquante (?sid=).")); return; }
     fetch("/api/forum/me?sid=" + encodeURIComponent(sid), { cache: "no-store" })
       .then(function (r) { return r.json(); })
       .then(function (d) {
-        if (!d || !d.user) { setStatus("Session invalide."); return; }
+        if (!d || !d.user) { setStatus(T("grapiz.sessionInvalide", "Session invalide.")); return; }
         state.user = d.user; state.myBouille = d.bouille || DEFAULT_BOUILLE; connect();
       })
-      .catch(function () { setStatus("Réseau indisponible."); });
+      .catch(function () { setStatus(T("grapiz.reseau", "Réseau indisponible.")); });
   }
   function connect() {
     var proto = location.protocol === "https:" ? "wss" : "ws";
@@ -423,7 +435,7 @@
     try { ws = new WebSocket(proto + "://" + location.host + "/"); } catch (e) { scheduleReconnect(); return; }
     state.ws = ws;
     ws.onopen = function () {
-      setStatus("Identification…");
+      setStatus(T("grapiz.identification", "Identification…"));
       state.gotLobby = false; // (re)connexion → on se ré-enregistre au lobby
       send('<k l="' + xml(state.user) + '" s="' + xml(sid) + '" />');
       if (state.helloTimer) clearInterval(state.helloTimer);
@@ -433,7 +445,7 @@
       }, 600);
     };
     ws.onmessage = function (ev) { onData(ev.data); };
-    ws.onclose = function () { if (state.ws !== ws) return; setStatus("Reconnexion…"); scheduleReconnect(); };
+    ws.onclose = function () { if (state.ws !== ws) return; setStatus(T("grapiz.reconnexion", "Reconnexion…")); scheduleReconnect(); };
     ws.onerror = function () { try { ws.close(); } catch (e) {} };
   }
   // Reconnexion automatique : sur mobile, l'arrière-plan (ou un creux réseau)
@@ -472,7 +484,7 @@
   setInterval(function () {
     if (document.hidden || !enDirect()) return;
     if (state.ws && state.ws.readyState === 1 && state.lastRx && Date.now() - state.lastRx > 10000) {
-      setStatus("Reconnexion…");
+      setStatus(T("grapiz.reconnexion", "Reconnexion…"));
       // La nouvelle d'abord : son « hello » nous réinscrit (et rapporte la
       // partie) ; l'ancienne ne se ferme qu'ensuite.
       var mort = state.ws;
@@ -512,7 +524,7 @@
     state.lastRx = Date.now();
     if (e === "nogame") {
       // La partie s'est finie pendant une coupure : retour au salon.
-      if (state.screen === "game" && !state.ended && !state.differe) { setStatus("La partie s’est terminée pendant la coupure."); gotoLobby(); }
+      if (state.screen === "game" && !state.ended && !state.differe) { setStatus(T("grapiz.finPendantCoupure", "La partie s’est terminée pendant la coupure.")); gotoLobby(); }
       return;
     }
     if (e === "lobby") return onLobby(el);
@@ -525,13 +537,13 @@
       var m = el.getAttribute("m");
       // Erreur 2035 du jeu d'origine : l'observateur lit, il n'écrit pas.
       if (m === "spectator-mute") { addNote(MUET); return; }
-      if (m === "no-such-game" && state.screen === "lobby") { setStatus("Cette partie vient de se terminer."); gz({ a: "list" }); return; }
+      if (m === "no-such-game" && state.screen === "lobby") { setStatus(T("grapiz.partieTerminee", "Cette partie vient de se terminer.")); gz({ a: "list" }); return; }
       // Refus FD d'un match classé : popin native (pas une simple ligne d'état).
       if (m === "no-fd" || m === "opp-no-fd") { showFdPopin(m); return; }
       if (state.screen === "differe" && differeUI.erreur) { differeUI.erreur(m); return; }
       // Le serveur ne nous connaît plus (le salon nous a perdus de vue) : on se
       // réinscrit avec un nouveau « hello », et l'on rejoue le geste ensuite.
-      if (m === "unknown-player") { setStatus("Réinscription au salon…"); rehello(); return; }
+      if (m === "unknown-player") { setStatus(T("grapiz.reinscription", "Réinscription au salon…")); rehello(); return; }
       setStatus("⚠ " + m); return;
     }
   }
@@ -555,10 +567,13 @@
     $("#dc-j").textContent = ui.aMoi("champ"); $("#dc-p").textContent = ui.enCours("champ");
     $("#da-j").textContent = ui.aMoi("amical"); $("#da-p").textContent = ui.enCours("amical");
   }
-  var TITRES_DIFFERE = { champ: "CHAMPIONNAT — EN DIFFÉRÉ", amical: "MATCHES AMICAUX — EN DIFFÉRÉ" };
+  var TITRES_DIFFERE = {
+    champ: T("grapiz.titreDiffereChamp", "CHAMPIONNAT — EN DIFFÉRÉ"),
+    amical: T("grapiz.titreDiffereAmical", "MATCHES AMICAUX — EN DIFFÉRÉ"),
+  };
   function showDiffere(salle) {
     state.differeSalle = salle;
-    $("#differe-title").textContent = TITRES_DIFFERE[salle] || "EN DIFFÉRÉ";
+    $("#differe-title").textContent = TITRES_DIFFERE[salle] || T("grapiz.titreDiffere", "EN DIFFÉRÉ");
     showScreen("differe");
     differeUI.rendre();
     gz({ a: "dlist" });
@@ -581,10 +596,10 @@
   // ── Lobby (3 panneaux : Défis / Chat / Joueurs — fidèle au jeu d'origine) ────
   var lobbyPlayers = [], lobbyGames = [], lobbyLive = [], lobbySel = null;
   var SQCLASS = { idle: "SQ-idle", waiting: "SQ-waiting", playing: "SQ-playing" };
-  var STATUSLABEL = { idle: "Disponible", waiting: "En attente", playing: "En partie" };
+  var STATUSLABEL = { idle: T("grapiz.disponible", "Disponible"), waiting: T("grapiz.enAttente", "En attente"), playing: T("grapiz.enPartie", "En partie") };
   function onLobby(el) {
     if (!state.gotLobby) {
-      state.gotLobby = true; setStatus("Connecté — " + state.user); if (state.screen === "connect") showScreen("mode");
+      state.gotLobby = true; setStatus(T("grapiz.connecte", "Connecté — {nom}", { nom: state.user })); if (state.screen === "connect") showScreen("mode");
       // Reconnecté en pleine observation : le serveur nous a oubliés, on revient au salon.
       else if (state.spectator && state.screen === "game") { if (state._endTimer) { clearTimeout(state._endTimer); state._endTimer = null; } gotoLobby(); }
     }
@@ -592,7 +607,7 @@
     each(el.getElementsByTagName("pl"), function (n) { lobbyPlayers.push({ u: n.getAttribute("u"), n: n.getAttribute("n"), s: n.getAttribute("s"), f: n.getAttribute("f"), sr: +n.getAttribute("sr") || 0, el: +n.getAttribute("el") || 0, bot: n.getAttribute("bot") === "1", w: n.getAttribute("w") || "" }); });
     // Sa note de championnat, sous le bandeau du mode (il se joue en différé).
     var moi = lobbyPlayers.filter(isMe)[0];
-    if (moi && moi.el) $("#ma-note").innerHTML = "En différé · 3 jours par coup · ta note : <b>" + moi.el + "</b>";
+    if (moi && moi.el) $("#ma-note").innerHTML = T("grapiz.differeNote", "En différé · 3 jours par coup · ta note : <b>{note}</b>", { note: moi.el });
     each(el.getElementsByTagName("game"), function (n) { lobbyGames.push({ id: n.getAttribute("id"), host: n.getAttribute("host"), c: +n.getAttribute("c"), m: +n.getAttribute("m") }); });
     each(el.getElementsByTagName("live"), function (n) { lobbyLive.push({ g: n.getAttribute("g"), u0: n.getAttribute("u0"), u1: n.getAttribute("u1"), n0: n.getAttribute("n0"), n1: n.getAttribute("n1"), ns: +n.getAttribute("ns") || 0 }); });
     $("#ch-j").textContent = lobbyPlayers.length; $("#ch-p").textContent = lobbyGames.length;
@@ -601,7 +616,7 @@
   function findPlayer(uid) { for (var i = 0; i < lobbyPlayers.length; i++) if (lobbyPlayers[i].u === uid) return lobbyPlayers[i]; return null; }
   function renderLobby() {
     var me = lobbyPlayers.filter(isMe)[0];
-    $("#btn-create").textContent = (me && me.s === "waiting") ? "Annuler la partie" : "Créer une partie";
+    $("#btn-create").textContent = (me && me.s === "waiting") ? T("grapiz.annulerPartie", "Annuler la partie") : T("grapiz.creerPartie", "Créer une partie");
     if (lobbySel && !findPlayer(lobbySel)) lobbySel = null;   // joueur parti → désélection
     renderPlayers(); renderDefis();
     if (isMobile() && $(".lobby-main") && !/\bmt-/.test($(".lobby-main").className)) setLobbyTab(state.lobbyTab || "players");
@@ -612,14 +627,14 @@
     var box = $("#players"); box.innerHTML = "";
     var playing = 0, waiting = 0;
     lobbyPlayers.forEach(function (p) { if (p.s === "playing") playing++; else if (p.s === "waiting") waiting++; });
-    box.appendChild(countRow("SQ-playing", playing + (playing > 1 ? " qui jouent" : " qui joue")));
-    box.appendChild(countRow("SQ-waiting", waiting + " en attente"));
+    box.appendChild(countRow("SQ-playing", T.n("grapiz.quiJouent", playing, { one: "{n} qui joue", other: "{n} qui jouent" })));
+    box.appendChild(countRow("SQ-waiting", T("grapiz.nEnAttente", "{n} en attente", { n: waiting })));
     box.appendChild(div("psep"));
     lobbyPlayers.forEach(function (p) {
       if (isMe(p)) return;
       var row = div("pli can" + (lobbySel === p.u ? " sel" : ""));
       row.innerHTML = '<span class="sq ' + (SQCLASS[p.s] || "SQ-idle") + '"></span><span class="nm">' + esc(p.n || p.u) + "</span>"
-        + (p.w ? '<span class="eye" title="Regarde une partie">👁</span>' : "");
+        + (p.w ? '<span class="eye" title="' + esc(T("grapiz.regardeUnePartie", "Regarde une partie")) + '">👁</span>' : "");
       row.onclick = function () { selectPlayer(p.u); };
       box.appendChild(row);
     });
@@ -631,54 +646,56 @@
     var p = lobbySel ? findPlayer(lobbySel) : null;
     var title = $("#defis-title"), body = $("#defis-body"), foot = $("#defis-foot");
     if (!p) {
-      title.textContent = "Liste des défis";
-      body.innerHTML = '<div class="defis-empty">Clique sur un joueur dans la liste de droite pour voir son statut et le défier.</div>';
+      title.textContent = T("grapiz.listeDefis", "Liste des défis");
+      body.innerHTML = '<div class="defis-empty">' + T("grapiz.cliqueJoueur", "Clique sur un joueur dans la liste de droite pour voir son statut et le défier.") + '</div>';
       renderLive(body);
-      foot.innerHTML = '<span class="arrow" data-col="defis" title="Replier">»</span>';
+      foot.innerHTML = '<span class="arrow" data-col="defis" title="' + esc(T("grapiz.replier", "Replier")) + '">»</span>';
       return;
     }
     var name = p.n || p.u;
-    title.textContent = "Liste des défis de " + name + " (" + (p.sr || 0) + ")";
-    body.innerHTML = '<div class="defis-status"><span class="sq ' + (SQCLASS[p.s] || "SQ-idle") + '"></span>' + esc(STATUSLABEL[p.s] || "Disponible") + "</div>";
+    title.textContent = T("grapiz.listeDefisDe", "Liste des défis de {nom} ({n})", { nom: name, n: p.sr || 0 });
+    body.innerHTML = '<div class="defis-status"><span class="sq ' + (SQCLASS[p.s] || "SQ-idle") + '"></span>' + esc(STATUSLABEL[p.s] || STATUSLABEL.idle) + "</div>";
     foot.innerHTML = "";
     var btn = document.createElement("button"); btn.className = "btn-defier";
-    if (p.s === "idle") { btn.textContent = "Défier " + name; btn.onclick = function () { gz({ a: "challenge", u: p.u }); }; }
+    if (p.s === "idle") { btn.textContent = T("grapiz.defier", "Défier {nom}", { nom: name }); btn.onclick = function () { gz({ a: "challenge", u: p.u }); }; }
     else if (p.s === "waiting") {
       var g = lobbyGames.filter(function (x) { return x.host === p.u; })[0];
-      if (g) { btn.textContent = "Rejoindre " + name; btn.onclick = function () { gz({ a: "join", g: g.id }); }; }
-      else { btn.textContent = "Défier " + name; btn.disabled = true; }
+      if (g) { btn.textContent = T("grapiz.rejoindre", "Rejoindre {nom}", { nom: name }); btn.onclick = function () { gz({ a: "join", g: g.id }); }; }
+      else { btn.textContent = T("grapiz.defier", "Défier {nom}", { nom: name }); btn.disabled = true; }
     } else {
       // En partie : on peut aller regarder.
       var lv = liveOf(p.u);
-      if (lv) { btn.textContent = "Regarder la partie"; btn.onclick = function () { watch(lv.g); }; }
-      else { btn.textContent = name + " est en partie"; btn.disabled = true; }
+      if (lv) { btn.textContent = T("grapiz.regarderPartie", "Regarder la partie"); btn.onclick = function () { watch(lv.g); }; }
+      else { btn.textContent = T("grapiz.estEnPartie", "{nom} est en partie", { nom: name }); btn.disabled = true; }
     }
     foot.appendChild(btn);
-    var arr = document.createElement("span"); arr.className = "arrow"; arr.setAttribute("data-col", "defis"); arr.setAttribute("title", "Replier"); arr.textContent = "»"; foot.appendChild(arr);
+    var arr = document.createElement("span"); arr.className = "arrow"; arr.setAttribute("data-col", "defis"); arr.setAttribute("title", T("grapiz.replier", "Replier")); arr.textContent = "»"; foot.appendChild(arr);
   }
   // ── Les parties en cours (spectateurs) ──────────────────────────────────
   function liveOf(uid) { for (var i = 0; i < lobbyLive.length; i++) if (lobbyLive[i].u0 === uid || lobbyLive[i].u1 === uid) return lobbyLive[i]; return null; }
-  function nbSpec(n) { return n + " spectateur" + (n > 1 ? "s" : ""); }
+  function nbSpec(n) { return T.n("grapiz.spectateurs", n, { one: "{n} spectateur", other: "{n} spectateurs" }); }
   function renderLive(box) {
     if (!lobbyLive.length) return;
-    var t = div("live-title"); t.textContent = "Parties en cours"; box.appendChild(t);
+    var t = div("live-title"); t.textContent = T("grapiz.partiesEnCours", "Parties en cours"); box.appendChild(t);
     lobbyLive.forEach(function (lv) {
       var r = div("live-row");
-      r.innerHTML = '<span class="lv-nm">' + esc(lv.n0) + " contre " + esc(lv.n1) + "</span>"
+      r.innerHTML = '<span class="lv-nm">' + T("grapiz.contre", "{a} contre {b}", { a: esc(lv.n0), b: esc(lv.n1) }) + "</span>"
         + (lv.ns ? '<span class="lv-ns">👁 ' + lv.ns + "</span>" : "");
-      var b = document.createElement("button"); b.className = "btn-regarder"; b.textContent = "Regarder";
+      var b = document.createElement("button"); b.className = "btn-regarder"; b.textContent = T("grapiz.regarder", "Regarder");
       b.onclick = function () { watch(lv.g); };
       r.appendChild(b); box.appendChild(r);
     });
   }
   function watch(g) { gz({ a: "watch", g: g }); }
   // Qui regarde : « 2 spectateurs : Kiwi, Pomme ».
-  var MUET = "Les observateurs ne peuvent parler dans cette partie.";
+  var MUET = T("grapiz.muet", "Les observateurs ne peuvent parler dans cette partie.");
   function onSpec(el) {
     if (el.getAttribute("g") !== state.gameId) return;
     showSpecs(+el.getAttribute("ns") || 0, el.getAttribute("l") || "");
   }
-  function showSpecs(n, liste) { $("#g-spec").textContent = n ? "👁 " + nbSpec(n) + (liste ? " : " + liste : "") : ""; }
+  function showSpecs(n, liste) {
+    $("#g-spec").textContent = !n ? "" : liste ? T("grapiz.spectateursListe", "👁 {qui} : {liste}", { qui: nbSpec(n), liste: liste }) : "👁 " + nbSpec(n);
+  }
   function addNote(msg) {
     var log = $("#game-chat"); var ln = div("ln"); ln.style.fontStyle = "italic"; ln.style.color = "#8a5a10";
     ln.textContent = msg; log.appendChild(ln); log.scrollTop = log.scrollHeight;
@@ -773,8 +790,12 @@
         // En différé : l'issue, puis retour au panneau — pas d'écran d'accueil
         // ni de série. Une partie finie peut se REVOIR : pas de minuteur alors
         // (on la ferme soi-même).
-        var raison = el.getAttribute("r"), RAISONS = { delai: "délai de trois jours dépassé", forfeit: "abandon", connection: "jetons reliés", elimination: "élimination" };
-        b.textContent = (mine ? "🏆 Victoire contre " : "Défaite — ") + (who ? (who.n || who.u) : "équipe " + w) + (mine ? "" : " gagne") + (raison && RAISONS[raison] ? " (" + RAISONS[raison] + ")" : "") + ".";
+        var raison = el.getAttribute("r"), RAISONS = {
+          delai: T("grapiz.raisonDelai", "délai de trois jours dépassé"), forfeit: T("grapiz.raisonAbandon", "abandon"),
+          connection: T("grapiz.raisonJetons", "jetons reliés"), elimination: T("grapiz.raisonElimination", "élimination"),
+        };
+        var pq = { qui: nomDuGagnant(who, w), pourquoi: raison && RAISONS[raison] ? " (" + RAISONS[raison] + ")" : "" };
+        b.textContent = mine ? T("grapiz.victoireContre", "🏆 Victoire contre {qui}{pourquoi}.", pq) : T("grapiz.defaiteDiffere", "Défaite — {qui} gagne{pourquoi}.", pq);
         b.style.color = mine ? "#2e7d32" : "#c62828";
         if (state._endTimer) { clearTimeout(state._endTimer); state._endTimer = null; }
         if (e !== "start") state._endTimer = setTimeout(function () { state._endTimer = null; gotoDiffere(); }, 3200);
@@ -782,32 +803,37 @@
       }
       if (state.spectator) {
         // L'observateur : le vainqueur, sans série à lui ; retour au salon.
-        b.textContent = (who ? (who.n || who.u) : "équipe " + w) + " remporte la partie !";
+        b.textContent = T("grapiz.remporte", "{qui} remporte la partie !", { qui: nomDuGagnant(who, w) });
         b.style.color = "#8a5a10";
         if (state._endTimer) clearTimeout(state._endTimer);
         state._endTimer = setTimeout(function () { state._endTimer = null; gotoLobby(); }, 3200);
         return;
       }
-      b.textContent = mine ? "🏆 Victoire ! +1 à ta série." : ("Défaite — " + (who ? (who.n || who.u) : "équipe " + w) + " gagne. Série terminée.");
+      b.textContent = mine ? T("grapiz.victoire", "🏆 Victoire ! +1 à ta série.") : T("grapiz.defaite", "Défaite — {qui} gagne. Série terminée.", { qui: nomDuGagnant(who, w) });
       b.style.color = mine ? "#2e7d32" : "#c62828";
       // Gagnant → retour lobby (série +1). Perdant → écran d'accueil (le jeu s'arrête).
       if (state._endTimer) clearTimeout(state._endTimer);
       state._endTimer = setTimeout(function () { state._endTimer = null; if (mine) gotoLobby(); else gotoHome(); }, 2600);
     }
   }
+  // Le nom du gagnant, ou son équipe quand le joueur est inconnu.
+  function nomDuGagnant(who, w) { return who ? (who.n || who.u) : T("grapiz.equipe", "équipe {n}", { n: w }); }
   // Joueur ou observateur : chat, bouton ✕ et bandeau d'avertissement.
   function setupSpectator(el) {
     var sp = state.spectator, inp = $("#game-say"), q = $("#game-quit");
     inp.disabled = sp; inp.value = "";
-    inp.placeholder = sp ? "Chat en lecture seule (observateur)" : "Discuter…";
-    q.title = sp ? "Quitter la partie (vous l'observez)" : "Abandonner la partie";
+    inp.placeholder = sp ? T("grapiz.chatLecture", "Chat en lecture seule (observateur)") : T("grapiz.discuter", "Discuter…");
+    q.title = sp ? T("grapiz.quitterObservateur", "Quitter la partie (vous l'observez)") : T("grapiz.abandonner", "Abandonner la partie");
     var noms = state.players.slice().sort(function (a, b) { return a.e - b.e; }).map(function (p) { return p.n || p.u; });
+    var observe = T("grapiz.vousObservez", "Vous observez la partie de {noms}.", { noms: noms.join(T("grapiz.et", " et ")) });
     $(".g-warn").textContent = sp
-      ? "Vous observez la partie de " + noms.join(" et ") + ". " + MUET
-      : state.differe ? "Partie en différé : tu peux fermer cette fenêtre, la partie t'attend. Trois jours par coup — tu seras prévenu quand ce sera à toi."
-      : "ATTENTION : Les touches F5, Alt-F4, Control-W, ou autres ferment ou relancent Frutiparc et vous font perdre la partie. Ne les utilisez pas !";
-    if (sp) addNote("Vous observez la partie de " + noms.join(" et ") + ".");
-    if (state.differe) addNote("Partie en différé (" + (DiffereUI.SALLES[state.differeSalle] || "") + ") : chacun joue quand il passe, trois jours par coup.");
+      ? observe + " " + MUET
+      : state.differe ? T("grapiz.avertDiffere", "Partie en différé : tu peux fermer cette fenêtre, la partie t'attend. Trois jours par coup — tu seras prévenu quand ce sera à toi.")
+      : T("grapiz.attention", "ATTENTION : Les touches F5, Alt-F4, Control-W, ou autres ferment ou relancent Frutiparc et vous font perdre la partie. Ne les utilisez pas !");
+    if (sp) addNote(observe);
+    // La salle : son nom affiché (DiffereUI.nomSalle), l'identifiant reste.
+    if (state.differe) addNote(T("grapiz.noteDiffere", "Partie en différé ({salle}) : chacun joue quand il passe, trois jours par coup.",
+      { salle: DiffereUI.SALLES[state.differeSalle] ? DiffereUI.nomSalle(state.differeSalle) : "" }));
     showSpecs(+el.getAttribute("ns") || 0, "");
   }
   function gotoLobby() { state.spectator = false; state.gameId = null; state.myTeam = -1; state._barSig = ""; stopClocks(); showScreen("lobby"); renderLobby(); gz({ a: "list" }); }
@@ -976,7 +1002,7 @@
     _rsz = setTimeout(function () { var b = $("#board"); if (state.screen === "game" && b && b._size != null) renderBoard(); }, 160);
   });
 
-  if (!E) setStatus("Moteur indisponible (engine.js)."); else start();
+  if (!E) setStatus(T("grapiz.moteur", "Moteur indisponible (engine.js).")); else start();
 })();
 </script>
 <!-- Le disque sorti de la Frusion referme cette fenêtre (voir le fichier). -->
