@@ -454,7 +454,8 @@ test('le Prunostiqueur du mois : le classement, le sacre, la cagnotte, le titre 
   // LE TITRE : « Prunostiqueur du mois » en frutijob, tout le mois en cours.
   assert.equal(r.gagnant.titre, 'Prunostiqueur du mois');
   const job = async () => (await sql(`SELECT frutijob FROM users WHERE username = 'emile'`))[0].frutijob;
-  assert.equal(await job(), 'Prunostiqueur du mois');
+  // Rangé en CODE : il se dit dans la langue de qui lit la fiche.
+  assert.equal(await job(), '[prunostiqueur]');
   const titre = JSON.parse((await sql(`SELECT value FROM app_state WHERE key = 'prunostics_titre'`))[0].value);
   assert.deepEqual([titre.username, titre.mois, titre.ancien], ['emile', jourParis(0).slice(0, 7), 'Jardinier']);
   // L'objet est bien dans son inventaire.

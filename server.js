@@ -34278,8 +34278,6 @@ app.get('/api/light/fiche', async (req, res) => {
   if (!demandeur) return res.status(401).json({ ok: false, error: 'auth' });
   const u = String(req.query.u || '').toLowerCase().trim();
   if (!u) return res.status(400).json({ ok: false, error: 'pseudo' });
-  // Le frutijob d'un titre en code se dit dans la langue de qui lit.
-  const langueFiche = FPI18n.valide(req.query.lang) || langueDeRequete(req);
 
   let ud = users[u];
   if (!ud && process.env.DATABASE_URL) {
@@ -34392,6 +34390,8 @@ app.get('/api/light/fiche', async (req, res) => {
   // puis `external`, et ne retombe sur la présence qu'à défaut des deux.
   const absence = enLigne ? statusExternalOf(u) : '';
   const lieuDit = nomsPaysRegion(ud);
+  // Le frutijob d'un titre en code se dit dans la langue de qui lit.
+  const langueFiche = FPI18n.valide(req.query.lang) || langueDeRequete(req);
   res.json({
     ok: true,
     pseudo: getDisplayName(u),

@@ -25,7 +25,9 @@
  *   · Natacha souhaite la bienvenue en anglais au nouveau anglophone ;
  *   · Dimitri poste UN message à deux langues, et le complète en le
  *     modifiant (la mise à jour sous chaque moitié) ; le titre du
- *     Prunostiqueur du mois est rangé en code et dit dans la langue du lecteur.
+ *     Prunostiqueur du mois est rangé en code et dit dans la langue du lecteur ;
+ *   · VieuxPruneau poste la map du jour en deux langues, et sa marque de
+ *     graine, restée dans le français, l'empêche de la reposter au redémarrage.
  *
  * PostgreSQL de test requis (port 5433), sinon le fichier s'efface.
  */
@@ -403,7 +405,27 @@ test('Dimitri : le sacre du mois en deux langues, puis complété dans le même 
   assert.match(enB, new RegExp(`@${B}, with`));
 });
 
-// ── 4. Après un redémarrage ──────────────────────────────────────────────────
+// ── 4. VieuxPruneau : la map du jour, deux langues, une marque ───────────────
+
+const cartesDuJour = () => sql(`SELECT id, content FROM forum_posts WHERE author_username = 'vieuxpruneau' AND content LIKE '%(graine %'`);
+
+test('VieuxPruneau : la map du jour en un message, le français (et sa marque) puis l\'anglais', async (t) => {
+  if (!dispo) return t.skip('Postgres indisponible sur 5433');
+  // Il la poste de lui-même au démarrage (« vérification au démarrage »).
+  let cartes = [];
+  for (let i = 0; i < 100 && !cartes.length; i++) { cartes = await cartesDuJour(); if (!cartes.length) await wait(200); }
+  assert.equal(cartes.length, 1, 'une map, un message');
+  const [fr, en, reste] = cartes[0].content.split('\n\n────────────\n[i]');
+  assert.equal(reste, undefined, 'un seul bloc anglais');
+  assert.match(fr, /^\[b\](La map du jour|Rebelote !)\[\/b\]/);
+  assert.match(fr, /\[i\]\(graine \d+ · carte v\d+\)\[\/i\]$/, 'la marque reste au bout du français');
+  assert.match(en, /^\[b\](Today's map|Do-over!)\[\/b\]/);
+  assert.match(en, /\[b\]The dungeon\[\/b\]: \d+ rooms on 8 × 8/);
+  assert.ok(en.endsWith('[/i]') && !/\[\/?i\]/.test(en.slice(0, -4)), 'un bloc en italique, sans italique dedans');
+  assert.doesNotMatch(en, /graine|\[img\]/, 'ni la marque ni le plan, déjà dans le français');
+});
+
+// ── 5. Après un redémarrage ──────────────────────────────────────────────────
 
 test('après un redémarrage : l\'entrée se refait de sa clé, l\'Historique Kikooz se lit en anglais (vieilles lignes comprises), la notification d\'un absent aussi', async (t) => {
   if (!dispo) return t.skip('Postgres indisponible sur 5433');
@@ -415,6 +437,7 @@ test('après un redémarrage : l\'entrée se refait de sa clé, l\'Historique Ki
   const codes = await sql(`SELECT label, label_key FROM kikooz_log WHERE user_id = $1 AND label_key IS NOT NULL`, [id]);
   assert.ok(codes.some((c) => c.label === 'connexion quotidienne' && c.label_key === 'historique.kikooz.motif.connexion'), JSON.stringify(codes));
 
+  const cartesAvant = (await cartesDuJour()).length;
   await arreter();
   await lancer();
 
@@ -454,4 +477,9 @@ test('après un redémarrage : l\'entrée se refait de sa clé, l\'Historique Ki
   const kFr = await (await fetch(`${BASE}/api/light/kikooz?sid=${sids[EN]}&lang=fr`)).json();
   assert.ok(kFr.events.some((e) => e.text === '7 kikooz obtenus par la revente de "Bonnet de nuit".'));
   assert.ok(kFr.events.some((e) => e.text === '12 kikooz obtenus par connexion quotidienne.'));
+
+  // VieuxPruneau relit sa marque dans le message à deux langues : la même map
+  // n'est pas reposée (sa vérification passe huit secondes après le démarrage).
+  await wait(10000);
+  assert.equal((await cartesDuJour()).length, cartesAvant, 'la map du jour n\'est pas reposée');
 });
