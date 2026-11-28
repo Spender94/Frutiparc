@@ -13586,15 +13586,15 @@ async function quetesContratDe(u) {
   try { return await travail; } catch (e) { console.error('[QUETES] contrat :', e.message); return null; } finally { quetesContratsEnCours.delete(u); }
 }
 // Ce que le joueur voit de son contrat.
-function quetesContratVue(u) {
+function quetesContratVue(u, lang = 'fr') {
   if (!quetesReglages.contrat.actif) return { etat: 'inactif' };
   const c = quetesContrats.get(u);
   if (!c || !c.propositions.length) return { etat: 'aucun', minJours: quetesReglages.individuelles.minJours, fenetre: quetesReglages.individuelles.fenetre };
   const gainDe = (niveau) => Number(quetesReglages.gains[niveau]) || 0;
   const propositions = c.propositions.map((prop, i) => {
     const def = Quetes.definitionContrat(prop);
-    return def ? { i, niveau: def.niveau, niveauNom: Quetes.NIVEAU_NOM[def.niveau], gain: gainDe(def.niveau),
-      titre: Quetes.titre(def), detail: Quetes.detail(def), etiquette: Quetes.ETIQUETTES[def.etiquette] || null, jeu: def.etiquette || null } : null;
+    return def ? { i, niveau: def.niveau, niveauNom: Quetes.nomNiveau(def.niveau, lang), gain: gainDe(def.niveau),
+      titre: Quetes.titre(def, lang), detail: Quetes.detail(def, lang), etiquette: Quetes.etiquette(def.etiquette, lang), jeu: def.etiquette || null } : null;
   }).filter(Boolean);
   if (!c.def) return { etat: 'a_signer', propositions };
   return { etat: 'signe', signeLe: c.signeAt || null, choix: c.choix, propositions };
@@ -13772,38 +13772,37 @@ function quetesReverifier() {
 function quetesEchapper(s) {
   return String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
-/** Ce que le joueur voit : ses quêtes, où il en est, et ce que dit Gromelin. */
-function quetesEtatPour(username) {
+/** Ce que le joueur voit : ses quêtes, où il en est, et ce que dit Gromelin —
+ *  dans sa langue (`lang`, celle du compte par défaut). */
+function quetesEtatPour(username, lang = langueDe(username)) {
   const u = String(username).toLowerCase();
   const S = quetesSemaineCourante();
   const vis = quetesVisites.get(u);
   const vuAt = vis && vis.semaine === S.lundi ? vis.vuAt : 0;
   const m = quetesProgres.get(u) || new Map();
   let gagnes = 0, total = 0;
-  const carte = (def) => {
+  // (`periode` : 'signature' pour le contrat, qui ne compte que depuis.)
+  const carte = (def, periode) => {
     const p = m.get(def.id) || { etat: {}, faitAt: 0, gain: 0 };
-    const av = Quetes.avancement(def, p.etat);
+    const av = Quetes.avancement(def, p.etat, lang, periode);
     const gain = p.faitAt ? p.gain : quetesGainDe(def);
     total += gain;
     if (p.faitAt) gagnes += p.gain;
     return {
-      id: def.id, niveau: def.niveau, niveauNom: Quetes.NIVEAU_NOM[def.niveau], gain,
-      palier: def.palier || null, palierNom: def.palier ? Quetes.PALIER_NOM[def.palier] : null,
+      id: def.id, niveau: def.niveau, niveauNom: Quetes.nomNiveau(def.niveau, lang), gain,
+      palier: def.palier || null, palierNom: def.palier ? Quetes.nomPalier(def.palier, lang) : null,
       decouverte: !!def.decouverte, premiersPas: !!def.premiersPas,
       gromelin: !!def.gromelin, gromelinAt: def.gromelin ? Number(def.gromelin.at) || 0 : 0, doigt: !!def.doigt,
-      titre: Quetes.titre(def), detail: Quetes.detail(def), ligne: av.ligne, pc: av.pc,
+      titre: Quetes.titre(def, lang), detail: Quetes.detail(def, lang), ligne: av.ligne, pc: av.pc,
       fait: !!p.faitAt, faitLe: p.faitAt || null,
-      etiquette: Quetes.ETIQUETTES[def.etiquette] || null, jeu: def.etiquette || null, taillee: !!def.taillee,
+      etiquette: Quetes.etiquette(def.etiquette, lang), jeu: def.etiquette || null, taillee: !!def.taillee,
     };
   };
   const quetes = quetesDe(u).map(carte);
   const indiv = quetesReglages.mode !== 'collectives' ? quetesIndiv.get(u) : null;
-  const contrat = quetesContratVue(u);
+  const contrat = quetesContratVue(u, lang);
   const cdef = contrat.etat === 'signe' ? quetesContrats.get(u).def : null;
-  if (cdef) {
-    contrat.quete = Object.assign(carte(cdef), { contrat: true });
-    contrat.quete.ligne = contrat.quete.ligne.replace('cette semaine', 'depuis la signature');
-  }
+  if (cdef) contrat.quete = Object.assign(carte(cdef, 'signature'), { contrat: true });
   // Ce que Gromelin a à dire depuis la dernière visite, dans l'ordre. Son
   // tirage est semé par la visite : la même tant qu'on n'a pas rouvert.
   const alea = (() => { let a = 7; for (const ch of u + S.lundi + vuAt) a = (Math.imul(a ^ ch.charCodeAt(0), 2654435761) + 1) >>> 0; return () => { a = (Math.imul(a ^ (a >>> 15), 2246822507) + 0x9E3779B9) >>> 0; return a / 4294967296; }; })();
@@ -13838,16 +13837,17 @@ function quetesEtatPour(username) {
   const nouveau = nouvelleSemaine || toutes.some((q) => q.fait && q.faitLe > vuAt) || quetes.some((q) => q.gromelin && !q.fait && q.gromelinAt > vuAt);
   return {
     ok: true, acces: true,
-    semaine: { lundi: S.lundi, lisible: Quetes.semaineLisible(S.lundi), fin: Quetes.finDeSemaine(S.lundi) },
+    semaine: { lundi: S.lundi, lisible: Quetes.semaineLisible(S.lundi, lang), fin: Quetes.finDeSemaine(S.lundi) },
     quetes, contrat, gagnes, total, nouveau, nouvelleSemaine, messages,
     gains: quetesReglages.gains,
     v2: quetesV2(S.lundi),
     gainsPaliers: quetesV2(S.lundi) ? quetesReglages.paliers.gains : null,
     echange: quetesV2(S.lundi) && quetesReglages.paliers.echange
-      ? { possible: quetesEchangePossible(u), fait: indiv && indiv.echange ? { titre: indiv.echange.deTitre } : null } : null,
+      ? { possible: quetesEchangePossible(u), fait: indiv && indiv.echange
+        ? { titre: indiv.echange.deDef ? Quetes.titre(indiv.echange.deDef, lang) : indiv.echange.deTitre } : null } : null,
     bonus: quetesV2(S.lundi) && quetesReglages.paliers.bonusXp
       ? { xp: quetesReglages.paliers.bonusXp, verse: !!((quetesProgres.get(u) || new Map()).get(QUETES_BONUS_ID) || {}).faitAt } : null,
-    primes: quetesPrimesVue(u),
+    primes: quetesPrimesVue(u, lang),
     gromelin: { nom: getDisplayName('gromelin'), bouille: (users.gromelin && users.gromelin.fbouille) || GROMELIN_BOUILLE },
   };
 }
@@ -14038,14 +14038,14 @@ function quetesRkMesure(rk) {
   const R = RANKINGS[rk];
   return (R && R.game === 'bkiwi' && R.bkiwiTrack !== undefined) ? `bkiwi_track${R.bkiwiTrack}_classic` : rk;
 }
-function quetesValeurLisible(rk, score, data) {
+function quetesValeurLisible(rk, score, data, lang) {
   const cle = quetesMesureDe(rk, true);
   const m = cle && Quetes.MESURES[cle];
-  if (!m) return Quetes.nombre(score);
+  if (!m) return Quetes.nombre(score, lang);
   const v = Quetes.valeurDe(m, { type: 'score', rk: quetesRkMesure(rk), v: Number(score), data: String(data || '') });
-  return v == null ? Quetes.nombre(score) : Quetes.formater(m, v);
+  return v == null ? Quetes.nombre(score, lang) : Quetes.formater(m, v, lang);
 }
-function quetesPrimesVue(moi) {
+function quetesPrimesVue(moi, lang = 'fr') {
   if (!quetesReglages.primes.actif) return [];
   const S = quetesPrimesDeLaSemaine();
   if (!quetesV2(S.lundi)) return [];
@@ -14059,12 +14059,12 @@ function quetesPrimesVue(moi) {
     const etat = quetesPrimesEtat.get(rk);
     const R = RANKINGS[rk] || {};
     return {
-      rk, nom: R.name || rk, etiquette: Quetes.ETIQUETTES[jeu] || null, jeu: jeu || null,
+      rk, nom: nomDeClassement(rk, lang), etiquette: Quetes.etiquette(jeu, lang), jeu: jeu || null,
       // Le circuit, pour Burning Kiwi (« Burning Kiwi - Green Hill » → « Green Hill ») : l'affiche le dit.
       circuit: R.bkiwiTrack !== undefined ? String(R.name).replace(/^.*? - /, '') : null,
       // D'où vient le record : 'carte' (un contre-la-montre lu dans la fruticard), sinon un score classé.
       source: rec.source === 'carte' ? 'carte' : 'classement',
-      record: quetesValeurLisible(rk, rec.score, rec.data), tenant: getDisplayName(rec.username), tenantPseudo: rec.username,
+      record: quetesValeurLisible(rk, rec.score, rec.data, lang), tenant: getDisplayName(rec.username), tenantPseudo: rec.username,
       // La prime : celle d'aujourd'hui (elle grossit chaque semaine que le record tient).
       gain: prise ? prise.gain : quetesPrimeValeur(rk, S.lundi), semaines: quetesPrimeSemaines(rk, S.lundi), depuis: etat ? etat.depuis : null,
       prochaine: quetesPrimeValeur(rk, S.lundi),   // ce que vaut le record aujourd'hui (après une prise : la relance)
@@ -14124,7 +14124,7 @@ app.post('/api/quetes/echanger', async (req, res) => {
     const quetes = l.quetes.slice();
     quetes[i] = neuve;
     const reserve = (l.reserve || []).filter((x) => x !== sp);
-    const echange = { de: ancienne.id, deTitre: Quetes.titre(ancienne), par: neuve.id, at: Date.now() };
+    const echange = { de: ancienne.id, deDef: ancienne, par: neuve.id, at: Date.now() };
     if (process.env.DATABASE_URL && !(await db.quetesEchangerIndividuelle(S.lundi, u, quetes, reserve, echange))) {
       return res.status(409).json({ ok: false, error: 'deja_echange', message: tReq(req, 'quetes.dejaEchange', 'Tu as déjà changé une quête cette semaine.') });
     }
@@ -14132,7 +14132,7 @@ app.post('/api/quetes/echanger', async (req, res) => {
     const mp = quetesProgres.get(u);
     if (mp) mp.delete(ancienne.id);
     if (process.env.DATABASE_URL) db.quetesOublierProgres(S.lundi, u, ancienne.id).catch(dbErr('quetes echange'));
-    console.log(`[QUETES] ${u} change « ${echange.deTitre} » contre « ${Quetes.titre(neuve)} »`);
+    console.log(`[QUETES] ${u} change « ${Quetes.titre(ancienne)} » contre « ${Quetes.titre(neuve)} »`);
     quetesBonusPeutEtre(u, S.lundi);
     const etat = quetesEtatPour(u);
     etat.messages = [Quetes.parole('echange', { titre: quetesEchapper(Quetes.titre(neuve)) }, Math.random)];
@@ -14147,7 +14147,7 @@ app.get('/api/quetes/etat', async (req, res) => {
   await quetesIndivDe(u);
   try { await quetesDoigtAssurer(u); } catch (e) { console.error('[QUETES] défi au doigt :', e.message); }
   await quetesContratDe(u);
-  res.json(quetesEtatPour(u));
+  res.json(quetesEtatPour(u, langueDeRequete(req)));
 });
 // La signature du contrat : une des trois propositions, une fois pour la semaine.
 app.post('/api/quetes/contrat', async (req, res) => {
@@ -14242,7 +14242,7 @@ function quetesAdminJoueurs() {
     out.push({ username: u, nom: getDisplayName(u), faites: lignes.filter((l) => l.fait).length, total: lignes.length, gagnes,
       possible: lignes.reduce((n, l) => n + l.gain, 0),
       connu: indiv ? !!indiv.connu : null, niveaux: indiv ? indiv.niveaux || {} : {},
-      echange: indiv && indiv.echange ? indiv.echange.deTitre : null,
+      echange: indiv && indiv.echange ? (indiv.echange.deDef ? Quetes.titre(indiv.echange.deDef) : indiv.echange.deTitre) : null,
       bonus: !!(m.get(QUETES_BONUS_ID) || {}).faitAt, lignes });
   }
   return out.sort((a, b) => b.faites - a.faites || b.gagnes - a.gagnes || a.nom.localeCompare(b.nom));
@@ -14255,8 +14255,8 @@ function quetesAdminContrats() {
     const ligne = { username: u, nom: getDisplayName(u), propositions: props, choix: c.choix, signeLe: c.signeAt || null, etat: c.def ? 'signe' : 'a_signer' };
     if (c.def) {
       const p = (quetesProgres.get(u) || new Map()).get('contrat');
-      const av = Quetes.avancement(c.def, p ? p.etat : {});
-      Object.assign(ligne, { titre: Quetes.titre(c.def), niveau: c.def.niveau, ligne: av.ligne.replace('cette semaine', 'depuis la signature'), pc: av.pc, fait: !!(p && p.faitAt), gain: p && p.faitAt ? p.gain : 0 });
+      const av = Quetes.avancement(c.def, p ? p.etat : {}, 'fr', 'signature');
+      Object.assign(ligne, { titre: Quetes.titre(c.def), niveau: c.def.niveau, ligne: av.ligne, pc: av.pc, fait: !!(p && p.faitAt), gain: p && p.faitAt ? p.gain : 0 });
       if (ligne.fait) ligne.etat = 'fait';
     }
     out.push(ligne);
@@ -14633,7 +14633,7 @@ function quetesJoueurVue(u, liste) {
       decouverte: !!def.decouverte, premiersPas: !!def.premiersPas, parc: def.parc || null, retouchee: !!def.retouchee };
   });
   return { ok: true, username: u, nom: getDisplayName(u), lundi: S.lundi, lisible: Quetes.semaineLisible(S.lundi),
-    connu: !!liste.connu, echange: liste.echange ? liste.echange.deTitre : null,
+    connu: !!liste.connu, echange: liste.echange ? (liste.echange.deDef ? Quetes.titre(liste.echange.deDef) : liste.echange.deTitre) : null,
     quetes, total: quetes.reduce((n, q) => n + (q.fait ? 0 : q.gain), 0), modeles: quetesJoueurModeles() };
 }
 app.get('/api/admin/quetes/joueur', adminScope('quetes'), async (req, res) => {
@@ -14729,7 +14729,7 @@ app.post('/api/admin/quetes/joueur', adminScope('quetes'), async (req, res) => {
         const niveau = k <= 0 ? 'facile' : k === 1 ? 'moyenne' : 'difficile';
         def = { id: neuf, niveau, type: 'mesure', etiquette: m.jeu, famille: m.cle, taillee: true,
           gain: v2 ? Number(G[palier]) || 0 : Number(quetesReglages.gains[niveau]) || 0,
-          params: { mesure: m.cle, seuil }, detail: `${m.nom} · un défi de Gromelin` };
+          params: { mesure: m.cle, seuil }, rendu: { forme: 'defi' } };
         if (palier) Object.assign(def, { palier, v2: true });
       } else return refus('modele_inconnu', 'Modèle de quête inconnu.');
       if (!def) return refus('modele_inconnu', 'Modèle de quête inconnu.');

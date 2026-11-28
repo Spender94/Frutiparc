@@ -34,6 +34,19 @@
  *   record  { jeu, mode }            c : 1 dès que le record est battu
  */
 
+/*
+ * LES LANGUES. Le module écrit ses textes (titres, lignes de détail, unités,
+ * noms des niveaux et des paliers) dans la langue qu'on lui donne — le français
+ * par défaut, tel qu'il est écrit ici ; l'anglais vient de
+ * i18n-serveur/en/quetes.js, que server.js charge au démarrage dans le même
+ * module public/js/i18n.js. Une définition de quête ne range PAS ses textes
+ * rendus : ses paramètres suffisent (`rendu` dit quelle ligne de détail), et
+ * l'on rend à chaque lecture, dans la langue du lecteur.
+ */
+const FPI18n = require('./public/js/i18n.js');
+const enFrancais = (lang) => !lang || lang === 'fr';
+const tr = (lang, cle, fr, p) => FPI18n.traduire(lang || 'fr', cle, fr, p);
+
 const NIVEAUX = ['facile', 'moyenne', 'difficile'];
 const NIVEAU_NOM = { facile: 'Facile', moyenne: 'Moyenne', difficile: 'Difficile' };
 // Les paliers du parc (v2) : la part des meilleurs du jour du parc qui les
@@ -45,7 +58,12 @@ const PALIER_PART = { bronze: 0.5, argent: 0.3, or: 0.15, platine: 0.05, legende
 // (Le repère reste calculé ; la quête, elle, demande des parties.)
 const DECOUVERTE_PART = 0.6;
 const DECOUVERTE_PARTIES = 3;
-const nombreEnLettres = (n) => (['zéro', 'une', 'deux', 'trois', 'quatre', 'cinq'][n] || String(n));
+const nombreEnLettres = (n, lang) => (enFrancais(lang)
+  ? (['zéro', 'une', 'deux', 'trois', 'quatre', 'cinq'][n] || String(n))
+  : tr(lang, 'quetes.lettres.' + n, String(n)));
+// Le nom d'un niveau, d'un palier, d'une étiquette, dans une langue.
+const nomNiveau = (niveau, lang) => (NIVEAU_NOM[niveau] ? tr(lang, 'quetes.niveau.' + niveau, NIVEAU_NOM[niveau]) : undefined);
+const nomPalier = (palier, lang) => (PALIER_NOM[palier] ? tr(lang, 'quetes.palier.' + palier, PALIER_NOM[palier]) : undefined);
 
 const REGLAGES_DEFAUT = Object.freeze({
   // 'ferme' : personne · 'testeurs' : les pseudos listés · 'tous' : tout le parc
@@ -146,6 +164,12 @@ const ETIQUETTES = {
   salons:     { nom: 'Salons',      couleur: '#3E8FC4' },
   kiloute:    { nom: 'MikeHorny',   couleur: '#B04CB7' },
 };
+// L'étiquette dans une langue : les noms des jeux restent, « Salons » se traduit.
+function etiquette(cle, lang) {
+  const e = ETIQUETTES[cle];
+  if (!e || enFrancais(lang)) return e || null;
+  return Object.assign({}, e, { nom: tr(lang, 'quetes.etiquette.' + cle, e.nom) });
+}
 
 // Les épreuves de Kaluga, dans l'ordre de leur `trialId` (fruticard.js,
 // KALUGA_EPREUVES) — le mode déclaré est `epreuve<trialId>`.
@@ -344,9 +368,11 @@ for (const m of Object.values(MESURES)) {
 }
 
 // ── Écrire et lire une valeur, dans l'unité de sa mesure ──
-function formater(m, v) {
+// (`lang` : la langue du lecteur ; en français, l'écriture d'origine.)
+function formater(m, v, lang) {
   if (v == null || !Number.isFinite(Number(v))) return '—';
   const n = Number(v);
+  if (!enFrancais(lang)) return formaterAutre(m, n, lang);
   switch (m && m.unite) {
     case 'temps': {
       const cs = Math.round(m.base === 'cs' ? n : n / 10);
@@ -364,6 +390,31 @@ function formater(m, v) {
     case 'victoires': return nombre(n) + ' victoire' + (n > 1 ? 's' : '');
     case 'épreuves': return nombre(n) + ' épreuve' + (n > 1 ? 's' : '');
     default: return nombre(n);
+  }
+}
+// La même valeur dans une autre langue : les mots et le pluriel du
+// dictionnaire (`quetes.unite.*` : `{v}` le nombre écrit, `{n}` sa valeur), la
+// virgule décimale de la langue.
+function formaterAutre(m, n, lang) {
+  const v = nombre(n, lang);
+  const mot = (u, fr) => FPI18n.pluriel(lang, 'quetes.unite.' + u, n, fr, { v });
+  switch (m && m.unite) {
+    case 'temps': {
+      const cs = Math.round(m.base === 'cs' ? n : n / 10);
+      const min = Math.floor(cs / 6000), s = Math.floor(cs / 100) % 60, c = cs % 100;
+      const cc = c ? tr(lang, 'quetes.unite.virgule', ',') + String(c).padStart(2, '0') : '';
+      return min ? `${min} min ${String(s).padStart(2, '0')}${c ? cc : ''} s`.replace(' 00 s', '') : `${s}${cc} s`;
+    }
+    case '%': return mot('pourcent', { one: '{v} %', other: '{v} %' });
+    case 'boss': return n >= 1 ? tr(lang, 'quetes.unite.vaincu', 'vaincu') : tr(lang, 'quetes.unite.pasEncore', 'pas encore');
+    case 'points': return mot('points', { one: '{v} point', other: '{v} points' });
+    case 'cm': return mot('cm', { one: '{v} cm', other: '{v} cm' });
+    case 'salles': return mot('salles', { one: 'salle {v}', other: 'salle {v}' });
+    case 'niveau': return mot('niveau', { one: 'niveau {v}', other: 'niveau {v}' });
+    case 'coups': return mot('coups', { one: '{v} coup', other: '{v} coups' });
+    case 'victoires': return mot('victoires', { one: '{v} victoire', other: '{v} victoires' });
+    case 'épreuves': return mot('epreuves', { one: '{v} épreuve', other: '{v} épreuves' });
+    default: return v;
   }
 }
 /** Ce que l'admin tape (« 4:40 », « 4:40,50 », « 45 », « 45,5 s », « 25 000 ») → la valeur. */
@@ -447,7 +498,9 @@ const CATALOGUE = [
 
 // ── Les nombres et les dates ─────────────────────────────────────────────────
 
-const nombre = (n) => String(Math.round(Number(n) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+const nombre = (n, lang) => (enFrancais(lang)
+  ? String(Math.round(Number(n) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
+  : FPI18n.nombre(lang, Math.round(Number(n) || 0)));
 
 function jourPlus(jour, n) {
   const d = new Date(String(jour) + 'T12:00:00Z');
@@ -480,10 +533,18 @@ function minuitParis(jour) {
 /** La fin d'une semaine : le lundi suivant, à minuit, heure de Paris. */
 const finDeSemaine = (lundi) => minuitParis(jourPlus(lundi, 7));
 
-function semaineLisible(lundi) {
+function semaineLisible(lundi, lang) {
   const f = (j, o) => new Date(j + 'T12:00:00Z').toLocaleDateString('fr-FR', Object.assign({ timeZone: 'UTC' }, o));
   const dim = jourPlus(lundi, 6);
   const memeMois = lundi.slice(0, 7) === dim.slice(0, 7);
+  if (!enFrancais(lang)) {
+    // « of November 23 to 29 », « of November 30 to December 6 » (« Week {semaine} »).
+    const e = (j, o) => new Date(j + 'T12:00:00Z').toLocaleDateString('en-US', Object.assign({ timeZone: 'UTC' }, o));
+    return tr(lang, 'quetes.semaine', 'du {du} au {au}', {
+      du: e(lundi, { day: 'numeric', month: 'long' }),
+      au: memeMois ? e(dim, { day: 'numeric' }) : e(dim, { day: 'numeric', month: 'long' }),
+    });
+  }
   return memeMois
     ? `du ${f(lundi, { day: 'numeric' })} au ${f(dim, { day: 'numeric', month: 'long' })}`
     : `du ${f(lundi, { day: 'numeric', month: 'long' })} au ${f(dim, { day: 'numeric', month: 'long' })}`;
@@ -602,20 +663,145 @@ function catalogue(reglages) {
     .concat((((reglages || {}).perso) || []).map((x) => definition(x.id, reglages)));
 }
 
-/** Le titre d'une quête, ses nombres posés. */
-function titre(def) {
+/*
+ * LES TEXTES D'UNE QUÊTE SE RENDENT À LA LECTURE. Une définition porte ses
+ * paramètres (la mesure, le seuil, `rendu` pour la ligne de détail) ; le
+ * titre et la ligne se refont à chaque fois, dans la langue de qui lit. Seul
+ * un titre tapé par l'admin (un texte d'humain) est rangé tel quel.
+ *
+ * Les définitions rangées AVANT (une semaine en cours) portent encore leurs
+ * textes français : un texte qui est exactement celui que le code écrirait se
+ * refait dans la langue du lecteur, le reste se lit tel quel (voir
+ * texteDuCode, renduDepuisDetail).
+ */
+const nomMesure = (m, lang) => (m ? tr(lang, 'quetes.mesure.' + m.cle + '.nom', m.nom) : '');
+// Le modèle du « bats ton record » d'une quête taillée stricte.
+const modeleRecord = (m, lang) => tr(lang, m.inverse ? 'quetes.titre.recordMoins' : 'quetes.titre.recordPlus',
+  m.inverse ? 'Bats ton record à {groupe} : moins de {seuil}' : 'Bats ton record à {groupe} : plus de {seuil}',
+  { groupe: m.groupe, seuil: '{seuil}' });
+// Les quêtes dont les textes viennent du CODE (une bricole, la vie du parc,
+// un premier pas, une quête du catalogue hors mesure) : leur clé et leurs
+// textes français. null pour le reste.
+function texteDuCode(def) {
+  if (!def) return null;
+  if (def.gromelin && GROMELIN[def.gromelin.cle]) return { cle: 'quetes.gromelin.' + def.gromelin.cle, x: GROMELIN[def.gromelin.cle] };
+  if (def.parc && PARC[def.famille]) return { cle: 'quetes.parc.' + def.famille, x: PARC[def.famille] };
+  if (def.premiersPas && PREMIERS_PAS_TEXTES[def.famille]) return { cle: 'quetes.pas.' + def.famille, x: PREMIERS_PAS_TEXTES[def.famille] };
+  if (def.decouverte && def.type === 'parties') return { cle: 'quetes.decouverte', x: DECOUVERTE_TEXTES };
+  const base = CATALOGUE.find((c) => c.id === def.id && c.type !== 'mesure');
+  return base && base.titre ? { cle: 'quetes.catalogue.' + base.id, x: base } : null;
+}
+// Les paramètres des textes du code : la mise d'un premier Prunostic, le jeu
+// et le nombre de parties d'une découverte.
+function parametresDuCode(def, lang) {
+  const p = def.params || {};
+  const m = MESURES[def.famille];
+  return { mise: nombre(p.mise, lang), groupe: m ? m.groupe : '', nombre: nombreEnLettres(Number(p.n), lang) };
+}
+// Un texte du code (titre ou détail), si la définition ne porte pas un autre.
+function texteCode(def, champ, lang) {
+  const src = texteDuCode(def);
+  if (!src || src.x[champ] == null) return null;
+  const rangee = def[champ];
+  if (rangee != null && rangee !== tr('fr', src.cle + '.' + champ, src.x[champ], parametresDuCode(def, 'fr'))) return null;
+  return tr(lang, src.cle + '.' + champ, src.x[champ], parametresDuCode(def, lang));
+}
+
+/** Le titre d'une quête, ses nombres posés, dans la langue `lang`. */
+function titre(def, lang) {
   const p = def.params || {};
   if (def.type === 'mesure') {
     const m = MESURES[p.mesure];
-    const modele = def.titre || (m && m.titre) || '';
-    return String(modele).replace('{seuil}', formater(m, p.seuil));
+    // Une quête taillée stricte se lit « bats ton record » ; elle rangeait
+    // autrefois ce modèle comme titre — reconnu, il se refait.
+    const strict = !!(m && def.taillee && p.strict && (def.titre == null || def.titre === modeleRecord(m, 'fr')));
+    const modele = strict ? modeleRecord(m, lang)
+      : def.titre || (m ? tr(lang, 'quetes.mesure.' + m.cle + '.titre', m.titre) : '');
+    return String(modele).replace('{seuil}', formater(m, p.seuil, lang));
   }
-  return String(def.titre).replace('{seuil}', nombre(p.seuil)).replace('{n}', nombre(p.n));
+  const code = texteCode(def, 'titre', lang);
+  return String(code != null ? code : def.titre).replace('{seuil}', nombre(p.seuil, lang)).replace('{n}', nombre(p.n, lang));
 }
-/** La ligne sous le titre. */
-function detail(def) {
-  if (def.type === 'mesure') { const m = MESURES[(def.params || {}).mesure]; return def.detail || (m && m.detail) || ''; }
-  return def.detail || '';
+/** La ligne sous le titre, dans la langue `lang`. */
+function detail(def, lang) {
+  if (def.type === 'mesure') {
+    const m = MESURES[(def.params || {}).mesure];
+    let r = def.rendu;
+    if (!r && def.detail) {
+      if (enFrancais(lang)) return def.detail;            // rangée en français : telle quelle
+      r = renduDepuisDetail(def, m);
+      if (!r) return def.detail;
+    }
+    if (r) return detailRendu(def, m, r, lang);
+    return m ? tr(lang, 'quetes.mesure.' + m.cle + '.detail', m.detail) : '';
+  }
+  const code = texteCode(def, 'detail', lang);
+  return code != null ? code : (def.detail || '');
+}
+// (« 12,5 % » ; « 12.5% » en anglais.)
+const pourcent = (x, lang) => (enFrancais(lang) ? String(Math.round(x * 1000) / 10).replace('.', ',') + ' %'
+  : tr(lang, 'quetes.unite.part', '{v} %', { v: String(Math.round(x * 1000) / 10) }));
+/*
+ * LA LIGNE DE DÉTAIL D'UNE QUÊTE TAILLÉE, d'après son `rendu` :
+ *   perso     { niveau, jours, mediane }  la cible d'un joueur (definitionPerso)
+ *   part      { part }                    la part du parc qui l'atteint (v2)
+ *   niveau    { niveau }                  son score habituel, ses bons jours…
+ *   borne     { borne }                   le maximum d'une partie, le record du parc
+ *   corrigee  { borne }                   la même, ramenée après coup (rattraper)
+ *   doigt     { tenant }                  le défi au doigt (le record : def.record)
+ *   defi      {}                          une quête ajoutée par l'admin
+ */
+function detailRendu(def, m, r, lang) {
+  const D = (k, fr, p) => tr(lang, 'quetes.detail.' + k, fr, Object.assign({ nom: nomMesure(m, lang) }, p));
+  const borne = BORNE_TEXTE[r.borne] ? r.borne : 'record';
+  switch (r.forme) {
+    case 'perso':
+      if (r.niveau === 'facile') return D('persoFacile', '{nom} · ton niveau habituel ({jours} jours de jeu)', { jours: r.jours });
+      if (r.niveau === 'moyenne') return D('persoMoyenne', '{nom} · tes bons jours (médiane : {mediane})', { mediane: formater(m, r.mediane, lang) });
+      return D('persoDifficile', '{nom} · ton record des dernières semaines');
+    case 'part': return D('part', '{nom} · atteint par {part} du parc', { part: pourcent(r.part, lang) });
+    case 'niveau':
+      if (r.niveau === 'facile') return D('niveauFacile', '{nom} · ton score habituel');
+      if (r.niveau === 'moyenne') return D('niveauMoyenne', '{nom} · tes bons jours');
+      return D('niveauDifficile', '{nom} · à hauteur de tes meilleurs jours');
+    case 'borne': return D('borne.' + borne, '{nom} · ' + BORNE_TEXTE[borne]);
+    case 'corrigee': return D('corrigee.' + borne, '{nom} · ' + BORNE_TEXTE[borne] + ' (cible corrigée)');
+    case 'doigt': return r.tenant
+      ? D('doigtTenant', 'Défi au doigt · sur téléphone ou tablette — le record du parc est à {record} ({tenant})',
+        { record: formater(m, def.record, lang), tenant: r.tenant })
+      : D('doigt', 'Défi au doigt · sur téléphone ou tablette — le record du parc est à {record}', { record: formater(m, def.record, lang) });
+    case 'defi': return D('defi', '{nom} · un défi de Gromelin');
+    default: return def.detail || (m && m.detail) || '';
+  }
+}
+// Le `rendu` d'une ligne de détail rangée en toutes lettres (une semaine
+// commencée avant que les quêtes ne rangent leurs paramètres) ; null si la
+// ligne n'est pas de celles que le code écrit.
+function renduDepuisDetail(def, m) {
+  const d = String(def.detail || '');
+  if (def.doigt) {
+    if (!d.startsWith('Défi au doigt · ')) return null;
+    const t = /\(([^()]*)\)$/.exec(d);
+    return { forme: 'doigt', tenant: t ? t[1] : '' };
+  }
+  if (!m || !d.startsWith(m.nom + ' · ')) return null;
+  const reste = d.slice(m.nom.length + 3);
+  let x;
+  if ((x = /^ton niveau habituel \((\d+) jours de jeu\)$/.exec(reste))) return { forme: 'perso', niveau: 'facile', jours: Number(x[1]) };
+  if ((x = /^tes bons jours \(médiane : (.+)\)$/.exec(reste))) {
+    const v = lireValeur(m, x[1]);
+    return v == null ? null : { forme: 'perso', niveau: 'moyenne', mediane: v };
+  }
+  if (reste === 'ton record des dernières semaines') return { forme: 'perso', niveau: 'difficile' };
+  for (const b of Object.keys(BORNE_TEXTE)) {
+    if (reste === BORNE_TEXTE[b] + ' (cible corrigée)') return { forme: 'corrigee', borne: b };
+    if (reste === BORNE_TEXTE[b]) return { forme: 'borne', borne: b };
+  }
+  if ((x = /^atteint par (\d+(?:,\d+)?) % du parc$/.exec(reste))) return { forme: 'part', part: Number(x[1].replace(',', '.')) / 100 };
+  const niveaux = { 'ton score habituel': 'facile', 'tes bons jours': 'moyenne', 'à hauteur de tes meilleurs jours': 'difficile' };
+  if (niveaux[reste]) return { forme: 'niveau', niveau: niveaux[reste] };
+  if (reste === 'un défi de Gromelin') return { forme: 'defi' };
+  return null;
 }
 
 // ── Le tirage du lundi ───────────────────────────────────────────────────────
@@ -781,11 +967,17 @@ function appliquer(def, etat, evt, jour) {
  * Où en est la quête, pour l'affichage : la ligne de détail, la part faite
  * (0..1) et le compte « valeur / cible ».
  */
-function avancement(def, etat) {
+// `lang` : la langue de la ligne ; `periode` : 'signature' pour un contrat, qui
+// ne compte que depuis qu'il est signé (« ton meilleur depuis la signature »).
+function avancement(def, etat, lang, periode) {
   const p = def.params || {}, e = etat || {};
   const fait = estFaite(def, e);
   let valeur = 0, cible = 1, ligne = '';
   const unite = p.unite || ((def.type === 'mode' || def.type === 'record') ? (MODES[p.jeu + ':' + p.mode] || {}).unite : '') || 'points';
+  const motUnite = tr(lang, 'quetes.uniteMot.' + unite, unite);
+  // Les phrases « … cette semaine » ont leur pendant « … depuis la signature ».
+  const sig = periode === 'signature';
+  const dit = (k, fr, frSig, prm) => tr(lang, 'quetes.ligne.' + k + (sig ? 'Signature' : ''), sig ? frSig : fr, prm);
   switch (def.type) {
     case 'mesure': {
       const m = MESURES[p.mesure];
@@ -793,10 +985,12 @@ function avancement(def, etat) {
       cible = Number(p.seuil);
       valeur = e.m == null ? 0 : Number(e.m);
       if (m.unite === 'boss') {
-        ligne = fait ? 'vaincu' : 'pas encore vaincu cette semaine';
+        ligne = fait ? tr(lang, 'quetes.ligne.vaincu', 'vaincu')
+          : dit('pasVaincu', 'pas encore vaincu cette semaine', 'pas encore vaincu depuis la signature');
         return { fait, valeur, cible, ligne, pc: fait ? 1 : 0 };
       }
-      ligne = e.m == null ? 'pas encore de résultat cette semaine' : `ton meilleur cette semaine : ${formater(m, e.m)}`;
+      ligne = e.m == null ? dit('pasDeResultat', 'pas encore de résultat cette semaine', 'pas encore de résultat depuis la signature')
+        : dit('meilleur', 'ton meilleur cette semaine : {v}', 'ton meilleur depuis la signature : {v}', { v: formater(m, e.m, lang) });
       const pc = e.m == null ? 0 : (m.inverse ? (e.m > 0 ? cible / e.m : 0) : e.m / cible);
       return { fait, valeur, cible, ligne, pc: fait ? 1 : Math.max(0, Math.min(0.99, pc)) };
     }
@@ -805,8 +999,9 @@ function avancement(def, etat) {
       if (p.seuil !== undefined) {
         cible = p.seuil;
         valeur = e.m == null ? 0 : Number(e.m);
-        ligne = e.m == null ? 'pas encore de résultat cette semaine'
-          : `ton meilleur cette semaine : ${nombre(e.m)} ${unite}`;
+        ligne = e.m == null ? dit('pasDeResultat', 'pas encore de résultat cette semaine', 'pas encore de résultat depuis la signature')
+          : dit('meilleurUnite', 'ton meilleur cette semaine : {v} {unite}', 'ton meilleur depuis la signature : {v} {unite}',
+            { v: nombre(e.m, lang), unite: motUnite });
         const pc = e.m == null ? 0 : (p.inverse ? (e.m > 0 ? p.seuil / e.m : 0) : e.m / p.seuil);
         return { fait, valeur, cible, ligne, pc: fait ? 1 : Math.max(0, Math.min(0.99, pc)) };
       }
@@ -815,7 +1010,8 @@ function avancement(def, etat) {
       break;
     case 'jours':
       cible = p.n; valeur = Math.min(p.n, Array.isArray(e.j) ? e.j.length : 0);
-      ligne = `${valeur} / ${cible} jour${cible > 1 ? 's' : ''}`;
+      ligne = enFrancais(lang) ? `${valeur} / ${cible} jour${cible > 1 ? 's' : ''}`
+        : FPI18n.pluriel(lang, 'quetes.ligne.jours', cible, { one: '{valeur} / {n} jour', other: '{valeur} / {n} jours' }, { valeur });
       break;
     case 'parties':
     case 'action':
@@ -824,15 +1020,16 @@ function avancement(def, etat) {
       break;
     case 'record':
       cible = 1; valeur = (Number(e.c) || 0) >= 1 ? 1 : 0;
-      ligne = valeur ? `record battu : ${nombre(e.m)} ${unite}` : 'pas encore battu cette semaine';
+      ligne = valeur ? tr(lang, 'quetes.ligne.recordBattu', 'record battu : {v} {unite}', { v: nombre(e.m, lang), unite: motUnite })
+        : dit('pasBattu', 'pas encore battu cette semaine', 'pas encore battu depuis la signature');
       break;
     case 'pari':
       cible = 1; valeur = (Number(e.c) || 0) >= 1 ? 1 : 0;
-      ligne = valeur ? 'Prunostic placé' : 'pas encore de Prunostic';
+      ligne = valeur ? tr(lang, 'quetes.ligne.pariPlace', 'Prunostic placé') : tr(lang, 'quetes.ligne.pasDePari', 'pas encore de Prunostic');
       break;
     case 'jeux':
       cible = p.n; valeur = Math.min(p.n, Array.isArray(e.g) ? e.g.length : 0);
-      ligne = `${valeur} / ${cible} jeux`;
+      ligne = tr(lang, 'quetes.ligne.jeux', '{valeur} / {cible} jeux', { valeur, cible });
       break;
     default: break;
   }
@@ -1045,17 +1242,14 @@ function proposerPerso(historique, alea, options) {
 function definitionPerso(prop, id) {
   const m = MESURES[prop && prop.mesure];
   if (!m) return null;
-  const titre = prop.strict
-    ? `Bats ton record à ${m.groupe} : ${m.inverse ? 'moins de' : 'plus de'} {seuil}`
-    : undefined;
+  // (Le titre « bats ton record » d'une cible stricte se déduit de `strict` ;
+  // la ligne de détail, de `rendu` — voir titre et detailRendu.)
   const r = prop.repere || {};
-  const detail = prop.niveau === 'facile'
-    ? `${m.nom} · ton niveau habituel (${prop.jours} jours de jeu)`
-    : prop.niveau === 'moyenne'
-      ? `${m.nom} · tes bons jours (médiane : ${formater(m, r.mediane)})`
-      : `${m.nom} · ton record des dernières semaines`;
+  const rendu = prop.niveau === 'facile' ? { forme: 'perso', niveau: 'facile', jours: prop.jours }
+    : prop.niveau === 'moyenne' ? { forme: 'perso', niveau: 'moyenne', mediane: r.mediane }
+      : { forme: 'perso', niveau: prop.niveau };
   return { id: String(id), niveau: prop.niveau, type: 'mesure', etiquette: m.jeu, famille: m.cle, taillee: true,
-    params: { mesure: m.cle, seuil: prop.seuil, strict: !!prop.strict }, titre, detail };
+    params: { mesure: m.cle, seuil: prop.seuil, strict: !!prop.strict }, rendu };
 }
 
 /** Le contrat (en réserve) : trois propositions, une par niveau et par jeu. */
@@ -1208,7 +1402,8 @@ function rattraper(def, P) {
   neuf.params.seuil = plafond;
   if (neuf.params.strict) { neuf.params.strict = false; delete neuf.titre; }
   neuf.rattrapee = { de: s };
-  neuf.detail = `${m.nom} · ${BORNE_TEXTE[m.plafond != null ? 'max' : 'record']} (cible corrigée)`;
+  delete neuf.detail;
+  neuf.rendu = { forme: 'corrigee', borne: m.plafond != null ? 'max' : 'record' };
   return neuf;
 }
 /** Le même rattrapage pour une proposition gardée en réserve (l'échange). */
@@ -1228,6 +1423,18 @@ function palierAtteint(m, paliers, v) {
 // La mesure qui représente un jeu pour une découverte (la première de la liste).
 function mesurePrincipale(jeu) { return MESURES_PERSO.find((k) => MESURES[k].jeu === jeu); }
 
+// Leurs textes (titre, détail), rendus à la lecture : `{mise}` la mise du
+// premier Prunostic.
+const PREMIERS_PAS_TEXTES = {
+  'pas-forum': { titre: 'Écris ton premier message sur le forum', detail: 'Premiers pas · un sujet ou une réponse, où tu veux' },
+  'pas-prunostic': { titre: 'Place un Prunostic d’au moins {mise} kikooz', detail: 'Premiers pas · sur un match du tournoi ou sur le Challenge de demain' },
+  'pas-jeux': { titre: 'Joue à trois jeux différents au Challenge', detail: 'Premiers pas · un score dans trois jeux du Challenge' },
+};
+// Ceux d'une découverte : `{groupe}` le jeu, `{nombre}` les parties en lettres.
+const DECOUVERTE_TEXTES = {
+  titre: 'Découvre {groupe} : joue {nombre} parties',
+  detail: 'Découverte · {groupe} — un jeu que tu n’as pas joué ces dernières semaines',
+};
 const PREMIERS_PAS = {
   'pas-forum': { genre: 'premierspas', cle: 'pas-forum' },
   'pas-prunostic': { genre: 'premierspas', cle: 'pas-prunostic' },
@@ -1307,8 +1514,7 @@ function definitionDoigt(piste, record, ecart, id, gain, palier, tenant) {
   const seuil = Math.ceil((Number(record) + Number(ecart) * 1000) / 1000) * 1000;
   return { id: String(id), niveau: 'difficile', palier: palier || 'or', gain: Number(gain) || 0, v2: true, doigt: true,
     type: 'mesure', etiquette: 'bkiwi', famille: m.cle, params: { mesure: m.cle, seuil },
-    detail: `Défi au doigt · sur téléphone ou tablette — le record du parc est à ${formater(m, record)}${tenant ? ' (' + tenant + ')' : ''}`,
-    record: Number(record) };
+    rendu: { forme: 'doigt', tenant: tenant || '' }, record: Number(record) };
 }
 
 /** La bricole, en quête : `marque` = { jour, at }, le passage qui l'a confiée. */
@@ -1317,7 +1523,7 @@ function definitionGromelin(cle, id, gain, marque) {
   if (!x) return null;
   return { id: String(id), niveau: 'facile', palier: 'bronze', gain: Number(gain) || 0, v2: true,
     gromelin: Object.assign({ cle }, marque || {}),
-    type: x.type, etiquette: x.etiquette, famille: cle, params: Object.assign({}, x.params), titre: x.titre, detail: x.detail };
+    type: x.type, etiquette: x.etiquette, famille: cle, params: Object.assign({}, x.params) };
 }
 /** Laquelle confier : d'un coin absent des quêtes en main (`defs`), au hasard ; à défaut, n'importe laquelle. */
 function bricole(defs, alea) {
@@ -1486,18 +1692,16 @@ function definitionV2(spec, id) {
   if (!spec) return null;
   if (spec.genre === 'premierspas') {
     const base = { id: String(id || spec.cle), niveau: 'facile', palier: 'bronze', gain: spec.gain, premiersPas: true, v2: true, famille: spec.cle };
+    // (Les textes : PREMIERS_PAS_TEXTES, rendus à la lecture.)
     if (spec.cle === 'pas-forum') {
-      return Object.assign(base, { type: 'action', etiquette: 'forum', params: { actions: ['forumPost', 'forumTopic'], n: 1 },
-        titre: 'Écris ton premier message sur le forum', detail: 'Premiers pas · un sujet ou une réponse, où tu veux' });
+      return Object.assign(base, { type: 'action', etiquette: 'forum', params: { actions: ['forumPost', 'forumTopic'], n: 1 } });
     }
     if (spec.cle === 'pas-prunostic') {
       const mise = Math.max(10, 2 * (Number(spec.gain) || 0));
-      return Object.assign(base, { type: 'pari', etiquette: 'prunostics', params: { mise },
-        titre: `Place un Prunostic d’au moins ${nombre(mise)} kikooz`, detail: 'Premiers pas · sur un match du tournoi ou sur le Challenge de demain' });
+      return Object.assign(base, { type: 'pari', etiquette: 'prunostics', params: { mise } });
     }
     if (spec.cle === 'pas-jeux') {
-      return Object.assign(base, { type: 'jeux', etiquette: 'challenge', params: { n: 3 },
-        titre: 'Joue à trois jeux différents au Challenge', detail: 'Premiers pas · un score dans trois jeux du Challenge' });
+      return Object.assign(base, { type: 'jeux', etiquette: 'challenge', params: { n: 3 } });
     }
     return null;
   }
@@ -1505,7 +1709,7 @@ function definitionV2(spec, id) {
     const x = PARC[spec.cle];
     if (!x) return null;
     return { id: String(id), niveau: spec.niveau || PARC_NIVEAU[x.palier], palier: spec.palier || x.palier, gain: spec.gain, v2: true,
-      type: x.type, etiquette: x.etiquette, famille: spec.cle, parc: x.sorte, params: Object.assign({}, x.params), titre: x.titre, detail: x.detail };
+      type: x.type, etiquette: x.etiquette, famille: spec.cle, parc: x.sorte, params: Object.assign({}, x.params) };
   }
   const m = MESURES[spec.mesure];
   if (!m) return null;
@@ -1515,24 +1719,21 @@ function definitionV2(spec, id) {
   // Frutisnake » pour qui n'y joue jamais), mais d'y jouer.
   if (decouverte) {
     const n = Number(spec.parties) || DECOUVERTE_PARTIES;
+    // (Les textes : DECOUVERTE_TEXTES, rendus à la lecture.)
     return { id: String(id), niveau: spec.niveau || 'facile', palier: spec.palier, gain: spec.gain, type: 'parties', etiquette: m.jeu,
-      famille: m.cle, taillee: true, v2: true, decouverte, params: { jeu: m.jeu, n },
-      titre: `Découvre ${m.groupe} : joue ${nombreEnLettres(n)} parties`,
-      detail: `Découverte · ${m.groupe} — un jeu que tu n’as pas joué ces dernières semaines` };
+      famille: m.cle, taillee: true, v2: true, decouverte, params: { jeu: m.jeu, n } };
   }
-  // (une part : « 12,5 % » ; les réserves d'avant les parts n'ont que leur palier)
-  const pc = (x) => String(Math.round(x * 1000) / 10).replace('.', ',') + ' %';
-  const detail = decouverte
-    ? `Découverte · ${m.nom} — un jeu que tu n’as pas joué ces dernières semaines`
-    : spec.borne
-      ? `${m.nom} · ${BORNE_TEXTE[spec.borne] || BORNE_TEXTE.record}`
-      : spec.part != null
-        ? `${m.nom} · atteint par ${pc(Number(spec.part))} du parc`
-        : spec.part === undefined && spec.parc !== false
-          ? `${m.nom} · atteint par ${pc(PALIER_PART[spec.palier])} du parc`
-          : `${m.nom} · ${spec.niveau === 'facile' ? 'ton score habituel' : spec.niveau === 'moyenne' ? 'tes bons jours' : 'à hauteur de tes meilleurs jours'}`;
+  // La ligne de détail (detailRendu) : la borne, la part du parc (les réserves
+  // d'avant les parts n'ont que leur palier), ou le niveau du joueur.
+  const rendu = spec.borne
+    ? { forme: 'borne', borne: BORNE_TEXTE[spec.borne] ? spec.borne : 'record' }
+    : spec.part != null
+      ? { forme: 'part', part: Number(spec.part) }
+      : spec.part === undefined && spec.parc !== false
+        ? { forme: 'part', part: PALIER_PART[spec.palier] }
+        : { forme: 'niveau', niveau: spec.niveau };
   return { id: String(id), niveau: spec.niveau, palier: spec.palier, gain: spec.gain, type: 'mesure', etiquette: m.jeu, famille: m.cle,
-    taillee: true, v2: true, decouverte, params: { mesure: m.cle, seuil: spec.seuil }, detail };
+    taillee: true, v2: true, decouverte, params: { mesure: m.cle, seuil: spec.seuil }, rendu };
 }
 
 module.exports = {
@@ -1540,7 +1741,7 @@ module.exports = {
   plafondDe, borner, horsPlafond, rattraper, rattraperSpec, partsNormalisees,
   GROMELIN, definitionGromelin, bricole, definitionDoigt,
   MESURES_PERSO, proposerPerso, definitionPerso, proposerContrat, definitionContrat, arrondir, aleaSeme,
-  NIVEAUX, NIVEAU_NOM, REGLAGES_DEFAUT, CATALOGUE, ETIQUETTES, KALUGA_EPREUVES, MODES,
+  NIVEAUX, NIVEAU_NOM, REGLAGES_DEFAUT, CATALOGUE, ETIQUETTES, KALUGA_EPREUVES, MODES, nomNiveau, nomPalier, etiquette,
   nombre, jourPlus, lundiDe, minuitParis, finDeSemaine, semaineLisible, primeValeur,
   reglagesNormalises, definition, catalogue, titre, tirer,
   estFaite, appliquer, avancement, modeRecevable, parole, PAROLES,

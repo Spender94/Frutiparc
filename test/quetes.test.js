@@ -511,7 +511,8 @@ test('le rattrapage : une cible distribuée au-delà du maximum revient au plafo
   const r = Q.rattraper(vieille, P);
   assert.equal(Q.titre(r), 'Remporte 100 épreuves en arcade difficile');
   assert.deepEqual([r.id, r.gain, r.palier, r.niveau, r.rattrapee.de], ['ind-3', 25, 'legende', 'difficile', 124], 'même id, même gain promis');
-  assert.match(r.detail, /maximum possible en une partie \(cible corrigée\)$/);
+  // (la ligne se rend à la lecture : la définition ne range que son `rendu`)
+  assert.match(Q.detail(r), /maximum possible en une partie \(cible corrigée\)$/);
   assert.equal(vieille.params.seuil, 124, 'une copie : l’original ne bouge pas');
   // Son meilleur de la semaine (100 épreuves) la fait désormais.
   assert.equal(Q.estFaite(vieille, { m: 100 }), false);
@@ -524,7 +525,7 @@ test('le rattrapage : une cible distribuée au-delà du maximum revient au plafo
   // Sans maximum théorique : le record du parc.
   const sw = Q.rattraper({ type: 'mesure', params: { mesure: 'swapou-challenge', seuil: 13200 }, gain: 25 }, { record: 10049 });
   assert.deepEqual([sw.params.seuil, sw.gain], [10000, 25]);
-  assert.match(sw.detail, /le record du parc \(cible corrigée\)$/);
+  assert.match(Q.detail(sw), /le record du parc \(cible corrigée\)$/);
   // « Bats ton record » strictement, au maximum : impossible aussi — on vise de l'égaler.
   const strict = Q.rattraper({ type: 'mesure', params: { mesure: 'minifever-arcade0', seuil: 40, strict: true }, titre: 'Bats ton record à {seuil}' }, null);
   assert.deepEqual([strict.params.seuil, strict.params.strict, strict.titre], [40, false, undefined]);
