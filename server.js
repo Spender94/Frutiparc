@@ -13649,6 +13649,9 @@ function quetesEchapper(s) {
 /** Ce que le joueur voit : ses quêtes, où il en est, et ce que dit Gromelin. */
 function quetesEtatPour(username) {
   const u = String(username).toLowerCase();
+  // Gromelin parle dans la langue du compte (celle que la requête aurait lue,
+  // cf. langueDeRequete : toutes ces adresses passent le sid).
+  const L = langueDe(u);
   const S = quetesSemaineCourante();
   const vis = quetesVisites.get(u);
   const vuAt = vis && vis.semaine === S.lundi ? vis.vuAt : 0;
@@ -13686,28 +13689,28 @@ function quetesEtatPour(username) {
   // Le contrat compte avec les autres une fois signé ; pas encore signé, il a sa réplique.
   const toutes = contrat.quete ? quetes.concat([contrat.quete]) : quetes;
   const aSigner = contrat.etat === 'a_signer';
-  if (!toutes.length && !aSigner) messages.push(Quetes.parole('rien', {}, alea));
+  if (!toutes.length && !aSigner) messages.push(Quetes.parole('rien', {}, alea, L));
   else {
     if (nouvelleSemaine && quetes.length) {
-      messages.push(Quetes.parole(indiv && indiv.connu ? 'semainePerso' : 'semaine', { n: quetes.length }, alea));
+      messages.push(Quetes.parole(indiv && indiv.connu ? 'semainePerso' : 'semaine', { n: quetes.length }, alea, L));
       // Pas encore d'historique : des quêtes faciles, et la promesse de mieux.
-      if (indiv && !indiv.connu) messages.push(Quetes.parole('inconnu', {}, alea));
+      if (indiv && !indiv.connu) messages.push(Quetes.parole('inconnu', {}, alea, L));
     }
     const neuves = toutes.filter((q) => q.fait && q.faitLe > vuAt).sort((a, b) => a.faitLe - b.faitLe);
-    for (const q of neuves) messages.push(Quetes.parole('faite', { titre: quetesEchapper(q.titre), gain: q.gain }, alea));
+    for (const q of neuves) messages.push(Quetes.parole('faite', { titre: quetesEchapper(q.titre), gain: q.gain }, alea, L));
     // Les bricoles confiées au salon depuis la dernière visite, pas encore faites.
     for (const q of quetes.filter((x) => x.gromelin && !x.fait && x.gromelinAt > vuAt)) {
-      messages.push(Quetes.parole('bricole', { titre: quetesEchapper(q.titre), gain: q.gain }, alea));
+      messages.push(Quetes.parole('bricole', { titre: quetesEchapper(q.titre), gain: q.gain }, alea, L));
     }
     const reste = toutes.filter((q) => !q.fait).length;
     // Les meilleurs (Platine, Légende) : une mise à prix ouverte dans un de leurs jeux.
     const forts = indiv && indiv.niveaux ? Object.entries(indiv.niveaux).filter(([, n]) => n === 'platine' || n === 'legende')
       .map(([k]) => Quetes.MESURES[k] && Quetes.MESURES[k].source.rk) : [];
     const prime = nouvelleSemaine && quetesPrimesVue().find((x) => x.ouverte && forts.includes(x.rk) && x.tenantPseudo !== u);
-    if (prime) messages.push(Quetes.parole('prime', { nom: quetesEchapper(prime.nom), tenant: quetesEchapper(prime.tenant), gain: prime.gain }, alea));
-    if (aSigner) messages.push(Quetes.parole('contrat', {}, alea));
-    else if (!reste) messages.push(Quetes.parole('fini', {}, alea));
-    else if (!nouvelleSemaine) messages.push(Quetes.parole('reste', { reste, s: reste > 1 ? 's' : '' }, alea));
+    if (prime) messages.push(Quetes.parole('prime', { nom: quetesEchapper(prime.nom), tenant: quetesEchapper(prime.tenant), gain: prime.gain }, alea, L));
+    if (aSigner) messages.push(Quetes.parole('contrat', {}, alea, L));
+    else if (!reste) messages.push(Quetes.parole('fini', {}, alea, L));
+    else if (!nouvelleSemaine) messages.push(Quetes.parole('reste', { reste, s: reste > 1 ? 's' : '' }, alea, L));
   }
   const nouveau = nouvelleSemaine || toutes.some((q) => q.fait && q.faitLe > vuAt) || quetes.some((q) => q.gromelin && !q.fait && q.gromelinAt > vuAt);
   return {
@@ -14009,7 +14012,7 @@ app.post('/api/quetes/echanger', async (req, res) => {
     console.log(`[QUETES] ${u} change « ${echange.deTitre} » contre « ${Quetes.titre(neuve)} »`);
     quetesBonusPeutEtre(u, S.lundi);
     const etat = quetesEtatPour(u);
-    etat.messages = [Quetes.parole('echange', { titre: quetesEchapper(Quetes.titre(neuve)) }, Math.random)];
+    etat.messages = [Quetes.parole('echange', { titre: quetesEchapper(Quetes.titre(neuve)) }, Math.random, langueDe(u))];
     res.json(etat);
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
@@ -14042,7 +14045,7 @@ app.post('/api/quetes/contrat', async (req, res) => {
     quetesContratPoser(u, Object.assign(c, { choix, signeAt: Date.now() }));
     console.log(`[QUETES] ${u} signe son contrat : « ${Quetes.titre(c.def)} » (${c.def.niveau})`);
     const etat = quetesEtatPour(u);
-    etat.messages = [Quetes.parole('contratSigne', {}, Math.random)];
+    etat.messages = [Quetes.parole('contratSigne', {}, Math.random, langueDe(u))];
     res.json(etat);
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
@@ -36645,13 +36648,15 @@ setInterval(() => {
 
 // ── Gromelin — grumpy visitor, rarer than Irma: storms into the busiest room,
 // grumbles a few lines, and leaves. ──
+// Chaque réplique est un texte à clé (zone « gromelin »,
+// i18n-serveur/en/gromelin.js) : chacun l'entend ronchonner dans sa langue.
 const GROMELIN_LINES = [
   "Grumpf",
   "Mmmmh, y a encore du monde ici ?",
   "Vous n'avez rien de mieux à faire qu'à traîner sur ce site minable ?",
   "Allez, du balai ! J'ai du boulot moi.",
   "On est plus tranquille à Légumia...",
-];
+].map((fr, i) => ({ k: 'gromelin.ronchon.' + i, fr }));
 
 /*
  * LE MÉTIER DE GROMELIN. À chaque passage (quatre par jour, tickVisiteurs), il
@@ -36662,12 +36667,15 @@ const GROMELIN_LINES = [
  * plus peuplé, comme avant ; les autres fois, il ne vient pas. `force` :
  * l'admin désigne le joueur et la bricole.
  */
+// Les répliques sont des textes à clé ; le titre de la quête y est un
+// paramètre, tel que Quetes.titre le donne (le catalogue des quêtes a sa
+// propre traduction).
 const GROMELIN_LIGNES_BRICOLE = (nom, titre, gain) => [
   'Grumpf.',
-  `${nom}. Oui, toi. Approche.`,
-  `J'ai une bricole pour toi : « ${titre} ». ${gain} kikooz si c'est fait avant dimanche minuit.`,
-  `C'est dans ton carnet de quêtes, ${nom}. Ne me fais pas regretter.`,
-];
+  '{nom}. Oui, toi. Approche.',
+  "J'ai une bricole pour toi : « {titre} ». {gain} kikooz si c'est fait avant dimanche minuit.",
+  "C'est dans ton carnet de quêtes, {nom}. Ne me fais pas regretter.",
+].map((fr, i) => ({ k: 'gromelin.bricole.' + i, fr, p: { nom, titre, gain } }));
 function gromelinChoisirJoueur() {
   const ch = channels[ANIM_CHANNEL];
   if (!ch) return null;

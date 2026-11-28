@@ -1,4 +1,5 @@
 'use strict';
+const FPI18n = require('./public/js/i18n.js');
 /*
  * LES QUÊTES DE GROMELIN — le module pur.
  *
@@ -874,6 +875,12 @@ function calibrer(m, valeurs, seuil) {
 // Ses répliques, choisies au hasard (le serveur passe son tirage). Le texte est
 // du HTML simple : `<em>` pour ce qui compte ; tout ce qui vient d'ailleurs
 // (titres, nombres) est échappé par l'appelant.
+//
+// DANS LA LANGUE DU JOUEUR : le français est ici ; une autre langue a, pour
+// chaque réplique, celle du même rang dans son dictionnaire
+// (`gromelin.parole.<clé>.<rang>`, i18n-serveur/en/gromelin.js — même ton
+// bougon, pas du mot à mot). Le tirage est le même dans toutes les langues ;
+// une réplique sans traduction reste en français.
 
 const PAROLES = {
   semaine: [
@@ -931,9 +938,12 @@ const PAROLES = {
     'Signé. Je garde ça au chaud. Seuls les résultats <em>à partir de maintenant</em> comptent, alors file.',
   ],
 };
-function parole(cle, vars, alea) {
+function parole(cle, vars, alea, lang) {
   const l = PAROLES[cle] || [''];
-  const t = l[Math.floor((alea || Math.random)() * l.length) % l.length];
+  const i = Math.floor((alea || Math.random)() * l.length) % l.length;
+  const t = l[i];
+  const k = `gromelin.parole.${cle}.${i}`;
+  if (lang && lang !== 'fr' && FPI18n.possede(lang, k)) return FPI18n.traduire(lang, k, t, vars || {});
   return t.replace(/\{(\w+)\}/g, (_, k) => (vars && vars[k] !== undefined ? String(vars[k]) : ''));
 }
 
