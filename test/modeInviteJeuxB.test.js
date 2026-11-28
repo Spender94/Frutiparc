@@ -289,7 +289,10 @@ test('MotionBall en invité : courses et donjons ouverts, aucun sid, le panneau 
     assert.deepStrictEqual(await page.evaluate(() => window.__panneaux), [], 'pas de panneau tant que celui du jeu attend son clic');
     await page.evaluate(() => Mb2Jeu.Manager.mode.click());
     const p = await attendrePanneau(page);
-    assert.deepStrictEqual(p.appels, [{ score: 'niveau 1', libelle: 'Ton score' }], 'une fois, avec le score affiché par le jeu');
+    // Le score s'écrit dans la langue de la page (le Chromium des tests parle
+    // anglais, sauf préférence posée) ; le libellé anglais accompagne le français.
+    const anglais = await page.evaluate(() => !!(window.FPI18n && FPI18n.langue === 'en'));
+    assert.deepStrictEqual(p.appels, [{ score: anglais ? 'level 1' : 'niveau 1', libelle: 'Ton score', libelleEn: 'Your score' }], 'une fois, avec le score affiché par le jeu');
     assert.strictEqual(p.ouverts, 1);
     await capturer(page, 'mb2');
     sansSession(requetes, 'MotionBall');

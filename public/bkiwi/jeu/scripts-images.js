@@ -217,10 +217,11 @@ const B = {
     release() { if (this.pressed && this._parent) this._parent.clicked = true; this.pressed = false; },
   },
   // les coupes du palmarès (announce.win)
-  'bkiwi:btn:459': { rollOver() { this.txt = 'Coupe Elite d\'argent'; }, rollOut() { this.txt = ''; } },
-  'bkiwi:btn:460': { rollOver() { this.txt = 'FrutiCoupe d\'argent'; }, rollOut() { this.txt = ''; } },
-  'bkiwi:btn:461': { rollOver() { this.txt = 'Coupe Elite d\'Or'; }, rollOut() { this.txt = ''; } },
-  'bkiwi:btn:462': { rollOver() { this.txt = 'FrutiCoupe d\'Or'; }, rollOut() { this.txt = ''; } },
+  // (le nom de la coupe dans la langue du joueur : K.T, lu au survol)
+  'bkiwi:btn:459': { rollOver() { this.txt = K.T('bkiwi.coupe.eliteArgent', 'Coupe Elite d\'argent'); }, rollOut() { this.txt = ''; } },
+  'bkiwi:btn:460': { rollOver() { this.txt = K.T('bkiwi.coupe.frutiArgent', 'FrutiCoupe d\'argent'); }, rollOut() { this.txt = ''; } },
+  'bkiwi:btn:461': { rollOver() { this.txt = K.T('bkiwi.coupe.eliteOr', 'Coupe Elite d\'Or'); }, rollOut() { this.txt = ''; } },
+  'bkiwi:btn:462': { rollOver() { this.txt = K.T('bkiwi.coupe.frutiOr', 'FrutiCoupe d\'Or'); }, rollOut() { this.txt = ''; } },
 };
 // keysManager.manager : les cinq touches à redéfinir (_parent._parent.keyAsked = i)
 for (let i = 0; i < 5; i++) {

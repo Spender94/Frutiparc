@@ -21,6 +21,8 @@ const { Const, Tools, Std, random, int } = J;
 const Sound = J.Sound;
 const Prefs = J.Prefs;
 const Key = K.Key;
+// Les langues (/js/i18n.js, par le moteur : K.T) ; public/mb2/lang/en.js.
+const T = (cle, fr, p) => K.T(cle, fr, p);
 
 // ── Intro ─────────────────────────────────────────────────────────────────
 class Intro {
@@ -678,24 +680,25 @@ class GameOver {
     this.screen._y = Const.LVL_HEIGHT / 2;
     if (cause === Const.CAUSE_WINS) this.screen.gotoAndStop('victory');
     else this.screen.gotoAndStop('gameOver');
-    this.screen.mainField.text = 'Connexion en cours...';
+    this.screen.mainField.text = T('mb2.connexion', 'Connexion en cours...');
     this.screen.mainField._y = 30 - this.screen.mainField.textHeight / 2;
     this.fx = new J.PopupFX(this.screen, 0, 100, 10, 3, 1.2, 0.6, 0.5, 1);
     this.fx.main();
   }
 
   onClassicScore(score, record, titem) {
-    this.setText('Votre score : niveau ' + score + '\nVotre record : niveau ' + record + (titem ? '\nTItem gagne !!' : ''));
+    this.setText(T('mb2.fin.classique', 'Votre score : niveau {score}\nVotre record : niveau {record}', { score, record })
+      + (titem ? '\n' + T('mb2.fin.titemGagne', 'TItem gagne !!') : ''));
   }
 
   onScore(score, old_score, old_pos, new_pos, ti) {
     let txt = '';
-    if (old_score < score && old_score > 0) txt += 'Record battu !\n';
-    if (old_pos > new_pos && old_pos > 0) txt += 'Vous avez gagne ' + (old_pos - new_pos) + ' places.\n';
-    txt += ((score % 100) + 1) + ' pourcent du niveau accomplis\n';
-    txt += 'Votre score : ' + int(score / 100) + '\n';
-    if (new_pos > 0) txt += 'Votre classement : ' + new_pos;
-    if (ti) txt += 'Nouveau TItem gagne !';
+    if (old_score < score && old_score > 0) txt += T('mb2.fin.record', 'Record battu !') + '\n';
+    if (old_pos > new_pos && old_pos > 0) txt += T('mb2.fin.places', 'Vous avez gagne {n} places.', { n: old_pos - new_pos }) + '\n';
+    txt += T('mb2.fin.pourcent', '{n} pourcent du niveau accomplis', { n: (score % 100) + 1 }) + '\n';
+    txt += T('mb2.fin.score', 'Votre score : {n}', { n: int(score / 100) }) + '\n';
+    if (new_pos > 0) txt += T('mb2.fin.classement', 'Votre classement : {n}', { n: new_pos });
+    if (ti) txt += T('mb2.fin.nouveauTitem', 'Nouveau TItem gagne !');
     this.setText(txt);
   }
 
@@ -773,9 +776,9 @@ class GameOverCourse {
     this.screen.mainField.text = '';
     if (p === 3) {
       if (records.length === 3) records.push(plrecord);
-      else this.screen.mainField.text = "Vous n'etes pas classe.";
+      else this.screen.mainField.text = T('mb2.fin.pasClasse', "Vous n'etes pas classe.");
     }
-    if (titems > 0) this.screen.mainField.text += titems + ' titems gagnes !';
+    if (titems > 0) this.screen.mainField.text += T('mb2.fin.titems', '{n} titems gagnes !', { n: titems });
 
     this.displayRecords(score, records);
     records.splice(3, records.length - 3);

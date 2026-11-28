@@ -184,6 +184,25 @@ K.telecharger = function (url, surProgres, options, essai) {
   }).catch(rattraper);
 };
 
+/*
+ * LES TEXTES FIGÉS, HORS DU FRANÇAIS : la mise en page des textes que le SWF
+ * avait cuits en formes (data/figes.json, scripts/textes-figes.js), pour que
+ * texte.js y écrive l'anglais. Un seul fichier par jeu, demandé une fois ; en
+ * français, jamais. S'il manque, les formes françaises restent : on ne retient
+ * pas le jeu pour autant.
+ */
+let figesEnCours = null;
+function chargerFiges() {
+  const I = racine.FPI18n;
+  if (!I || !I.langue || I.langue === 'fr' || typeof fetch !== 'function') return null;
+  if (!figesEnCours) {
+    figesEnCours = fetch(K.base + 'data/figes.json', { cache: 'force-cache' })
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null);
+  }
+  return figesEnCours;
+}
+
 /**
  * Charge une bibliothèque (un JSON extrait), ses images et ses fontes.
  *
@@ -225,6 +244,10 @@ K.chargerBiblio = function (nom, surProgres) {
       for (const f of Object.values(json.fontes || {})) {
         if (f.fichier) attentes.push(chargerFonte(`Kaluga ${f.id}`, K.base + 'fontes/' + f.fichier));
       }
+      // (En français, rien : pas même une attente de plus dans la jauge.)
+      let figes = null;
+      const enFiges = chargerFiges();
+      if (enFiges) attentes.push(enFiges.then((f) => { figes = f; }));
       if (surProgres && attentes.length && echelle) {
         // Le dernier dixième, une pièce à la fois.
         const total = Math.round(echelle / PART_JSON);
@@ -234,6 +257,7 @@ K.chargerBiblio = function (nom, surProgres) {
       }
       await Promise.all(attentes);
       const b = new K.Bibliotheque(nom, json, images);
+      if (figes && K.poserFiges) K.poserFiges(b, figes);
       biblios[nom] = b;
       delete enCours[nom];
       if (surProgres) { const total = echelle ? Math.round(echelle / PART_JSON) : 1; surProgres(total, total); }

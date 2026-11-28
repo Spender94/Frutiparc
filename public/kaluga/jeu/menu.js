@@ -20,6 +20,7 @@ const J = racine.KalugaJeu;
 const Cs = J.Cs;
 const random = J.random;
 const Key = K.Key;
+const T = K.T;
 
 // ── Menu ──────────────────────────────────────────────────────────────────
 class Menu extends J.Slot {
@@ -118,7 +119,11 @@ class Menu extends J.Slot {
     // nomme la sienne : la bande en porte une neuvième, jamais servie.
     const image = info.frame != null ? info.frame : info.id + 1;
     mc.title.gotoAndStop(image);
-    mc.title.title.text = info.name;
+    // Le nom du mode s'affiche dans la langue du joueur (kaluga.menu, par nom
+    // français) ; `info.name` reste celui que le jeu compare et renomme
+    // (CHALLENGE → ESSAIS).
+    const noms = T.table('kaluga.menu', {});
+    mc.title.title.text = Object.prototype.hasOwnProperty.call(noms, info.name) ? noms[info.name] : info.name;
     mc.attachMovie('transp', 'but', 110);
     mc.but._xscale = 232;
     mc.but._yscale = 32;
@@ -326,17 +331,17 @@ class Menu extends J.Slot {
   rOver(mc) {
     let txt;
     switch (mc._name) {
-      case 'k0': txt = "redéfinir la touche d'acceleration."; break;
-      case 'k1': txt = 'redéfinir la touche pour tourner vers la gauche.'; break;
-      case 'k2': txt = 'redéfinir la touche pour tourner vers la droite.'; break;
-      case 'k3': txt = 'redéfinir la touche pour foncer vers le sol.'; break;
-      case 'k4': txt = 'redéfinir la touche pour lancer le fil de la tzongre.'; break;
-      case 'k5': txt = 'redefinir la touche qui ne sert a rien.'; break;
+      case 'k0': txt = T('kaluga.options.k0', "redéfinir la touche d'acceleration."); break;
+      case 'k1': txt = T('kaluga.options.k1', 'redéfinir la touche pour tourner vers la gauche.'); break;
+      case 'k2': txt = T('kaluga.options.k2', 'redéfinir la touche pour tourner vers la droite.'); break;
+      case 'k3': txt = T('kaluga.options.k3', 'redéfinir la touche pour foncer vers le sol.'); break;
+      case 'k4': txt = T('kaluga.options.k4', 'redéfinir la touche pour lancer le fil de la tzongre.'); break;
+      case 'k5': txt = T('kaluga.options.k5', 'redefinir la touche qui ne sert a rien.'); break;
       case 'b0': case 'b1': case 'b2':
-        if (mc._name === 'b0') txt = 'la musique du jeu.';
-        else if (mc._name === 'b1') txt = 'les effets sonores du jeu.';
-        else txt = 'les effets de particules.';
-        txt = (mc.flag ? 'desactiver ' : 'activer ') + txt;
+        // Une phrase par bouton et par état : l'anglais ne recolle pas
+        // « activer » devant « la musique du jeu ».
+        txt = T('kaluga.options.' + mc._name + (mc.flag ? 'Off' : 'On'), (mc.flag ? 'desactiver ' : 'activer ')
+          + (mc._name === 'b0' ? 'la musique du jeu.' : mc._name === 'b1' ? 'les effets sonores du jeu.' : 'les effets de particules.'));
         break;
       default: break;
     }

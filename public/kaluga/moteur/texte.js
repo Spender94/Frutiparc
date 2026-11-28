@@ -31,6 +31,30 @@ const PILES = {
 // Les métriques des fontes système (fraction du corps) : Verdana.
 const METRIQUES_SYSTEME = { asc: 1.005, desc: 0.21, lead: 0 };
 
+/*
+ * LES LANGUES. Le moteur sert trois jeux (Kaluga, Burning Kiwi, MotionBall 2) :
+ * le jeu courant se lit dans `K.base` (« /bkiwi/ » → bkiwi), et ses clés de
+ * traduction commencent par son nom. Hors du navigateur (les rejeux du
+ * serveur), ou sans /js/i18n.js, tout reste en français.
+ */
+K.jeuCourant = () => String(K.base || '/kaluga/').replace(/^\/+|\/+$/g, '');
+// (K.T, T() lu à l'appel avec le français en repli, est posé par flash.js.)
+// La clé d'un caractère : « kaluga.champ.907 » pour la bibliothèque du jeu,
+// « kaluga.challenge.champ.12 » pour celle d'une carte (aucune n'en a encore).
+function cleCaractere(biblio, quoi, id) {
+  const jeu = K.jeuCourant();
+  const nom = biblio && biblio.nom;
+  return (nom && nom !== jeu) ? `${jeu}.${nom}.${quoi}.${id}` : `${jeu}.${quoi}.${id}`;
+}
+K.cleCaractere = cleCaractere;
+// Le texte par défaut d'un champ (DefineEditText), dans la langue du joueur ;
+// le français du SWF en repli. Le jeu réécrit la plupart des champs par
+// script : seul ce qu'il laisse tel quel (pages d'aide, tutoriels) en profite.
+K.texteChamp = function (biblio, id, fr) {
+  if (id === null || id === undefined || typeof racine.T !== 'function') return fr;
+  return racine.T(cleCaractere(biblio, 'champ', id), fr);
+};
+
 const ENTITES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', eacute: 'é', egrave: 'è', agrave: 'à', ccedil: 'ç', ecirc: 'ê', ocirc: 'ô', ucirc: 'û', icirc: 'î' };
 function decoderEntites(s) {
   return s.replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (m, e) => {
@@ -62,7 +86,10 @@ class Texte extends K.Affichable {
     this._html = '';
     this.$paragraphes = null;
     this.$mesure = null;
-    if (d && d.texte) { if (this.html) this.htmlText = d.texte; else this.text = d.texte; }
+    if (d && d.texte) {
+      const t = K.texteChamp(biblio, this.$id, d.texte);
+      if (this.html) this.htmlText = t; else this.text = t;
+    }
   }
 
   get text() { return this._texte; }
@@ -274,5 +301,147 @@ class Texte extends K.Affichable {
   }
 }
 K.Texte = Texte;
+
+/*
+ * ── LES TEXTES FIGÉS, EN ANGLAIS ──────────────────────────────────────────
+ *
+ * Le texte statique de Flash a été cuit en formes (les glyphes du SWF, un à
+ * un) ; Kaluga écrit même des titres LETTRE À LETTRE, chaque lettre posée par
+ * le scénario d'un clip. Rien de tout cela ne se traduit tel quel. En
+ * anglais, on écrit donc le texte à l'exécution, à la place des glyphes :
+ * même fonte embarquée (le WOFF tiré du SWF), même corps, même couleur, même
+ * ligne de base, même alignement. La mise en page de chaque texte figé est
+ * relevée hors ligne (scripts/textes-figes.js → data/figes.json, chargé
+ * seulement hors du français) ; l'anglais vient du dictionnaire du jeu, clés
+ * `<jeu>.fige.<id>` (un texte entier) et `<jeu>.fige.<clip>.<image>` (une
+ * phrase écrite lettre à lettre). Sans traduction, la forme française reste.
+ *
+ * UNE FONTE RÉDUITE (un sous-ensemble : Donald en capitales, 911 Porscha sans
+ * la moitié de ses majuscules) ne sait pas tout écrire : la chaîne entière
+ * passe alors à la copie complète de la même fonte, ou à une fonte système
+ * proche (`substituts`) — jamais un mélange de deux fontes dans un mot.
+ *
+ * UNE LIGNE TROP LONGUE est resserrée (l'échelle horizontale seule) jusqu'à
+ * la largeur que le français occupait (`lmax`), plutôt que de déborder sur ce
+ * qui l'entoure.
+ */
+const DECALAGE_SCENARIO = 16384;      // les profondeurs du scénario (flash.js)
+
+function familleFigee(figes, f, texte) {
+  const sait = (id) => {
+    const car = figes.fontes && figes.fontes[id];
+    if (!car) return false;
+    for (const c of texte) if (c.trim() && car.indexOf(c) < 0) return false;
+    return true;
+  };
+  if (sait(f)) return `"Kaluga ${f}", ${PILES.verdana}`;
+  const s = figes.substituts && figes.substituts[f];
+  if (typeof s === 'number' && sait(s)) return `"Kaluga ${s}", ${PILES.verdana}`;
+  // Une pile peut demander le gras ou l'italique (« bold Verdana, … ») : la
+  // fonte d'origine l'était (les Verdana pixellisées « _st » du SWF, la
+  // Sweet as candy penchée de MotionBall, dont la copie complète est droite).
+  if (typeof s === 'string') return s;
+  return PILES.verdana;
+}
+// « bold Verdana, … », « italic "Kaluga 69", … » → le style devant le corps,
+// comme le veut ctx.font.
+function policeFigee(taille, famille) {
+  const m = /^((?:(?:bold|italic)\s+)*)(.*)$/.exec(famille);
+  return `${m[1]}${taille}px ${m[2]}`;
+}
+
+/*
+ * Écrit `fige.texte` (une ligne par « \n ») sur les lignes françaises
+ * `fige.l`, dans le repère courant. Une ligne anglaise de plus que le
+ * français prend l'interligne des précédentes.
+ */
+function ecrireLignes(ctx, fige, a) {
+  const modele = fige.l;
+  const n = modele.length;
+  if (!n) return;
+  const lignes = String(fige.texte).split('\n');
+  const famille = fige.famille || (fige.famille = familleFigee(fige.figes, modele[0].f, fige.texte));
+  const pas = n > 1 ? (modele[n - 1].y - modele[0].y) / (n - 1) : modele[0].t * 1.25;
+  let centre = 0;
+  for (const l of modele) centre += (l.x + l.x1) / 2;
+  centre /= n;
+  ctx.textBaseline = 'alphabetic';
+  ctx.globalAlpha = a;
+  lignes.forEach((texte, i) => {
+    if (!texte) return;
+    const l = modele[Math.min(i, n - 1)];
+    const y = i < n ? l.y : modele[n - 1].y + (i - n + 1) * pas;
+    ctx.font = policeFigee(l.t, famille);
+    ctx.fillStyle = l.c;
+    // L'ESPACE : certaines fontes du SWF la font large d'un em entier (la
+    // Donald de Kaluga) — l'auteur posait ses lettres une à une et ne s'en
+    // servait jamais. On écrit donc mot à mot, avec une espace d'au plus
+    // trois dixièmes de corps, ce que mesurent les blancs des titres français.
+    const mots = texte.split(' ');
+    const espace = Math.min(ctx.measureText(' ').width, 0.3 * l.t);
+    const largeurs = mots.map((m) => (m ? ctx.measureText(m).width : 0));
+    const w = largeurs.reduce((s, v) => s + v, 0) + espace * (mots.length - 1);
+    const k = (fige.lmax && w > fige.lmax) ? fige.lmax / w : 1;
+    const wl = w * k;
+    let x = l.x;
+    if (fige.a === 'centre') x = centre - wl / 2;
+    else if (fige.a === 'droite') x = l.x1 - wl;
+    ctx.save();
+    ctx.translate(x, y);
+    if (k !== 1) ctx.scale(k, 1);
+    let xm = 0;
+    mots.forEach((m, j) => { if (m) ctx.fillText(m, xm, 0); xm += largeurs[j] + espace; });
+    ctx.restore();
+  });
+}
+
+// Un texte figé entier (une Forme) : ses lignes sont dans son propre repère,
+// que sa matrice pose chez son parent.
+K.ecrireFige = function (ctx, d, a) {
+  ctx.save();
+  if (d.m) ctx.transform(d.m[0], d.m[1], d.m[2], d.m[3], d.m[4], d.m[5]);
+  ecrireLignes(ctx, d.fige, a);
+  ctx.restore();
+};
+// Une phrase écrite lettre à lettre : ses lignes sont dans le repère du clip.
+K.ecrirePhrase = function (ctx, phrase, a) { ecrireLignes(ctx, phrase, a); };
+
+/*
+ * Pose les traductions sur une bibliothèque qu'on vient de charger : un texte
+ * figé reçoit `fige` (sa forme s'écrira en anglais), un clip `figes` (par
+ * image, les phrases à écrire et les profondeurs des lettres qu'elles
+ * remplacent). Rien n'est posé sans traduction : le français reste la forme.
+ */
+K.poserFiges = function (biblio, figes) {
+  const I = racine.FPI18n;
+  if (!figes || !I || !I.langue || I.langue === 'fr' || typeof racine.T !== 'function') return;
+  const sec = figes.biblios && figes.biblios[biblio.nom];
+  if (!sec) return;
+  const possede = (cle) => I.possede(I.langue, cle);
+  for (const [id, t] of Object.entries(sec.textes || {})) {
+    const cle = cleCaractere(biblio, 'fige', id);
+    const def = biblio.perso[id];
+    if (!def || def.t !== 'forme' || !possede(cle)) continue;
+    def.fige = { l: t.l, a: t.a, lmax: t.lmax, texte: racine.T(cle, t.fr), figes };
+  }
+  for (const [cid, c] of Object.entries(sec.clips || {})) {
+    const def = biblio.perso[cid];
+    if (!def || def.t !== 'clip') continue;
+    const phrases = {};
+    for (const [k, ph] of Object.entries(c.phrases || {})) {
+      const cle = cleCaractere(biblio, 'fige', k);
+      if (possede(cle)) phrases[k] = { l: ph.l, a: ph.a, lmax: ph.lmax, texte: racine.T(cle, ph.fr), figes };
+    }
+    if (!Object.keys(phrases).length) continue;
+    const parImage = [];
+    for (const [de, a, liste] of c.images || []) {
+      const ici = liste.filter((x) => phrases[x[0]])
+        .map((x) => ({ phrase: phrases[x[0]], profs: new Set(x[1].map((p) => p - DECALAGE_SCENARIO)) }));
+      if (!ici.length) continue;
+      for (let f = de; f <= a; f++) parImage[f] = ici;
+    }
+    def.figes = parImage;
+  }
+};
 
 })(typeof window !== 'undefined' ? window : globalThis);

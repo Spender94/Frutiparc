@@ -32,6 +32,8 @@
 
 const K = racine.KalugaMoteur;
 const J = racine.BkiwiJeu = racine.BkiwiJeu || {};
+// Les langues (/js/i18n.js, par le moteur : K.T) ; public/bkiwi/lang/en.js.
+const T = (cle, fr, p) => K.T(cle, fr, p);
 const G = J.G;
 const Key = K.Key;
 const random = J.random;
@@ -1283,7 +1285,7 @@ J.installerMoteur = function (M) {
             M.sBox._x = M.docWidth / 2;
             M.sBox._y = 100;
             M.sBox.txt = M.specials[4].chaine;
-            M.sBox.underTxt = 'activé';
+            M.sBox.underTxt = T('bkiwi.code.active', 'activé');
             carPJ.skin.gotoAndStop(carPJ.skinId + 20);
           }
         }
@@ -1550,7 +1552,7 @@ J.installerMoteur = function (M) {
     M.nitroStopped = false;
 
     // Check du mode de jeu
-    if (!J.checkMode(M.vs.gameMode)) J.fatal('Fichier introuvable sur ce FD', 'Illegal mode');
+    if (!J.checkMode(M.vs.gameMode)) J.fatal(T('bkiwi.panne.fichierFd', 'Fichier introuvable sur ce FD'), 'Illegal mode');
 
     // Qualité graphique
     M.checkFPS = M.baseCheckFPS;
@@ -1965,7 +1967,7 @@ J.installerMoteur = function (M) {
     mc.nitroAgg = 0.90;
     mc.preImmune = 0;
 
-    if (mc.vs.kiwis > M.maxKiwis) J.fatal('Surchauffe du moteur', 'invalid ' + mc.vs.kiwis + ' nitros (car id=' + id + ')');
+    if (mc.vs.kiwis > M.maxKiwis) J.fatal(T('bkiwi.panne.surchauffe', 'Surchauffe du moteur'), 'invalid ' + mc.vs.kiwis + ' nitros (car id=' + id + ')');
 
     // Caractéristiques du véhicule
     mc.statRot = stats.rot;
@@ -2128,7 +2130,7 @@ J.installerMoteur = function (M) {
 
     if (lap == 0) mc.progress._visible = false;                               // eslint-disable-line eqeqeq
     else {
-      if (time == prevTime) mc.progress_txt = 'Même temps !';                 // eslint-disable-line eqeqeq
+      if (time == prevTime) mc.progress_txt = T('bkiwi.memeTemps', 'Même temps !');                 // eslint-disable-line eqeqeq
       if (time > prevTime) mc.progress_txt = '+ ' + J.timeToString(time - prevTime);
       if (time < prevTime) mc.progress_txt = '- ' + J.timeToString(prevTime - time);
     }
@@ -2278,7 +2280,7 @@ J.installerMoteur = function (M) {
     if (trackId < 10) fileName = 'track0' + trackId + '.swf';
     else fileName = 'track' + trackId + '.swf';
 
-    J.startPreload(M.track.skin, fileName, 'Chargement de course');
+    J.startPreload(M.track.skin, fileName, T('bkiwi.chargementCourse', 'Chargement de course'));
   };
 
   // LE LOADER DE MUSIQUE
@@ -2292,7 +2294,7 @@ J.installerMoteur = function (M) {
     const soundObject = new K.Sound(soundMC);
     soundObject.onLoad = J.eventSoundComplete;
     soundObject.isPlaying = false;
-    J.startPreload(soundObject, fileName, 'Chargement musique');
+    J.startPreload(soundObject, fileName, T('bkiwi.chargementMusique', 'Chargement musique'));
     return soundObject;
   };
 
@@ -2315,11 +2317,11 @@ J.installerMoteur = function (M) {
   // ÉVÉNEMENT : LOADING DE SON TERMINÉ
   J.eventSoundComplete = function (success) {
     if (success) M.preloadData.loadComplete = true;
-    else J.loadingError('Musique introuvable', M.preloadData.shortFileName);
+    else J.loadingError(T('bkiwi.panne.musique', 'Musique introuvable'), M.preloadData.shortFileName);
   };
   J.eventOnLoadComplete = function () { M.preloadData.loadComplete = true; };
   J.eventOnLoadError = function (mc, errorCode) {
-    const msg = (errorCode === 'URLNotFound') ? 'Fichier introuvable' : 'Téléchargement interrompu';
+    const msg = (errorCode === 'URLNotFound') ? T('bkiwi.panne.fichier', 'Fichier introuvable') : T('bkiwi.panne.telechargement', 'Téléchargement interrompu');
     J.loadingError(msg + ' (' + mc + ')', M.preloadData.shortFileName);
   };
 
@@ -2331,7 +2333,7 @@ J.installerMoteur = function (M) {
       M.preloader.file = fileName;
     }
     if (client().gameRunning) client().endGame();
-    J.fatal('Fichier ' + fileName + ' non trouvé sur le FD', 'loadingError: ' + errorMsg + ' filename=' + fileName);
+    J.fatal(T('bkiwi.panne.fichierNomme', 'Fichier {nom} non trouvé sur le FD', { nom: fileName }), 'loadingError: ' + errorMsg + ' filename=' + fileName);
   };
 
   // LANCEMENT D'UN PRELOAD — un circuit (un clip à remplir) ou une musique
@@ -2506,8 +2508,9 @@ J.installerMoteur = function (M) {
     M.vs.giveUp = false;
     M.vs.startBoost = 0;
 
-    // Traductions des touches
-    J.initKeyNames(M, 'fr');
+    // Traductions des touches : le jeu de 2005 avait les deux tables (keyNames.as),
+    // le français et l'américain ; on prend celle de la langue du joueur.
+    J.initKeyNames(M, K.langue() === 'en' ? 'us' : 'fr');
 
     // Variables diverses
     M.previousPhase = -1;

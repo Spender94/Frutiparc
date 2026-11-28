@@ -121,10 +121,11 @@ test('le corbeau qui emporte la tzongre ferme l’épreuve sur une vraie page', 
 
 test('« Trop tard » s’écrit sans S — la coquille de 2005 reste à 2005', () => {
   const t = /tempsEcoule\(\) \{[\s\S]*?\n  \}/.exec(DEFI[0])[0];
-  assert.match(t, /title: 'Trop tard !'/);
+  // (Le français est l'argument de repli de T() : la version anglaise.)
+  assert.match(t, /title: T\('kaluga\.defi\.tropTard', 'Trop tard !'\)/);
   assert.doesNotMatch(t, /Trops tard/);
   // Les modes d'ÉPOQUE la gardent : c'est le texte du SWF (Chrono.as).
-  assert.match(MODES, /title: 'Trops tard!'/, 'le Chrono garde la sienne');
+  assert.match(MODES, /title: T\('kaluga\.chrono\.tropTard', 'Trops tard!'\)/, 'le Chrono garde la sienne');
 });
 
 test('le granite se lit aux DRAPEAUX, pas au nom composé', () => {

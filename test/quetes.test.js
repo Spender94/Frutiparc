@@ -1884,7 +1884,8 @@ test('Kaluga : le record d’une épreuve, jugé par le serveur d’après la fr
 
 test('Kaluga : un ver retombé derrière la ligne n’est pas une faute de dépassement', () => {
   const src = fs.readFileSync(path.join(ROOT, 'public/kaluga/jeu/modes.js'), 'utf8');
-  assert.match(src, /this\.loose\(this\.flValidate === false \? 'Vous avez dépassé la ligne de lancé !' : 'Votre ver n’a pas franchi la ligne de lancer !'\);/);
+  // (chaque message dans son appel à T(), le français en repli : la version anglaise)
+  assert.match(src, /this\.loose\(this\.flValidate === false \? T\('kaluga\.lancer\.ligneDepassee', 'Vous avez dépassé la ligne de lancé !'\) : T\('kaluga\.lancer\.ligneNonFranchie', 'Votre ver n’a pas franchi la ligne de lancer !'\)\);/);
 });
 
 test('RGPD : l’export du joueur contient ses quêtes', async (t) => {
