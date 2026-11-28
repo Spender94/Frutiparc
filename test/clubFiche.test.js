@@ -246,7 +246,7 @@ test('le top médaillés se ventile par jeu, et le sélecteur se remplit tout se
 test('la page du Club porte le sélecteur de jeu du top médaillés', () => {
   const html = fs.readFileSync(path.join(ROOT, 'public/club/index.html'), 'utf8');
   assert.match(html, /<select id="medalist-game" onchange="loadMedalists\(\)">/);
-  assert.match(html, /<option value="all">Tous les jeux<\/option>/, 'le choix par défaut');
+  assert.match(html, /<option value="all"[^>]*>Tous les jeux<\/option>/, 'le choix par défaut');
   assert.match(html, /fetch\('\/api\/club\/medalists\?game=' \+ encodeURIComponent\(jeu\)\)/);
   assert.match(html, /function majSelecteurJeux\(games, choix\)/,
     'la liste se remplit de ce que le serveur rend');
