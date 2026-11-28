@@ -22,6 +22,11 @@
 
   const MODES = 'PCLO';
   const LIBELLES = ['Joueurs', 'Createurs', 'Niveaux', 'Mes niveaux'];
+  // LES LANGUES (/js/i18n.js) : les onglets s'affichent dans la langue de la
+  // page (jamajama.onglet.P, .C, .L, .O) ; LIBELLES reste la table du fichier.
+  // Sans le module (les bancs d'essai), le français.
+  const T = window.T || ((cle, fr) => fr);
+  const AFFICHES = LIBELLES.map((l, i) => T('jamajama.onglet.' + MODES.charAt(i), l));
   const PAR_PAGE = 15;
   const HAUTEUR = 20;                        // le champ de Std.createTextField : 100×20
   // Le champ par défaut du lecteur Flash : Times New Roman 12.
@@ -111,7 +116,7 @@
 
   class EcranStats {
     constructor() {
-      this.choix = new Choix(8, H - 20, LIBELLES);
+      this.choix = new Choix(8, H - 20, AFFICHES);
       this.lignes = [];
       this.page = 0;
       this.pages = 1;

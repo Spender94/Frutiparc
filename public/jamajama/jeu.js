@@ -19,6 +19,14 @@
   const Ecrans = window.JamaEcrans;
   const Vue = window.JamaVue;
   const { Consts, Direction, Replay } = R;
+  // LES LANGUES (/js/i18n.js) : T() rend l'anglais quand la page est en
+  // anglais (le dictionnaire du jeu : /jamajama/lang/en.js) ; sans le module,
+  // le français écrit ici, gabarits remplis. La langue part aussi avec la
+  // demande de l'aide : le serveur a help.xml et help-en.xml.
+  const T = window.T || ((cle, fr, p) => String(fr).replace(/\{(\w+)\}/g, (m, k) => (p && p[k] != null ? p[k] : m)));
+  const LANGUE = (window.FPI18n && window.FPI18n.langue) || 'fr';
+  // Le seul texte du jeu écrit dans la page : le bouton d'action de la manette.
+  if (window.FPI18n) window.FPI18n.appliquer(document);
 
   const canvas = document.getElementById('jama');
   const ctx = canvas.getContext('2d');
@@ -413,7 +421,7 @@
         });
       }
     }
-    fetch('/api/jamajama/aide').then((r) => r.json()).then((d) => {
+    fetch('/api/jamajama/aide?lang=' + LANGUE).then((r) => r.json()).then((d) => {
       if (!d.ok) return;
       sections = d.sections;
       style = d.style;
@@ -566,7 +574,8 @@
       if (invite && source.type !== 'essai' && partie.isEnded() && window.FPInvite
         && window.FPInvite.finDePartie({
           titre: partie.isVictorious() ? 'Niveau réussi !' : 'Perdu !',
-          score: partie.countMoves(), libelle: 'Coups joués', surRejouer: puis,
+          titreEn: partie.isVictorious() ? 'Level complete!' : 'You lost!',
+          score: partie.countMoves(), libelle: 'Coups joués', libelleEn: 'Moves', surRejouer: puis,
         })) return;
       puis();
     }
@@ -603,7 +612,7 @@
             envoyer(() => {
               fini = false;
               envoye = false;
-              dialogue = new Ecrans.Dialogue('confirm', 'Perdu ! Recommencer le niveau ?');
+              dialogue = new Ecrans.Dialogue('confirm', T('jamajama.recommencer', 'Perdu ! Recommencer le niveau ?'));
               dialogue.update = ((maj) => (tmod2, s) => {
                 const r = maj(tmod2, s);
                 if (r === 'oui') { dialogue = null; recommencer(); }
@@ -616,7 +625,7 @@
         }
         if (echapDemande && vue.libre() && !partie.isEnded()) {
           echapDemande = false;
-          dialogue = new Ecrans.Dialogue('retry', 'Abandonner la partie ?');
+          dialogue = new Ecrans.Dialogue('retry', T('jamajama.abandonner', 'Abandonner la partie ?'));
           return;
         }
         echapDemande = false;
@@ -704,6 +713,6 @@
     .catch((e) => {
       ctx.fillStyle = '#ffffff';
       ctx.font = '12px Verdana, sans-serif';
-      ctx.fillText('Chargement impossible : ' + (e.message || e), 20, 40);
+      ctx.fillText(T('jamajama.chargementImpossible', 'Chargement impossible : {erreur}', { erreur: e.message || e }), 20, 40);
     });
 })();

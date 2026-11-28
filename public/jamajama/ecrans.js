@@ -16,6 +16,10 @@
   const Rendu = window.JamaRendu;
   const { Consts } = R;
   const teinte = (n) => '#' + n.toString(16).padStart(6, '0');
+  // LES LANGUES (/js/i18n.js) : T() rend l'anglais quand la page est en
+  // anglais ; sans le module (les bancs d'essai), le français écrit ici.
+  const T = window.T || ((cle, fr, p) => String(fr).replace(/\{(\w+)\}/g, (m, k) => (p && p[k] != null ? p[k] : m)));
+  const enAnglais = () => !!(window.FPI18n && window.FPI18n.langue === 'en');
 
   // Le cadre d'un enfant nommé d'un symbole (pour les clics) : l'union des
   // pièces qui portent ce chemin, enfants compris.
@@ -293,16 +297,18 @@
       this.debut = !!options.showBeginFade;
       this.fin = !!options.showVictoFade;
       const c = cadreEnfant('jama_gui_CheckBox', 1, null) || { x: 0, y: 0, w: 220, h: 24 };
+      // Les libellés s'écrivent en Arial du fichier (95 glyphes, ASCII seul) :
+      // l'anglais n'y met donc ni accent ni apostrophe typographique.
       this.cases = [
-        { y: 50, dit: 'Animation de debut de partie', clef: 'debut' },
-        { y: 90, dit: 'Animation de fin de partie', clef: 'fin' },
+        { y: 50, dit: T('jamajama.optionDebut', 'Animation de debut de partie'), clef: 'debut' },
+        { y: 90, dit: T('jamajama.optionFin', 'Animation de fin de partie'), clef: 'fin' },
       ];
       this.cadreCase = c;
       const b = cadreEnfant('jama_gui_Button', 1, null) || { x: -40, y: -13, w: 80, h: 26 };
       this.cadreBouton = b;
       this.boutons = [
-        { x: 192 - 55, y: 160, dit: 'Sauver', quoi: 'sauver' },
-        { x: 192 + 55, y: 160, dit: 'Annuler', quoi: 'annuler' },
+        { x: 192 - 55, y: 160, dit: T('jamajama.sauver', 'Sauver'), quoi: 'sauver' },
+        { x: 192 + 55, y: 160, dit: T('jamajama.annuler', 'Annuler'), quoi: 'annuler' },
       ];
     }
     update(tmod, souris) {
@@ -471,13 +477,16 @@
     dessiner(ctx) {
       const n = this.niveau;
       const d = n.date ? new Date(Number(n.date)) : null;
+      // La date : 06/07/2005 à la française, « July 6, 2005 » en anglais —
+      // l'ordre jour/mois se lirait de travers outre-Manche.
+      const date = d ? (enAnglais() && window.T ? window.T.date(d, 'long') : d.toLocaleDateString('fr-FR')) : '?';
       ctx.save();
       try {
         Rendu.dessiner(ctx, 'jama_gui_LevelInfo', 1, {
           champs: { title: n.titre },
           vars: {
             author: n.auteur || '?',
-            date: d ? d.toLocaleDateString('fr-FR') : '?',
+            date,
             nbrPlays: n.moi ? String(n.moi.p || 0) : '0',
             nbrVictories: n.moi ? String(n.moi.v || 0) : '0',
             value: n.score ? String(n.score) : '-',
@@ -523,9 +532,9 @@
         Rendu.dessiner(ctx, this.cle, 1, {
           champs: {
             content: this.texte,
-            'yes.label': 'oui',
-            'no.label': 'non',
-            'retry.label': 'encore',
+            'yes.label': T('jamajama.oui', 'oui'),
+            'no.label': T('jamajama.non', 'non'),
+            'retry.label': T('jamajama.encore', 'encore'),
           },
         });
       } catch (e) {}
