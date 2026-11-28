@@ -188,6 +188,9 @@ Object.assign(keyNames_US, { 106: 'NumPad *', 107: 'NumPad +', 108: 'NumPad Ente
 Object.assign(keyNames_FR, { 106: 'PavNum *', 107: 'PavNum +', 108: 'PavNum Entrée', 109: 'PavNum -', 110: 'PavNum Suppr', 111: 'PavNum /' });
 for (let i = 112; i <= 123; i++) { keyNames_US[i] = 'F ' + (i - 111); keyNames_FR[i] = 'F ' + (i - 111); }
 Object.assign(keyNames_FR, { 1: 'Mouse left', 2: 'Mouse right', 4: 'Mouse middle' });
+// (La table américaine, que le jeu de 2005 ne servait pas, sert à la version
+// anglaise : elle reçoit les boutons de la souris qui lui manquaient.)
+Object.assign(keyNames_US, { 1: 'Mouse left', 2: 'Mouse right', 4: 'Mouse middle' });
 Object.assign(keyNames_US, {
   8: 'Backspace ', 9: 'TAB ', 12: 'Delete ', 13: 'Return ', 16: 'Shift ', 17: 'Control ', 18: 'Alt ', 20: 'CapsLock ',
   27: 'Escape ', 32: 'Spacebar ', 33: 'Page up', 34: 'Page down', 35: 'End ', 36: 'Home ', 37: 'Left ', 38: 'Up ',
