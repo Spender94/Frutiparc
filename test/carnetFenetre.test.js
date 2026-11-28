@@ -299,7 +299,7 @@ test('les phrases du bandeau sont celles de lang_french.as', () => {
 });
 
 test('l’étoile n’est active QUE sur « Mes contacts » — le serveur n’en crée pas ailleurs', () => {
-  assert.match(JS, /uid === 'mycontact'\s*\n\s*\? boutonNav\('new_folder', 'nouveau dossier'/);
+  assert.match(JS, /uid === 'mycontact'\s*\n\s*\? boutonNav\('new_folder', T\('bureau\.nouveauDossierMin', 'nouveau dossier'\)/);
   // La liste noire, elle, n'a pas de bouton du tout (`flNewDirectory` faux).
   assert.match(JS, /t\.flNewDirectory = !\(MAIL_UIDS\[uid\] \|\| uid === 'inventory' \|\| uid === 'blacklist'\)/);
   assert.match(SRV, /if \(type === 'folder' && folder === 'mycontact'\) \{/);

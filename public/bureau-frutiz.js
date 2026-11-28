@@ -31,6 +31,9 @@ window.BureauFrutiz = (function () {
   // exactement le comportement du SWF (public/frutiz/PLAN.md).
   // `evenements` et `historique` partagent le panneau #evt-panel : la fenêtre
   // est UNIQUE et se retitre selon l'onglet demandé.
+  // LES TITRES passent par T() (/js/i18n.js) : le français reste écrit ici,
+  // l'anglais vit dans /i18n/en/bureau.js. Les noms propres — Forum, Scores,
+  // le Bouilloscope, Gaspard, les Prunostics, les jeux — ne se traduisent pas.
   var RUBRIQUES = {
     // PAS DE RUBRIQUE « chat » ICI — et ce n'est pas un oubli non plus.
     // `box.Chat` est une instance PAR SALON (`chatMng.setBox(user, this)`
@@ -62,21 +65,21 @@ window.BureauFrutiz = (function () {
     // LA BOUTIQUE — `win.Shop`. Relevé 1:1 : la fenêtre tient en 476 × 404,
     // contour compris, et s'ouvre au milieu. `winType = "winShop"` : le fruit
     // VERT en pastille.
-    boutique:   { panneau: '#shop-sheet',      titre: 'Boutique', fruit: 'winShop',
+    boutique:   { panneau: '#shop-sheet',      titre: T('bureau.titreBoutique', 'Boutique'), fruit: 'winShop',
                   l: 476, h: 404, min: minFenetre(140 + 300, 200), centre: true },
     // « MODIFIER MA FICHE » — `win.EditInfo`, la fenêtre que le bouton d'édition
     // (image 10, `frutiz_edit_info`) ouvre sur SA fiche. Le formulaire — mêmes
     // champs, même /do/smi — vient du panneau mobile #profil-sheet, rhabillé en
     // écorce verte (`frSheet`). EditInfo n'est pas dans la bande de fruits
     // (#198) : sa pastille retombe sur l'ORANGE par défaut, comme la recherche.
-    'fiche-edit': { panneau: '#profil-sheet',  titre: 'Modifier ma fiche',
+    'fiche-edit': { panneau: '#profil-sheet',  titre: T('bureau.titreModifierFiche', 'Modifier ma fiche'),
                     l: 404, h: 470, min: minFenetre(320, 300), centre: true },
     // LA MESSAGERIE — d'époque c'est un EXPLORATEUR (`box.Explorer` sur
     // `fileMng.inbox`), donc la fenêtre jaune et son gabarit : `win.Explorer`
     // pose `pos = {50, 50, 400, 400}` et s'ouvre AU MILIEU. Le relevé 1:1 la
     // donne en x 486..896 / y 146..546 — 411 × 401, contour compris. Le titre
     // vient du dossier (`setTitle(this.list.desc[0])`).
-    mail:       { panneau: '#mail-panel',      titre: 'Boîte de réception',
+    mail:       { panneau: '#mail-panel',      titre: T('bureau.boiteReception', 'Boîte de réception'),
                   fruit: 'winExplorer', l: 412, h: 402,
                   min: minFenetre(100, 28 + 100), centre: true },
     // LES DEUX JOURNAUX — `box.SiteLog` et `box.UserLog`, qui n'ajoutent rien
@@ -84,22 +87,22 @@ window.BureauFrutiz = (function () {
     // « icoUserLog ». Et `win.Log.init` pose `flResizable = false` : ces
     // fenêtres-là ne se redimensionnent pas. Le gabarit vient du relevé 1:1 —
     // 314 × 246, cadre `#444444` compris.
-    evenements: { panneau: '#evt-panel',       titre: 'Événements',     l: 314, h: 246, fixe: true,
+    evenements: { panneau: '#evt-panel',       titre: T('bureau.titreEvenements', 'Événements'), l: 314, h: 246, fixe: true,
                   min: minFenetre(300, 200) },
-    historique: { panneau: '#evt-panel',       titre: 'Mon historique', l: 314, h: 246, fixe: true,
+    historique: { panneau: '#evt-panel',       titre: T('bureau.titreHistorique', 'Mon historique'), l: 314, h: 246, fixe: true,
                   min: minFenetre(300, 200) },
     // `box.KikoozLog` (0x8b46e) : un TROISIÈME journal, du même `win.Log` que
     // les deux autres — d'où le même panneau et le même gabarit. Son titre est
     // celui de la table (`kikooz_log.title`), et il n'a pas de raccourci : on
     // y entre par le petit bouton blanc du haut de la boutique.
-    kikoozlog:  { panneau: '#evt-panel',       titre: 'Historique Kikooz', l: 314, h: 246, fixe: true,
+    kikoozlog:  { panneau: '#evt-panel',       titre: T('bureau.historiqueKikooz', 'Historique Kikooz'), l: 314, h: 246, fixe: true,
                   min: minFenetre(300, 200) },
     trombi:     { panneau: '#trombi-panel',    titre: 'Bouilloscope',   l: 780, h: 620 },
     // `win.Pref` (sprite#831) : l'arbre des rubriques (menuFrame min 140×60)
     // et le panneau de droite (showFrame min 200×200), côte à côte. Le titre
     // est celui du constructeur (`box.Pref`, 0xc9af5) : `pref.title` vaut
     // « Mes préférences » dans lang_french.as, pas « Préférences ».
-    reglages:   { panneau: '#reglages-panel',  titre: 'Mes préférences', l: 560, h: 620,
+    reglages:   { panneau: '#reglages-panel',  titre: T('bureau.titrePreferences', 'Mes préférences'), l: 560, h: 620,
                   min: minFenetre(140 + 200, 200) },
     grapiz:     { panneau: '#grapiz-panel',    titre: 'Grapiz',         l: 900, h: 660 },
     bandas:     { panneau: '#bandas-panel',    titre: 'Frutibandas',    l: 900, h: 660 },
@@ -123,7 +126,7 @@ window.BureauFrutiz = (function () {
     // entière (`win.RoomList`, 0xbebb6). Son gabarit vient du bytecode et du
     // relevé 1:1 : `min: {w: 200, h: 240}` est écrit dans `initFrameSet`
     // (0xbec80), et la fenêtre s'ouvre à 265×288 sur le rendu d'époque.
-    salons:     { panneau: '#salons-panel',    titre: 'Salons publics', fruit: 'winChat',
+    salons:     { panneau: '#salons-panel',    titre: T('bureau.titreSalonsPublics', 'Salons publics'), fruit: 'winChat',
                   l: 265, h: 288, min: minFenetre(200, 240) },
     // « Recherche » — `win.Search` (0x855db). L'autre fenêtre sans équivalent
     // mobile. Son gabarit est écrit dans `init` : `mWidth = 270` et
@@ -138,7 +141,7 @@ window.BureauFrutiz = (function () {
     // `_global.langText.search.title = "Recherche de frutiz"`
     // (frutiparc/lang_french.as), que `box.Search` lit par
     // `Lang.fv("search.title")` (0x9854c).
-    recherche:  { panneau: '#recherche-panel', titre: 'Recherche de frutiz', fruit: 'winSearchFrutiz',
+    recherche:  { panneau: '#recherche-panel', titre: T('bureau.titreRecherche', 'Recherche de frutiz'), fruit: 'winSearchFrutiz',
                   l: 284, h: 84, fixe: true, min: minFenetre(270, 20 + 24) },
     // GASPARD — `box.Help` / `win.Help` (0xbd7db). C'est une fenêtre de
     // DIALOGUE, comme un salon : `win.Help` étend `win.Dialog`, et
@@ -158,7 +161,7 @@ window.BureauFrutiz = (function () {
     // LES QUÊTES DE GROMELIN — pas de fenêtre d'époque non plus : la feuille
     // mobile adoptée, comme les Prunostics. Pastille : l'orange par défaut
     // (aucune étiquette de la bande #198 ne lui revient).
-    quetes:     { panneau: '#quetes-sheet',    titre: 'Les quêtes de Gromelin', fruit: 'winQuetes', l: 540, h: 640,
+    quetes:     { panneau: '#quetes-sheet',    titre: T('bureau.titreQuetes', 'Les quêtes de Gromelin'), fruit: 'winQuetes', l: 540, h: 640,
                   min: minFenetre(360, 320) },
     gaspard:    { panneau: '#gaspard-panel', titre: 'Gaspard', fruit: 'winChat',
                   l: 0, h: 0, min: function () { return minGaspard(); } },
@@ -169,9 +172,9 @@ window.BureauFrutiz = (function () {
     // c'est la MÊME fenêtre, seul l'uid de départ change.
     // `init` finit par `moveToCenter()` : l'explorateur est la SEULE fenêtre du
     // bureau à s'ouvrir au milieu — toutes les autres se posent dans le coin.
-    'ex-disques':    { panneau: '#ex-disques-panel',    titre: 'Mes disques', fruit: 'winExplorer',
+    'ex-disques':    { panneau: '#ex-disques-panel',    titre: T('bureau.mesDisques', 'Mes disques'), fruit: 'winExplorer',
                        l: 402, h: 402, min: minFenetre(100, 28 + 100), centre: true },
-    'ex-inventaire': { panneau: '#ex-inventaire-panel', titre: 'Inventaire',  fruit: 'winExplorer',
+    'ex-inventaire': { panneau: '#ex-inventaire-panel', titre: T('bureau.inventaire', 'Inventaire'), fruit: 'winExplorer',
                        l: 402, h: 402, min: minFenetre(100, 28 + 100), centre: true },
     // LE CARNET et LA LISTE NOIRE — le MÊME `win.Explorer` que les deux
     // au-dessus : d'époque il n'existe pas de fenêtre de contacts à part,
@@ -184,14 +187,14 @@ window.BureauFrutiz = (function () {
     // `mainStyleName = folderType.styleName`, et le dossier « blacklist »
     // porte `frFileBlackList` — la famille POURPRE de `_global.colorSet`,
     // là où tous les autres dossiers portent le jaune `frFileStandard`.
-    'ex-contacts':   { panneau: '#ex-contacts-panel',   titre: 'Mes contacts', fruit: 'winExplorer',
+    'ex-contacts':   { panneau: '#ex-contacts-panel',   titre: T('bureau.mesContacts', 'Mes contacts'), fruit: 'winExplorer',
                        l: 402, h: 402, min: minFenetre(100, 28 + 100), centre: true },
-    'ex-noire':      { panneau: '#ex-noire-panel',      titre: 'Liste noire',  fruit: 'winExplorer',
+    'ex-noire':      { panneau: '#ex-noire-panel',      titre: T('bureau.listeNoire', 'Liste noire'), fruit: 'winExplorer',
                        l: 402, h: 402, min: minFenetre(100, 28 + 100), centre: true },
     // LA CORBEILLE — encore le même `win.Explorer`, sur `fileMng.recyclebin`.
     // Sa peau est `frFileTrash`, le VERT, et sa barre d'outils porte le seul
     // bouton qu'elle ait : `flRemoveAll`, « Vider la corbeille ».
-    'ex-corbeille':  { panneau: '#ex-corbeille-panel',  titre: 'Corbeille',    fruit: 'winExplorer',
+    'ex-corbeille':  { panneau: '#ex-corbeille-panel',  titre: T('bureau.corbeille', 'Corbeille'), fruit: 'winExplorer',
                        l: 402, h: 402, min: minFenetre(100, 28 + 100), centre: true },
   };
 
@@ -666,9 +669,9 @@ window.BureauFrutiz = (function () {
     var absence = (enLigne && !jeu && ABSENCE_NOM[a.absence]) ? a.absence : '';
     b.classList.toggle('en-ligne', enLigne);
     b.classList.toggle('hors-ligne', !enLigne);
-    b.title = c.pseudo + (jeu ? ' — ' + libelleJeu(jeu)
-      : (absence ? ' — ' + ABSENCE_NOM[absence].toLowerCase()
-        : (enLigne ? ' — en ligne' : ' — hors ligne')));
+    b.title = c.pseudo + ' — ' + (jeu ? libelleJeu(jeu)
+      : (absence ? ABSENCE_NOM[absence].toLowerCase()
+        : (enLigne ? T('bureau.enLigneMin', 'en ligne') : T('bureau.horsLigneMin', 'hors ligne'))));
     var v = b.querySelector('.voyant');
     // On ne remplace QUE la couche du dessus (cf. `--etat` dans la feuille) :
     // le cadre reste à la feuille, qui sait le changer quand le parc s'éteint.
@@ -766,8 +769,11 @@ window.BureauFrutiz = (function () {
    * par scripts/extract-statuts-absence.js, sous leurs étiquettes d'origine.
    */
   function absenceUrl(nom) { return '/fb/statut_' + nom + '.png'; }
-  var ABSENCE_NOM = { away: 'Absent', phone: 'Au téléphone', zzz: 'Dort',
-    work: 'Au travail', eat: 'À table' };
+  var ABSENCE_NOM = {
+    away: T('bureau.absent', 'Absent'), phone: T('bureau.auTelephone', 'Au téléphone'),
+    zzz: T('bureau.dort', 'Dort'), work: T('bureau.auTravail', 'Au travail'),
+    eat: T('bureau.aTable', 'À table'),
+  };
   var JEUX_NOM = {
     forum: 'Forum', bkiwi: 'Burning Kiwi', mb2: 'MotionBall 2', swapou: 'Swapou',
     swapou2: 'Swapou', snake3: 'Frutisnake', snake2vk: 'Frutisnake 2 VK', bandas: 'Frutibandas', grapiz: 'Grapiz',
@@ -776,7 +782,7 @@ window.BureauFrutiz = (function () {
   };
   function libelleJeu(jeu) {
     var n = JEUX_NOM[jeu] || jeu;
-    return jeu === 'forum' ? 'lit le forum' : 'joue à ' + n;
+    return jeu === 'forum' ? T('bureau.litLeForum', 'lit le forum') : T('bureau.joueA', 'joue à {jeu}', { jeu: n });
   }
 
   /*
@@ -809,7 +815,7 @@ window.BureauFrutiz = (function () {
     var ok = document.createElement('button');
     ok.type = 'button';
     ok.className = 'fb-alerte-ok';
-    ok.textContent = 'Fermer';
+    ok.textContent = T('commun.fermer', 'Fermer');
     pied.appendChild(ok);
     p.appendChild(doc);
     p.appendChild(pied);
@@ -906,12 +912,12 @@ window.BureauFrutiz = (function () {
     var creer = document.createElement('button');
     creer.type = 'button';
     creer.className = 'sp-creer';
-    creer.textContent = 'créer un salon';
+    creer.textContent = T('bureau.creerSalon', 'créer un salon');
     var nom = document.createElement('input');
     nom.type = 'text';
     nom.className = 'sp-nom';
     nom.maxLength = 60;
-    nom.setAttribute('aria-label', 'Sujet du salon à créer');
+    nom.setAttribute('aria-label', T('bureau.sujetSalonACreer', 'Sujet du salon à créer'));
     /*
      * `box.RoomList.createChannel(n)` (0xa65a5), au mot près :
      *
@@ -932,8 +938,8 @@ window.BureauFrutiz = (function () {
       if (!S || !S.creer || creer.disabled) return;
       var sujet = nom.value.trim();
       if (!sujet) {
-        alerte('Impossible de créer ce salon : ',
-          'Vous devez spécifier un sujet pour créer un salon.');
+        alerte(T('bureau.salonSansSujet',
+          'Impossible de créer ce salon : Vous devez spécifier un sujet pour créer un salon.'));
         nom.focus();
         return;
       }
@@ -947,7 +953,9 @@ window.BureauFrutiz = (function () {
         fermerFenetre('salons-panel');
       }, function (e) {
         creer.disabled = false;
-        alerte('Impossible de créer ce salon : ', (e && e.message) || '');
+        // Le motif vient du serveur, tel quel (il le rend dans la langue du joueur).
+        alerte(T('bureau.salonImpossible', 'Impossible de créer ce salon : {motif}',
+          { motif: (e && e.message) || '' }));
       });
     };
     creer.addEventListener('click', lancerCreation);
@@ -1140,12 +1148,12 @@ window.BureauFrutiz = (function () {
 
     // ── La ligne simple ────────────────────────────────────────────────────
     var l1 = ligneRecherche();
-    l1.appendChild(etiquetteRecherche('pseudo :', 60));
+    l1.appendChild(etiquetteRecherche(T('bureau.rcPseudo', 'pseudo :'), 60));
     var pseudo = document.createElement('input');
     pseudo.type = 'text';
     pseudo.className = 'rc-in rc-pseudo';
     pseudo.maxLength = 18;
-    pseudo.setAttribute('aria-label', 'Pseudo cherché');
+    pseudo.setAttribute('aria-label', T('bureau.rcPseudoCherche', 'Pseudo cherché'));
     l1.appendChild(pseudo);
     l1.appendChild(espaceRecherche(4));
     var ok = boutonRecherche('ok', 'rc-ok');
@@ -1153,7 +1161,7 @@ window.BureauFrutiz = (function () {
     // « avancée » : le bouton n'EXISTE que si l'on a le Bananocle
     // (`flAdvanceAvailable`). `dx: 3` — trois pixels de plus que l'espace
     // ordinaire entre deux éléments d'une ligne.
-    var avance = boutonRecherche('avancée', 'rc-avance');
+    var avance = boutonRecherche(T('bureau.rcAvancee', 'avancée'), 'rc-avance');
     avance.style.marginLeft = '3px';
     l1.appendChild(avance);
     form.appendChild(l1);
@@ -1163,33 +1171,33 @@ window.BureauFrutiz = (function () {
     av.className = 'rc-avancee';
 
     var lS = ligneRecherche();
-    lS.appendChild(etiquetteRecherche('sexe :', 48));
-    lS.appendChild(radioRecherche('M', 'Masculin', 76));
-    lS.appendChild(radioRecherche('F', 'Feminin', 76));
-    lS.appendChild(radioRecherche('', 'Tous', 60, true));
+    lS.appendChild(etiquetteRecherche(T('bureau.rcSexe', 'sexe :'), 48));
+    lS.appendChild(radioRecherche('M', T('bureau.rcMasculin', 'Masculin'), 76));
+    lS.appendChild(radioRecherche('F', T('bureau.rcFeminin', 'Feminin'), 76));
+    lS.appendChild(radioRecherche('', T('bureau.rcTous', 'Tous'), 60, true));
     av.appendChild(lS);
 
     var lA = ligneRecherche();
-    lA.appendChild(etiquetteRecherche('age min :', 66));
-    lA.appendChild(champAge('rc-agemin', 'Âge minimum'));
+    lA.appendChild(etiquetteRecherche(T('bureau.rcAgeMin', 'age min :'), 66));
+    lA.appendChild(champAge('rc-agemin', T('bureau.rcAgeMinimum', 'Âge minimum')));
     lA.appendChild(espaceRecherche(12));
-    lA.appendChild(etiquetteRecherche('age max :', 66));
-    lA.appendChild(champAge('rc-agemax', 'Âge maximum'));
+    lA.appendChild(etiquetteRecherche(T('bureau.rcAgeMax', 'age max :'), 66));
+    lA.appendChild(champAge('rc-agemax', T('bureau.rcAgeMaximum', 'Âge maximum')));
     av.appendChild(lA);
 
     var lP = ligneRecherche();
-    lP.appendChild(etiquetteRecherche('pays :', 50));
+    lP.appendChild(etiquetteRecherche(T('bureau.rcPays', 'pays :'), 50));
     var selP = document.createElement('select');
     selP.className = 'rc-combo rc-pays';
-    selP.setAttribute('aria-label', 'Pays');
+    selP.setAttribute('aria-label', T('bureau.rcPaysAria', 'Pays'));
     lP.appendChild(selP);
     av.appendChild(lP);
 
     var lR = ligneRecherche();
-    lR.appendChild(etiquetteRecherche('region :', 50));
+    lR.appendChild(etiquetteRecherche(T('bureau.rcRegion', 'region :'), 50));
     var selR = document.createElement('select');
     selR.className = 'rc-combo rc-region';
-    selR.setAttribute('aria-label', 'Région');
+    selR.setAttribute('aria-label', T('bureau.rcRegionAria', 'Région'));
     lR.appendChild(selR);
     av.appendChild(lR);
 
@@ -1206,14 +1214,14 @@ window.BureauFrutiz = (function () {
     var prev = document.createElement('button');
     prev.type = 'button';
     prev.className = 'rc-page rc-prev';
-    prev.title = 'Page précédente';
+    prev.title = T('bureau.rcPagePrecedente', 'Page précédente');
     prev.innerHTML = '<img src="/fb/fleche_gauche.svg" alt="" aria-hidden="true">';
     var compte = document.createElement('span');
     compte.className = 'rc-compte';
     var next = document.createElement('button');
     next.type = 'button';
     next.className = 'rc-page rc-next';
-    next.title = 'Page suivante';
+    next.title = T('bureau.rcPageSuivante', 'Page suivante');
     next.innerHTML = '<img src="/fb/fleche_droite.svg" alt="" aria-hidden="true">';
     pied.appendChild(prev);
     pied.appendChild(compte);
@@ -1338,7 +1346,7 @@ window.BureauFrutiz = (function () {
     if (!P) return;
     if (!P.chercher(formulaireRecherche(), rcEtat.depart)) return;
     rcEtat.charge = true;
-    texteDePage('chargement...');
+    texteDePage(T('bureau.rcChargement', 'chargement...'));
   }
   // `box.nextPage` (0x98cfe) : rien à faire si l'on charge déjà, et rien non
   // plus si l'on est sur la dernière page — la condition est écrite en clair,
@@ -1395,9 +1403,9 @@ window.BureauFrutiz = (function () {
    * C'est la donnée d'origine, on ne la corrige pas : le Canada affiche donc
    * « Tout(e) ca... », et c'était bien ainsi en 2005.
    */
-  var RC_TITRE_PAYS = 'Tout Pays...';
-  var RC_TITRE_AVANT_PAYS = 'Choisissez votre pays en premier...';
-  var RC_TITRE_SANS_REGION = 'non disponible';
+  var RC_TITRE_PAYS = T('bureau.rcToutPays', 'Tout Pays...');
+  var RC_TITRE_AVANT_PAYS = T('bureau.rcPaysEnPremier', 'Choisissez votre pays en premier...');
+  var RC_TITRE_SANS_REGION = T('bureau.rcNonDisponible', 'non disponible');
   function chargerCombosPays() {
     var P = pontRecherche();
     if (!P || !P.tablePays || rcEtat.pays) { majComboPays(); return; }
@@ -1441,7 +1449,9 @@ window.BureauFrutiz = (function () {
       sel.appendChild(optionRecherche('', RC_TITRE_SANS_REGION));
     } else {
       var n = String(pays.nomRegion || '').toLowerCase();
-      sel.appendChild(optionRecherche('', 'Tout(e) ' + (n || 'lieu') + '...'));
+      // Le nom de la subdivision (« département »…) vient de la table des pays.
+      sel.appendChild(optionRecherche('', T('bureau.rcToutLieu', 'Tout(e) {lieu}...',
+        { lieu: n || T('bureau.rcLieu', 'lieu') })));
       pays.regions.forEach(function (r) {
         // `displayCode` : « 01 - Ain » plutôt que « Ain » tout court.
         sel.appendChild(optionRecherche(r.code,
@@ -1476,7 +1486,7 @@ window.BureauFrutiz = (function () {
     if (erreur) {
       // `openErrorAlert(Lang.fv("error.cbee." + k))` : le code d'erreur du
       // serveur, que ce portage n'émet pas — on dit au moins qu'on a échoué.
-      alerte('Recherche impossible : ', 'le serveur a refusé la demande.');
+      alerte(T('bureau.rcRefusee', 'Recherche impossible : le serveur a refusé la demande.'));
       texteDePage('');
       return;
     }
@@ -1484,8 +1494,10 @@ window.BureauFrutiz = (function () {
     rcEtat.resultats = liste || [];
     redessinerResultats();
     var nbPages = Math.ceil(rcEtat.total / RC_BLOC_MAX);
-    texteDePage(page + '/' + nbPages + ' - ' + rcEtat.total
-      + ' réponse' + (rcEtat.total > 1 ? 's' : ''));
+    // « 0 réponse » au singulier en français, « 0 answers » en anglais : T.n.
+    texteDePage(T.n('bureau.rcReponses', rcEtat.total,
+      { one: '{page}/{pages} - {n} réponse', other: '{page}/{pages} - {n} réponses' },
+      { page: page, pages: nbPages }));
     ajusterFenetreRecherche();
   }
   function redessinerResultats() {
@@ -1534,7 +1546,8 @@ window.BureauFrutiz = (function () {
       var pr = Math.max(0, Math.min(2, Number(info.presence) || 0));
       ico.src = '/frutiz/sprites/recherche-presence-' + pr + '.svg';
       ico.className = 'pip';
-      voyant.title = pr === 1 ? 'En ligne' : (pr === 2 ? 'Invisible' : 'Hors ligne');
+      voyant.title = pr === 1 ? T('bureau.enLigne', 'En ligne')
+        : (pr === 2 ? T('bureau.invisible', 'Invisible') : T('bureau.horsLigne', 'Hors ligne'));
     }
     ico.alt = '';
     voyant.appendChild(ico);
@@ -1579,7 +1592,7 @@ window.BureauFrutiz = (function () {
     // sans elle, `birthdayToAge` rend zéro, et « 0 ans » ne veut rien dire. On
     // laisse alors la case vide. (Avant, une naissance était posée d'office sur
     // chaque compte : tout le monde affichait le même âge, inventé.)
-    age.textContent = info.age ? info.age + ' ans' : '';
+    age.textContent = info.age ? T('bureau.ageAns', '{age} ans', { age: info.age }) : '';
     var ville = document.createElement('span');
     ville.className = 'rc-ville';
     ville.textContent = info.ville || '';
@@ -1593,7 +1606,7 @@ window.BureauFrutiz = (function () {
     d.addEventListener('click', function () {
       if (P && P.ouvrirFiche) P.ouvrirFiche(info.pseudo);
     });
-    d.title = 'Voir la fiche de ' + info.pseudo;
+    d.title = T('bureau.voirFiche', 'Voir la fiche de {nom}', { nom: info.pseudo });
     return d;
   }
 
@@ -1730,17 +1743,17 @@ window.BureauFrutiz = (function () {
   // Les dossiers de l'inventaire, la boîte à disques, le carnet et la liste
   // noire : les racines que le bureau ouvre depuis ses icônes.
   var EXPLORATEURS = {
-    disques:    { panneau: '#ex-disques-panel',    uid: 'disccollector', titre: 'Mes disques' },
-    inventaire: { panneau: '#ex-inventaire-panel', uid: 'inventory',     titre: 'Inventaire' },
-    contacts:   { panneau: '#ex-contacts-panel',   uid: 'mycontact',     titre: 'Mes contacts' },
+    disques:    { panneau: '#ex-disques-panel',    uid: 'disccollector', titre: T('bureau.mesDisques', 'Mes disques') },
+    inventaire: { panneau: '#ex-inventaire-panel', uid: 'inventory',     titre: T('bureau.inventaire', 'Inventaire') },
+    contacts:   { panneau: '#ex-contacts-panel',   uid: 'mycontact',     titre: T('bureau.mesContacts', 'Mes contacts') },
     // `styleName` : la liste de l'explorateur ne déclare pas sa peau en dur,
     // elle prend celle du DOSSIER (`mainStyleName = folderType.styleName`,
     // 0x930be). Le pourpre est donc porté par la fenêtre, pas par la classe.
-    noire:      { panneau: '#ex-noire-panel',      uid: 'blacklist',     titre: 'Liste noire',
+    noire:      { panneau: '#ex-noire-panel',      uid: 'blacklist',     titre: T('bureau.listeNoire', 'Liste noire'),
                   style: 'noire' },
     // `frFileTrash` : le VERT. Même règle que la liste noire — c'est le
     // dossier qui donne sa peau à la liste.
-    corbeille:  { panneau: '#ex-corbeille-panel',  uid: 'recyclebin',    titre: 'Corbeille',
+    corbeille:  { panneau: '#ex-corbeille-panel',  uid: 'recyclebin',    titre: T('bureau.corbeille', 'Corbeille'),
                   style: 'corbeille' },
   };
   var exEtats = {};                      // clé → { uid, panneau, liste, titre }
@@ -1998,13 +2011,13 @@ window.BureauFrutiz = (function () {
     if (uid === 'disccollector') {
       var noir = entrees.some(function (e) { return e.type === 'disc' && e.desc[0] === '0'; });
       if (noir) {
-        return 'Pour jouer, faîtes glisser les disques dans la Frusion : '
-          + 'la console en haut à droite de Frutiparc';
+        return T('bureau.alerteDisquesJouer', 'Pour jouer, faîtes glisser les disques dans la Frusion : '
+          + 'la console en haut à droite de Frutiparc');
       }
       if (!entrees.some(function (e) { return e.type === 'disc'; })) {
-        return 'Vous n’avez plus de Fruti-Disque ? Les FD noirs sont distribués tous les jours '
+        return T('bureau.alerteDisquesVide', 'Vous n’avez plus de Fruti-Disque ? Les FD noirs sont distribués tous les jours '
           + 'à minuit, mais vous pouvez dès maintenant acheter des FD blancs ou des Pass '
-          + 'dans la boutique !';
+          + 'dans la boutique !');
       }
       return '';
     }
@@ -2015,8 +2028,8 @@ window.BureauFrutiz = (function () {
     // là qu'elle a quelque chose à dire, et c'est la phrase d'origine, dans le
     // bandeau d'origine.
     if ((uid === 'inventory' || String(uid).indexOf('inv') === 0) && n < 2) {
-      return 'Vous trouverez dans votre inventaire des objets achetés dans la boutique '
-        + 'ou accumulés en jouant.';
+      return T('bureau.alerteInventaire', 'Vous trouverez dans votre inventaire des objets achetés dans la boutique '
+        + 'ou accumulés en jouant.');
     }
     /*
      * LE CARNET ET LA LISTE NOIRE — `box.Explorer.onLoadList` (0x8831c…),
@@ -2034,25 +2047,25 @@ window.BureauFrutiz = (function () {
      * `random` près.
      */
     if (uid === 'blacklist') {
-      return 'Vous pouvez refuser les discussions privées et invitations des contacts '
+      return T('bureau.alerteListeNoire', 'Vous pouvez refuser les discussions privées et invitations des contacts '
         + 'qui sont dans votre liste noire (voir préférences). Les emails reçus sont '
-        + 'placés dans le dossier "Boite noire".';
+        + 'placés dans le dossier "Boite noire".');
     }
     if (uid === 'mycontact') {
       var aDossier = entrees.some(function (e) { return e.type === 'folder'; });
       if (n < 3 && !aDossier) {
-        return 'Vous pouvez ajouter un contact depuis la fiche d’un frutiz, en faisant '
+        return T('bureau.alerteContactsAjouter', 'Vous pouvez ajouter un contact depuis la fiche d’un frutiz, en faisant '
           + 'glisser un frutiz depuis un salon ou les scores vers ce répertoire ou en '
-          + 'cliquant sur une adresse e-mail.';
+          + 'cliquant sur une adresse e-mail.');
       }
       var nbContacts = entrees.filter(function (e) { return e.type === 'contact'; }).length;
       if (nbContacts > 15) {
-        return 'Pour créer un dossier, il vous suffit de cliquer sur le bouton avec '
-          + 'une étoile ci-dessus.';
+        return T('bureau.alerteContactsDossier', 'Pour créer un dossier, il vous suffit de cliquer sur le bouton avec '
+          + 'une étoile ci-dessus.');
       }
       if ((tirage === undefined ? Math.random() * 100 : tirage) < 10) {
-        return 'Pour inviter un de vos contacts dans une discussion privée ou un salon, '
-          + 'il suffit de le faire glisser vers la fenêtre du chat.';
+        return T('bureau.alerteContactsInviter', 'Pour inviter un de vos contacts dans une discussion privée ou un salon, '
+          + 'il suffit de le faire glisser vers la fenêtre du chat.');
       }
     }
     /*
@@ -2065,8 +2078,8 @@ window.BureauFrutiz = (function () {
      * rappelle, et se tait dès qu'elle a servi.
      */
     if (uid === 'recyclebin' && !n) {
-      return 'Pour jeter quelque chose, faites-le glisser sur la corbeille : '
-        + 'un frutiz de vos contacts, un raccourci du bureau, un courrier.';
+      return T('bureau.alerteCorbeille', 'Pour jeter quelque chose, faites-le glisser sur la corbeille : '
+        + 'un frutiz de vos contacts, un raccourci du bureau, un courrier.');
     }
     return '';
   }
@@ -2074,6 +2087,22 @@ window.BureauFrutiz = (function () {
   // ── La lecture d'un dossier ────────────────────────────────────────────
   // `/ff/ls` rend le XML que `FFileMng.analyseXml` sait lire : `<e>` un
   // fichier (le contenu = les lignes de `desc`), `<f>` un dossier.
+  //
+  // LES NOMS DE DOSSIER viennent du serveur. Ceux de l'arbre fixe
+  // (`FILE_TREE_XML`, server.js) ont un uid STABLE : le client peut alors
+  // montrer le sien, traduit — repéré par l'uid, jamais par le nom. Le nom du
+  // serveur reste le repli : en français, rien ne change. Les dossiers que le
+  // joueur crée gardent le nom qu'il leur a donné.
+  var CLES_DOSSIERS = {
+    inv_accessories: 'bureau.dossierAccessoires',
+    inv_incarnations: 'bureau.dossierIncarnations',
+    inv_wallpapers: 'bureau.dossierFonds',
+    inv_pictos: 'bureau.dossierPictos',
+  };
+  function nomDeDossier(uid, nomServeur) {
+    var cle = Object.prototype.hasOwnProperty.call(CLES_DOSSIERS, uid) ? CLES_DOSSIERS[uid] : null;
+    return cle ? T(cle, nomServeur) : nomServeur;
+  }
   function lireDossier(xml) {
     var racine = xml && xml.documentElement;
     var out = [];
@@ -2102,7 +2131,7 @@ window.BureauFrutiz = (function () {
         out.push({
           uid: uid,
           type: 'folder',
-          desc: [(i && i.nom) || n.getAttribute('n') || '',
+          desc: [nomDeDossier(uid, (i && i.nom) || n.getAttribute('n') || ''),
             (i && i.type) || n.getAttribute('t') || 'default'],
         });
       }
@@ -2153,7 +2182,7 @@ window.BureauFrutiz = (function () {
         champ.textContent = '';
         var m = document.createElement('div');
         m.className = 'ex-vide';
-        m.textContent = 'Dossier indisponible.';
+        m.textContent = T('bureau.dossierIndisponible', 'Dossier indisponible.');
         champ.appendChild(m);
       });
   }
@@ -2168,7 +2197,7 @@ window.BureauFrutiz = (function () {
     var nav = etat.panneau.querySelector('.ex-nav');
     nav.textContent = '';
     if (t.flUp) {
-      nav.appendChild(boutonNav('up', 'Remonter d’un dossier', function () {
+      nav.appendChild(boutonNav('up', T('bureau.remonterDossier', 'Remonter d’un dossier'), function () {
         ouvrirDossier(cle, conf.uid, conf.titre);
       }));
     }
@@ -2178,16 +2207,16 @@ window.BureauFrutiz = (function () {
       // créer que dans « Mes contacts » (/ff/mk, branche `folder` + `mycontact`)
       // — ailleurs le bouton reste là, comme d'époque, mais sans rien à faire.
       var b = uid === 'mycontact'
-        ? boutonNav('new_folder', 'nouveau dossier', function () { nouveauDossierCarnet(cle); })
-        : boutonNav('new_folder', 'La création de dossiers n’est pas ouverte sur le revival', null);
+        ? boutonNav('new_folder', T('bureau.nouveauDossierMin', 'nouveau dossier'), function () { nouveauDossierCarnet(cle); })
+        : boutonNav('new_folder', T('bureau.creationDossierFermee', 'La création de dossiers n’est pas ouverte sur le revival'), null);
       nav.appendChild(b);
     }
     if (t.flRemoveAll) {
       // `explorer.empty_recyclebin` — l'infobulle, puis la question, mot pour
       // mot (lang_french.as). `fileMng.emptyRecycleBin` appelle `ff/erb` et
       // prévient ses écoutants ; on fait les deux.
-      nav.appendChild(boutonNav('empty_recyclebin', 'Vider la corbeille', function () {
-        if (!window.confirm('Etes-vous sûr de vouloir vider votre corbeille ?')) return;
+      nav.appendChild(boutonNav('empty_recyclebin', T('bureau.viderCorbeille', 'Vider la corbeille'), function () {
+        if (!window.confirm(T('bureau.viderCorbeilleSur', 'Etes-vous sûr de vouloir vider votre corbeille ?'))) return;
         var sid = (window.state && window.state.sid) || '';
         fetch('/ff/erb?sid=' + encodeURIComponent(sid), { cache: 'no-store' })
           .then(function (r) { return r.text(); })
@@ -2305,8 +2334,9 @@ window.BureauFrutiz = (function () {
         // ce que fait le serveur (branche `recyclebin` + `isCustomContactFolder`).
         dossier.addEventListener('contextmenu', function (ev) {
           ev.preventDefault();
-          if (!window.confirm('Supprimer le dossier « ' + nomDe(e) + ' » ?\n'
-            + 'Ses contacts reviendront dans « Mes contacts ».')) return;
+          if (!window.confirm(T('bureau.supprimerDossierCarnet',
+            'Supprimer le dossier « {nom} » ?\nSes contacts reviendront dans « Mes contacts ».',
+            { nom: nomDe(e) }))) return;
           deplacerFichier(e.uid, 'recyclebin');
         });
       }
@@ -2318,10 +2348,10 @@ window.BureauFrutiz = (function () {
       // UN COURRIER JETÉ. `encodeMailDesc` : expéditeur, sujet, destinataires,
       // corps — c'est le SUJET qui nomme l'icône (`FPFileMng.getName` rend
       // `desc[1]` pour un mail), et le dessin est celui d'un document.
-      var sujet = (e.desc[1] || '').trim() || '(sans sujet)';
+      var sujet = (e.desc[1] || '').trim() || T('bureau.sansSujet', '(sans sujet)');
       return caseExplorateur({
         nom: sujet, dessin: dessinStandard('ico_text'),
-        titre: sujet + (e.desc[0] ? ' — de ' + e.desc[0] : ''),
+        titre: e.desc[0] ? T('bureau.mailSujetDe', '{sujet} — de {de}', { sujet: sujet, de: e.desc[0] }) : sujet,
       });
     }
     if (e.type === 'bouille') {
@@ -2330,8 +2360,9 @@ window.BureauFrutiz = (function () {
       // décide de se séparer de quelque chose, pas le rayon du magasin.
       return caseExplorateur({
         nom: nomDe(e), dessin: dessinBouille(e.desc[1]), classe: 'ex-slot-bouille',
-        titre: 'Porter « ' + nomDe(e) + ' »'
-          + (e.vendable ? ' (double-clic : le revendre à la boutique)' : ''),
+        titre: e.vendable
+          ? T('bureau.porterVendable', 'Porter « {nom} » (double-clic : le revendre à la boutique)', { nom: nomDe(e) })
+          : T('bureau.porter', 'Porter « {nom} »', { nom: nomDe(e) }),
         faire: function () { poserAccessoire(nomDe(e), e.desc[1]); },
         faireDouble: e.vendable ? function () { revendreAccessoire(e.uid, nomDe(e), e.desc[1]); } : null,
       });
@@ -2342,7 +2373,7 @@ window.BureauFrutiz = (function () {
       var vide = e.uid === '__fond_defaut__' || !e.desc[1];
       return caseExplorateur({
         nom: nomDe(e), dessin: dessinFond(vide ? '' : e.desc[1], e.desc[2]),
-        titre: 'Poser « ' + nomDe(e) + ' » sur le bureau',
+        titre: T('bureau.poserFond', 'Poser « {nom} » sur le bureau', { nom: nomDe(e) }),
         faire: function () { poserFondInventaire(vide ? '' : e.uid); },
       });
     }
@@ -2413,8 +2444,10 @@ window.BureauFrutiz = (function () {
     // carnet (ou la liste noire) — c'est la branche `recyclebin` de /ff/mv.
     c.addEventListener('contextmenu', function (ev) {
       ev.preventDefault();
-      var ou = cle === 'noire' ? 'de votre liste noire' : 'de vos contacts';
-      if (!window.confirm('Retirer « ' + nom + ' » ' + ou + ' ?')) return;
+      var question = cle === 'noire'
+        ? T('bureau.retirerListeNoire', 'Retirer « {nom} » de votre liste noire ?', { nom: nom })
+        : T('bureau.retirerContacts', 'Retirer « {nom} » de vos contacts ?', { nom: nom });
+      if (!window.confirm(question)) return;
       // La fenêtre d'où l'on retire, pour que le serveur touche à CETTE
       // liste-là : le carnet et la liste noire montrent parfois le même nom.
       deplacerFichier(e.uid, 'recyclebin',
@@ -2468,7 +2501,7 @@ window.BureauFrutiz = (function () {
   // se déplie dans la fenêtre ; le portage demande le nom comme il le fait
   // déjà pour un dossier du bureau.
   function nouveauDossierCarnet(cle) {
-    var nom = window.prompt('Nom du dossier ?', 'nouveau dossier');
+    var nom = window.prompt(T('bureau.nomDossier', 'Nom du dossier ?'), T('bureau.nouveauDossierMin', 'nouveau dossier'));
     if (!nom) return;
     var sid = (window.state && window.state.sid) || '';
     fetch('/ff/mk?sid=' + encodeURIComponent(sid) + '&t=folder&folder=mycontact'
@@ -2534,8 +2567,8 @@ window.BureauFrutiz = (function () {
     var c = caseExplorateur({
       classe: 'ex-slot-disque',
       dessin: dessinDisque(type, jeu),
-      titre: flash ? 'Glissez-le dans la Frusion (il s’ouvre en fenêtre à part)'
-        : 'Glissez-le dans la Frusion',
+      titre: flash ? T('bureau.glisserFrusionAPart', 'Glissez-le dans la Frusion (il s’ouvre en fenêtre à part)')
+        : T('bureau.glisserFrusion', 'Glissez-le dans la Frusion'),
     });
     // Muet au clic ne veut pas dire INERTE : un disque s'attrape, qu'il soit
     // porté en JS ou joué sous Ruffle.
@@ -3134,7 +3167,7 @@ window.BureauFrutiz = (function () {
     // `getFileContextMenu` : d'époque le clic droit offre de jeter le fichier.
     d.addEventListener('contextmenu', function (ev) {
       ev.preventDefault();
-      if (window.confirm('Retirer « ' + (o.name || o.desc[0]) + ' » du bureau ?')) retirerObjetBureau(o.uid);
+      if (window.confirm(T('bureau.retirerDuBureau', 'Retirer « {nom} » du bureau ?', { nom: o.name || o.desc[0] }))) retirerObjetBureau(o.uid);
     });
     rendreAttrapable(d, {
       uid: o.uid, type: o.type, desc: o.desc, name: o.name,
@@ -3233,10 +3266,10 @@ window.BureauFrutiz = (function () {
     m.style.top = y + 'px';
     var b = document.createElement('button');
     b.type = 'button';
-    b.textContent = 'Nouveau dossier';
+    b.textContent = T('bureau.nouveauDossier', 'Nouveau dossier');
     b.addEventListener('click', function () {
       m.remove();
-      var nom = window.prompt('Nom du dossier ?', 'Nouveau dossier');
+      var nom = window.prompt(T('bureau.nomDossier', 'Nom du dossier ?'), T('bureau.nouveauDossier', 'Nouveau dossier'));
       if (!nom) return;
       var bureau = $('#bureau');
       var app = bureau.getBoundingClientRect();
@@ -3250,7 +3283,7 @@ window.BureauFrutiz = (function () {
     // tiroir mobile, qui reste la seule porte de sortie du light.
     var sortir = document.createElement('button');
     sortir.type = 'button';
-    sortir.textContent = 'Se déconnecter';
+    sortir.textContent = T('bureau.seDeconnecter', 'Se déconnecter');
     sortir.addEventListener('click', function () {
       m.remove();
       var q = $('#logout-btn');
@@ -3277,7 +3310,7 @@ window.BureauFrutiz = (function () {
       p.setAttribute('data-uid', o.uid);
       $('#app').appendChild(p);
       RUBRIQUES[tab] = {
-        panneau: '#' + idp, titre: o.name || 'Dossier', fruit: 'winExplorer',
+        panneau: '#' + idp, titre: o.name || T('bureau.dossier', 'Dossier'), fruit: 'winExplorer',
         // Un dossier du bureau s'ouvre dans un `win.Explorer` comme les
         // autres : même gabarit (400 × 400 + contour) et même arrivée au
         // milieu — `explorer_new_folder` ne fait rien d'autre.
@@ -3304,7 +3337,7 @@ window.BureauFrutiz = (function () {
     if (!liste.length) {
       var vide = document.createElement('p');
       vide.className = 'fb-dossier-vide';
-      vide.textContent = 'Ce dossier est vide. Glissez-y ce que vous voulez y ranger.';
+      vide.textContent = T('bureau.dossierVide', 'Ce dossier est vide. Glissez-y ce que vous voulez y ranger.');
       p.appendChild(vide);
       return;
     }
@@ -3503,12 +3536,12 @@ window.BureauFrutiz = (function () {
     var casque = document.createElement('button');
     casque.type = 'button';
     casque.className = 'fr-but fr-casque';
-    casque.title = 'Redémarrer le jeu';
+    casque.title = T('bureau.redemarrerJeu', 'Redémarrer le jeu');
     casque.addEventListener('click', function () { frusion.pushReset(); });
     var eject = document.createElement('button');
     eject.type = 'button';
     eject.className = 'fr-but fr-eject';
-    eject.title = 'Éjecter le disque';
+    eject.title = T('bureau.ejecterDisque', 'Éjecter le disque');
     eject.addEventListener('click', function () { frusion.pushEject(); });
     b.appendChild(casque);
     b.appendChild(eject);
@@ -4014,9 +4047,12 @@ window.BureauFrutiz = (function () {
     tipBoite.appendChild(b);
     // L'âge saute quand on ne le connaît pas — la naissance est facultative,
     // et « 0 ans » n'est pas une information. Le reste de la bulle tient.
-    tipBoite.appendChild(document.createTextNode(i
-      ? ' : ' + (i.age ? i.age + ' ans, ' : '') + i.region + ' (' + i.pays + '), niveau ' + i.niveau
-      : ''));
+    // La région et le pays sont des noms du serveur : ils passent tels quels.
+    tipBoite.appendChild(document.createTextNode(!i ? ''
+      : i.age ? T('bureau.tipAvecAge', ' : {age} ans, {region} ({pays}), niveau {niveau}',
+        { age: i.age, region: i.region, pays: i.pays, niveau: i.niveau })
+        : T('bureau.tipSansAge', ' : {region} ({pays}), niveau {niveau}',
+          { region: i.region, pays: i.pays, niveau: i.niveau })));
   }
   function tipCacher() {
     tipCible = null;
@@ -4500,7 +4536,7 @@ window.BureauFrutiz = (function () {
     b.type = 'button';
     b.id = 'chat-warning';
     b.className = 'icon-btn bare';
-    b.title = 'Prévenir les modérateurs';
+    b.title = T('bureau.prevenirModerateurs', 'Prévenir les modérateurs');
     b.addEventListener('click', function () { appelerLesModerateurs(salon); });
     return b;
   }
@@ -4510,24 +4546,24 @@ window.BureauFrutiz = (function () {
     if (!S || !S.appelerModerateur) return;
     var g = salon || (S.courant && S.courant());
     if (!S.estPublic || !S.estPublic(g)) {
-      return alerte('Erreur', "Cette action n'est disponible que sur les salons publics.");
+      return alerte(T('bureau.erreur', 'Erreur'), T('bureau.modoSalonsPublics', "Cette action n'est disponible que sur les salons publics."));
     }
     if (S.moderateurPresent && S.moderateurPresent(g)) {
-      return alerte('Erreur', 'Un ou plusieurs modérateurs sont déjà présents sur ce salon.');
+      return alerte(T('bureau.erreur', 'Erreur'), T('bureau.modoDejaLa', 'Un ou plusieurs modérateurs sont déjà présents sur ce salon.'));
     }
     if (dernierAppelModo && Date.now() - dernierAppelModo < APPEL_MODO_REPOS) {
-      return alerte('Erreur', 'Vous venez de prévenir les modérateurs !');
+      return alerte(T('bureau.erreur', 'Erreur'), T('bureau.modoDejaPrevenus', 'Vous venez de prévenir les modérateurs !'));
     }
     // `chat.call_moderator`, mot pour mot. La popin est celle du light —
     // `win.Alert`, la même partout (cf. `frutiConfirm`).
     var demander = window.frutiConfirm;
     if (!demander) { dernierAppelModo = Date.now(); S.appelerModerateur(g); return; }
     demander({
-      title: 'Salon',
-      message: "Etes-vous sûr de vouloir prévenir les modérateurs qu'il y a un problème"
+      title: T('bureau.salon', 'Salon'),
+      message: T('bureau.modoConfirmer', "Etes-vous sûr de vouloir prévenir les modérateurs qu'il y a un problème"
         + " sur ce salon ?<br><b>Attention !</b> à n'utiliser qu'en cas de véritable"
-        + ' problème. Tout abus sera puni.',
-      okLabel: 'Oui', cancelLabel: 'Non',
+        + ' problème. Tout abus sera puni.'),
+      okLabel: T('bureau.oui', 'Oui'), cancelLabel: T('bureau.non', 'Non'),
     }).then(function (ok) {
       if (!ok) return;
       dernierAppelModo = Date.now();
@@ -4611,9 +4647,9 @@ window.BureauFrutiz = (function () {
   function habillerCaseContact(c, f) {
     var a = activiteDe(f);
     var nom = (f && f.pseudo) || '';
-    c.title = nom + (a.jeu ? ' — ' + libelleJeu(a.jeu)
-      : (a.absence && ABSENCE_NOM[a.absence] ? ' — ' + ABSENCE_NOM[a.absence].toLowerCase()
-        : (a.enLigne ? ' — en ligne' : ' — hors ligne')));
+    c.title = nom + ' — ' + (a.jeu ? libelleJeu(a.jeu)
+      : (a.absence && ABSENCE_NOM[a.absence] ? ABSENCE_NOM[a.absence].toLowerCase()
+        : (a.enLigne ? T('bureau.enLigneMin', 'en ligne') : T('bureau.horsLigneMin', 'hors ligne'))));
     c.classList.toggle('en-ligne', a.enLigne);
   }
 
@@ -4712,9 +4748,10 @@ window.BureauFrutiz = (function () {
   //   · les colonnes se séparent de 2 px de #F1F13B, à 140 et à « largeur−80 » ;
   //   · l'encre du bandeau est #404000, celle des rangées #5A5A00.
   var MAIL_COLONNES = [
-    { cle: 'qui', titre: 'Expéditeur', titreEnvoi: 'Destinataire', tri: 'from', l: 140 },
-    { cle: 'subject', titre: 'Sujet', tri: 'name', big: true },
-    { cle: 'date', titre: 'Date', tri: 'date', l: 80 },
+    { cle: 'qui', titre: T('bureau.mailExpediteur', 'Expéditeur'),
+      titreEnvoi: T('bureau.mailDestinataire', 'Destinataire'), tri: 'from', l: 140 },
+    { cle: 'subject', titre: T('bureau.mailColSujet', 'Sujet'), tri: 'name', big: true },
+    { cle: 'date', titre: T('bureau.mailColDate', 'Date'), tri: 'date', l: 80 },
   ];
   var mailTri = { champ: 'date', desc: true };   // `currentSort` en mode mail
   var mailHabille = false;
@@ -4743,6 +4780,10 @@ window.BureauFrutiz = (function () {
    *
    * `mail.reply_subject` = « Re: $s », `mail.forward_subject` = « Tr: $s » —
    * avec les deux-points COLLÉS, comme dans le SWF.
+   *
+   * Chaque gabarit est UNE clé de traduction, comme il était une seule entrée
+   * de lang_french.as : l'anglais y met « Fwd: », « From: », « To: »… Le corps
+   * du message cité, lui, ne se traduit jamais : il s'ajoute après.
    */
   function citerMail(quoi, ev) {
     var M = window.MessagerieLight;
@@ -4750,21 +4791,28 @@ window.BureauFrutiz = (function () {
     if (!m) return;
     if (ev) { ev.preventDefault(); ev.stopImmediatePropagation(); }
     var s = String(m.subject || '');
-    var prefixe = quoi === 'reply' ? 'Re: ' : 'Tr: ';
+    var sujetCite = function (x) {
+      return quoi === 'reply' ? T('bureau.mailSujetReponse', 'Re: {sujet}', { sujet: x })
+        : T('bureau.mailSujetTransfert', 'Tr: {sujet}', { sujet: x });
+    };
     var deja = quoi === 'reply' ? /^re\s*:/i : /^tr\s*:/i;
-    var entete = quoi === 'reply' ? '--- En réponse au message ---' : '--- Message transféré ---';
+    // Le préfixe de la langue compte aussi (« Fwd: » en anglais) ; en
+    // français, c'est celui d'époque et `deja` le reconnaissait déjà.
+    var prefixe = sujetCite('').trim().toLowerCase();
+    var dejaLa = deja.test(s) || s.toLowerCase().indexOf(prefixe) === 0;
     // `$d` vaut `Lang.formatDateString(date, "long")` dans les deux gabarits
     // (0xaec2b et 0xaed9b) : la date en toutes lettres, pas l'horodatage brut.
-    var corps = '\n\n' + entete + '\n'
-      + 'Date : ' + mailDateLongue(m.date) + '\n'
-      + 'De : ' + (m.from || '') + '\n'
-      + 'A : ' + (m.to || '') + '\n'
-      + 'Sujet : ' + s + '\n\n'
+    var champs = { date: mailDateLongue(m.date), de: m.from || '', a: m.to || '', sujet: s };
+    var corps = (quoi === 'reply'
+      ? T('bureau.mailCitationReponse',
+        '\n\n--- En réponse au message ---\nDate : {date}\nDe : {de}\nA : {a}\nSujet : {sujet}\n\n', champs)
+      : T('bureau.mailCitationTransfert',
+        '\n\n--- Message transféré ---\nDate : {date}\nDe : {de}\nA : {a}\nSujet : {sujet}\n\n', champs))
       + (m.body || m.text || '');
     // `reply` répond à l'expéditeur ; `forward` laisse le destinataire à
     // choisir — le SWF ouvre la fenêtre d'écriture avec le champ vide.
     M.ecrire(quoi === 'reply' ? (m.from || '') : '',
-      deja.test(s) ? s : prefixe + (s || '(sans sujet)'), corps);
+      dejaLa ? s : sujetCite(s || T('bureau.sansSujet', '(sans sujet)')), corps);
   }
 
   function habillerMail(panneau) {
@@ -4775,20 +4823,21 @@ window.BureauFrutiz = (function () {
     // deux boutons, la flèche du dossier parent et l'enveloppe.
     var nav = document.createElement('div');
     nav.className = 'mx-nav';
-    nav.appendChild(navBouton('nav_up', 'Dossier parent', function () {
+    nav.appendChild(navBouton('nav_up', T('bureau.dossierParent', 'Dossier parent'), function () {
       panneau.classList.toggle('mx-dossiers');
     }));
-    nav.appendChild(navBouton('nav_new_mail', 'Écrire un courrier', function () {
+    nav.appendChild(navBouton('nav_new_mail', T('bureau.ecrireCourrier', 'Écrire un courrier'), function () {
       if (window.MessagerieLight) MessagerieLight.ecrire('', '');
     }));
     panneau.insertBefore(nav, panneau.firstChild);
 
     // LE DOSSIER PARENT (`fileMng.messages`) : ses boîtes, en icônes, comme
-    // n'importe quel dossier de l'explorateur.
+    // n'importe quel dossier de l'explorateur. Leurs noms sont ceux du CLIENT,
+    // par uid (stable) : on peut donc les traduire ici.
     var dossiers = document.createElement('div');
     dossiers.className = 'mx-champ mx-dossiers-champ';
-    [['inbox', 'Boîte de réception'], ['outbox', 'Messages envoyés'],
-      ['blackbox', 'Indésirables']].forEach(function (d) {
+    [['inbox', MAIL_DOSSIERS.inbox], ['outbox', MAIL_DOSSIERS.outbox],
+      ['blackbox', MAIL_DOSSIERS.blackbox]].forEach(function (d) {
       var b = document.createElement('button');
       b.type = 'button';
       b.className = 'ex-slot mx-slot';
@@ -4844,15 +4893,15 @@ window.BureauFrutiz = (function () {
      * fermaient — mais il n'a nulle part où aller ici : il passe en tête.
      */
     var pou = $('#mail-supprimer');
-    if (pou) pou.textContent = 'Supprimer';
+    if (pou) pou.textContent = T('bureau.mailSupprimer', 'Supprimer');
     // Les chevrons du gabarit tactile n'ont pas d'équivalent d'époque : un
     // `butPushStandard` ne porte que son mot.
     var ret = $('#mail-retour');
-    if (ret) ret.textContent = 'Retour';
+    if (ret) ret.textContent = T('bureau.mailRetour', 'Retour');
     var ann = $('#mail-annuler');
-    if (ann) ann.textContent = 'Annuler';
+    if (ann) ann.textContent = T('commun.annuler', 'Annuler');
     var env = $('#mail-envoyer');
-    if (env) env.textContent = 'Envoyer';
+    if (env) env.textContent = T('bureau.mailEnvoyer', 'Envoyer');
 
     // RÉPONDRE ET TRANSFÉRER CITENT LE MESSAGE. `mail.reply_tpl` et
     // `mail.forward_tpl` (lang_french.as) sont deux gabarits à quatre
@@ -4860,6 +4909,8 @@ window.BureauFrutiz = (function () {
     // $s le sujet, $c le corps — que le SWF pose dans le nouveau message.
     // Le light répondait sur une page blanche.
     var rep = $('#mail-repondre');
+    // `mail.reply` : le mot du bouton, posé ici comme les trois autres.
+    if (rep) rep.textContent = T('bureau.mailRepondre', 'Répondre');
     if (rep && !rep.dataset.epoque) {
       rep.dataset.epoque = '1';
       rep.addEventListener('click', citerMail.bind(null, 'reply'), true);
@@ -4869,7 +4920,7 @@ window.BureauFrutiz = (function () {
       tr.type = 'button';
       tr.className = 'ma-btn';
       tr.id = 'mail-transferer';
-      tr.textContent = 'Transférer';
+      tr.textContent = T('bureau.mailTransferer', 'Transférer');
       tr.addEventListener('click', citerMail.bind(null, 'forward'));
       rep.parentNode.insertBefore(tr, rep.nextSibling);
     }
@@ -4885,7 +4936,8 @@ window.BureauFrutiz = (function () {
       // Les étiquettes portent leurs DEUX-POINTS, et le « A » n'a pas
       // d'accent : `mail.date` = « Date : », `mail.from` = « De : »,
       // `mail.to` = « A : », `mail.subject` = « Sujet : » (lang_french.as).
-      [['date', 'Date :'], ['from', 'De :'], ['to', 'A :'], ['subject', 'Sujet :']].forEach(function (l) {
+      [['date', T('bureau.mailDate', 'Date :')], ['from', T('bureau.mailDe', 'De :')],
+        ['to', T('bureau.mailA', 'A :')], ['subject', T('bureau.mailSujet', 'Sujet :')]].forEach(function (l) {
         var ligne = document.createElement('div');
         ligne.className = 'mx-ligne';
         ligne.innerHTML = '<span class="mx-lab"></span><span class="mx-val" data-champ="'
@@ -4904,7 +4956,8 @@ window.BureauFrutiz = (function () {
     if (form && !form.querySelector('.mx-de')) {
       var de = document.createElement('div');
       de.className = 'mx-de';
-      de.innerHTML = '<span class="mx-lab">De :</span><span class="mx-val"></span>';
+      de.innerHTML = '<span class="mx-lab"></span><span class="mx-val"></span>';
+      de.querySelector('.mx-lab').textContent = T('bureau.mailDe', 'De :');
       var moi = (window.state && window.state.user) || '';
       de.querySelector('.mx-val').textContent = moi + ' <' + moi + '@frutiparc.com>';
       form.insertBefore(de, form.firstChild);
@@ -4913,9 +4966,9 @@ window.BureauFrutiz = (function () {
     // les réécrit ICI, et pas dans light.html : le gabarit tactile garde les
     // siens (« À », « Sujet »), qui vont mieux à une colonne de champs.
     var lblA = $('#mail-vue-ecriture .mail-form label[for="mail-a"]');
-    if (lblA) lblA.textContent = 'A :';
+    if (lblA) lblA.textContent = T('bureau.mailA', 'A :');
     var lblS = $('#mail-vue-ecriture .mail-form label[for="mail-sujet"]');
-    if (lblS) lblS.textContent = 'Sujet :';
+    if (lblS) lblS.textContent = T('bureau.mailSujet', 'Sujet :');
 
     /*
      * LA BARRE DE STYLE (`win.Mail.attachEditTool`, 0x78048).
@@ -4971,7 +5024,7 @@ window.BureauFrutiz = (function () {
       var taille = document.createElement('select');
       taille.className = 'mx-taille';
       taille.id = 'mail-taille';
-      taille.title = 'Taille du texte';
+      taille.title = T('bureau.mailTailleTexte', 'Taille du texte');
       MAIL_CORPS.forEach(function (t) {
         var o = document.createElement('option');
         o.value = String(t[1]);
@@ -5007,11 +5060,12 @@ window.BureauFrutiz = (function () {
   // que l'InitArray retourne en [18, 16, 14, 12, 10, 8, 6]. Le quatrième,
   // « Normal », vaut donc 12 — la taille de départ du champ
   // (`tFormat.size = 12`, 0x796cc), et son encre est 3364113 = #335511.
-  var MAIL_CORPS = [['Trop gros', 18], ['Très gros', 16], ['Gros', 14],
-    ['Normal', 12], ['Petit', 10], ['Très petit', 8], ['Illisible', 6]];
-  var MAIL_DRAPEAUX = [['gras', 'g', 'Gras'], ['italique', 'i', 'Italique'],
-    ['souligne', 's', 'Souligné']];
-  var MAIL_COPIE = 'Ajouter dans "Messages envoyés"';
+  var MAIL_CORPS = [[T('bureau.mailTropGros', 'Trop gros'), 18], [T('bureau.mailTresGros', 'Très gros'), 16],
+    [T('bureau.mailGros', 'Gros'), 14], [T('bureau.mailNormal', 'Normal'), 12], [T('bureau.mailPetit', 'Petit'), 10],
+    [T('bureau.mailTresPetit', 'Très petit'), 8], [T('bureau.mailIllisible', 'Illisible'), 6]];
+  var MAIL_DRAPEAUX = [['gras', 'g', T('bureau.mailGras', 'Gras')], ['italique', 'i', T('bureau.mailItalique', 'Italique')],
+    ['souligne', 's', T('bureau.mailSouligne', 'Souligné')]];
+  var MAIL_COPIE = T('bureau.mailCopie', 'Ajouter dans "Messages envoyés"');
 
   var mailDerniere = [], mailDossierVu = 'inbox';
 
@@ -5056,7 +5110,7 @@ window.BureauFrutiz = (function () {
       var ico = document.createElement('i');
       ico.className = 'mx-ico';
       r.appendChild(ico);
-      [envoi ? (m.to || '?') : (m.from || '?'), m.subject || '(sans sujet)',
+      [envoi ? (m.to || '?') : (m.from || '?'), m.subject || T('bureau.sansSujet', '(sans sujet)'),
         mailDateCourte(m.date)].forEach(function (txt, i) {
         var c = document.createElement('span');
         c.className = 'mx-cell' + (MAIL_COLONNES[i].big ? ' big' : '');
@@ -5089,7 +5143,7 @@ window.BureauFrutiz = (function () {
       date: mailDateLongue(m.date),
       from: adr(m.from || (m.folder === 'outbox' ? moi : '')),
       to: adr(m.to || (m.folder === 'outbox' ? '' : moi)),
-      subject: m.subject || '(sans sujet)',
+      subject: m.subject || T('bureau.sansSujet', '(sans sujet)'),
     };
     Array.prototype.forEach.call(panneau.querySelectorAll('.mx-val[data-champ]'), function (e) {
       e.textContent = val[e.getAttribute('data-champ')] || '';
@@ -5107,7 +5161,9 @@ window.BureauFrutiz = (function () {
    * (`mail.write_new_mail` = « Composer un nouveau message »).
    */
   var MAIL_DOSSIERS = {
-    inbox: 'Boîte de réception', outbox: 'Messages envoyés', blackbox: 'Indésirables',
+    inbox: T('bureau.boiteReception', 'Boîte de réception'),
+    outbox: T('bureau.messagesEnvoyes', 'Messages envoyés'),
+    blackbox: T('bureau.indesirables', 'Indésirables'),
   };
   function retitrerMail(vue, dossier) {
     if (dossier) mailDossierVu = dossier;
@@ -5120,24 +5176,27 @@ window.BureauFrutiz = (function () {
       panneau.classList.toggle('mx-lit', vue === 'lecture');
       panneau.classList.toggle('mx-ecrit', vue === 'ecriture');
     }
-    if (vue === 'ecriture') retitrer('mail-panel', 'Composer un nouveau message');
-    else if (vue === 'liste') retitrer('mail-panel', MAIL_DOSSIERS[mailDossierVu] || 'Courrier');
+    if (vue === 'ecriture') retitrer('mail-panel', T('bureau.composerMessage', 'Composer un nouveau message'));
+    else if (vue === 'liste') retitrer('mail-panel', MAIL_DOSSIERS[mailDossierVu] || T('bureau.courrier', 'Courrier'));
   }
 
   // `but.icon.Detail.display` (0x524c7) : `dateDsp = Lang.formatDateString(
   // date, "numeric")`, et `date.format_numeric` vaut « $D/$N $H:$I »
   // (lang_french.as) — le quantième, le mois et l'heure. PAS D'ANNÉE : la
-  // colonne d'époque n'en montre pas.
+  // colonne d'époque n'en montre pas. C'est le style « jourHeure » de T.date :
+  // « 27/08 20:17 » en français, « 08/27 20:17 » en anglais (le mois d'abord).
   function mailDateCourte(s) {
     var m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(String(s || ''));
-    return m ? m[3] + '/' + m[2] + ' ' + m[4] + ':' + m[5] : String(s || '');
+    return m ? T.date(new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]), 'jourHeure') : String(s || '');
   }
 
   // `date.format_long` = « $a $d $m $H:$I » : le jour de la semaine en toutes
   // lettres, le quantième SANS zéro, le mois en toutes lettres, puis l'heure
   // et les minutes AVEC zéro — « jeudi 27 aout 20:17 ». Les douze mois et les
   // sept jours sortent de `lang_french.as`, « aout » compris, sans accent
-  // circonflexe comme d'époque.
+  // circonflexe comme d'époque. Ces deux tables sont le FRANÇAIS : l'anglais
+  // (« Thursday, August 27 20:17 ») vient de la clé `bureau.mailDateLongue`,
+  // qui reçoit aussi les rangs du jour et du mois (`js`, `ms`).
   var MAIL_JOURS = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi',
     'samedi', 'dimanche'];
   var MAIL_MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin',
@@ -5146,9 +5205,11 @@ window.BureauFrutiz = (function () {
     var m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(String(s || ''));
     if (!m) return String(s || '');
     // `$b` va de 1 (lundi) à 7 (dimanche) : le dimanche de `getDay()` vaut 0.
-    var jour = MAIL_JOURS[(new Date(+m[1], +m[2] - 1, +m[3]).getDay() + 6) % 7];
-    return jour + ' ' + Number(m[3]) + ' ' + MAIL_MOIS[+m[2] - 1]
-      + ' ' + m[4] + ':' + m[5];
+    var js = (new Date(+m[1], +m[2] - 1, +m[3]).getDay() + 6) % 7;
+    return T('bureau.mailDateLongue', '{jour} {j} {mois} {heure}', {
+      jour: MAIL_JOURS[js], j: Number(m[3]), mois: MAIL_MOIS[+m[2] - 1], heure: m[4] + ':' + m[5],
+      js: js, ms: +m[2] - 1,
+    });
   }
 
 
@@ -5199,10 +5260,10 @@ window.BureauFrutiz = (function () {
     // déclenche le chargement du journal (`loadJournal`) avant de nous rendre
     // la main par `apresActivateTab`. Ouvrir la fenêtre directement montrerait
     // le panneau du journal précédent, ou un panneau vide.
-    [['shop-ico-journal', 'Historique Kikooz', function () {
+    [['shop-ico-journal', T('bureau.historiqueKikooz', 'Historique Kikooz'), function () {
       if (window.activateTab) window.activateTab('kikoozlog');
       else ouvrirFenetre('kikoozlog');
-    }], ['shop-ico-kikooz', 'Obtenir des kikooz', function () {
+    }], ['shop-ico-kikooz', T('bureau.obtenirKikooz', 'Obtenir des kikooz'), function () {
       window.open('/kikooz', '_blank');
     }]].forEach(function (d) {
       var b = document.createElement('button');
@@ -5222,8 +5283,8 @@ window.BureauFrutiz = (function () {
     var gros = document.createElement('button');
     gros.type = 'button';
     gros.className = 'bq-plus';
-    gros.title = 'Obtenir des kikooz';
-    gros.textContent = 'Obtenir des kikooz';
+    gros.title = T('bureau.obtenirKikooz', 'Obtenir des kikooz');
+    gros.textContent = T('bureau.obtenirKikooz', 'Obtenir des kikooz');
     gros.addEventListener('click', function () { window.open('/kikooz', '_blank'); });
     pied.appendChild(gros);
     var corps = feuille.querySelector('#bo-corps');
@@ -5313,7 +5374,7 @@ window.BureauFrutiz = (function () {
   function deporterForum() {
     if (!window.ForumPorte || !ForumPorte.deporter) return;
     if (!ForumPorte.deporter()) {
-      alerte('Fenêtre bloquée : ', 'le navigateur a refusé d’ouvrir la fenêtre du forum.');
+      alerte(T('bureau.forumBloque', 'Fenêtre bloquée : le navigateur a refusé d’ouvrir la fenêtre du forum.'));
       return;
     }
     if (fenetres['forum-panel']) fermerFenetre('forum-panel');
@@ -5364,18 +5425,24 @@ window.BureauFrutiz = (function () {
   // Elles sont désignées par IDENTIFIANT, pas par rang : une carte ajoutée en
   // tête de `#reg-corps` décalait toutes les autres, et « Notifications »
   // ouvrait la carte du voisin. C'est arrivé deux fois.
+  //
+  // LA LANGUE n'a pas de carte dans `#reg-corps` : c'est le bureau qui dessine
+  // son choix (`champLangue`). Son libellé est écrit dans les DEUX langues,
+  // pour qu'on le trouve quelle que soit celle qu'on lit.
   var PF_LOCALES = [{
-    name: 'Cet appareil',
+    name: T('bureau.prefCetAppareil', 'Cet appareil'),
     prefs: [
-      { local: 'reg-carte-nuit', label: 'Le parc, la nuit' },
-      { local: 'reg-carte-notifs', label: 'Notifications' },
-      { local: 'reg-carte-appli', label: "L'appli" },
-      { local: 'reg-carte-diag', label: 'Rien ne sonne ?' },
+      { local: 'reg-carte-nuit', label: T('bureau.prefNuit', 'Le parc, la nuit') },
+      { local: 'reg-carte-notifs', label: T('bureau.prefNotifications', 'Notifications') },
+      { local: 'reg-carte-appli', label: T('bureau.prefAppli', "L'appli") },
+      { local: 'reg-carte-diag', label: T('bureau.prefDiag', 'Rien ne sonne ?') },
     ],
   }, {
-    name: 'Mon compte',
+    name: T('bureau.prefMonCompte', 'Mon compte'),
     prefs: [
-      { local: 'reg-carte-donnees', label: 'Mes données' },
+      { local: 'reg-carte-donnees', label: T('bureau.prefMesDonnees', 'Mes données') },
+      { langue: true, label: 'Langue / Language',
+        desc: T('bureau.prefLangueDesc', 'La langue du parc, pour ce compte. La page se recharge aussitôt.') },
     ],
   }];
 
@@ -5407,8 +5474,8 @@ window.BureauFrutiz = (function () {
     // `<b t="{pref.use_default}" …/><s w="10"/><b t="{pref.save}" …/>` — les
     // deux libellés sortent de lang_french.as (« Valeurs par défaut »,
     // « Enregistrer »), dans cet ordre.
-    outils.appendChild(prefBouton('Valeurs par défaut', prefUseDefault));
-    outils.appendChild(prefBouton('Enregistrer', prefSave));
+    outils.appendChild(prefBouton(T('bureau.prefValeursDefaut', 'Valeurs par défaut'), prefUseDefault));
+    outils.appendChild(prefBouton(T('bureau.prefEnregistrer', 'Enregistrer'), prefSave));
     fen.appendChild(arbre);
     fen.appendChild(feuille);
     fen.appendChild(outils);
@@ -5537,6 +5604,9 @@ window.BureauFrutiz = (function () {
     feuille.insertBefore(desc, feuille.firstChild);
     feuille.insertBefore(titre, feuille.firstChild);
 
+    // La langue : pas de brouillon ni de valeur d'origine, le choix s'applique.
+    if (p.langue) { feuille.appendChild(champLangue()); return; }
+
     var valeur = prefEtat.brouillon[p.name];
     if (valeur === undefined) valeur = p.def;
     feuille.appendChild(champPref(p, valeur));
@@ -5545,7 +5615,7 @@ window.BureauFrutiz = (function () {
     // dit pour lui.
     var d = document.createElement('div');
     d.className = 'pf-defaut';
-    d.textContent = 'Valeur d’origine : ' + libellePref(p, p.def);
+    d.textContent = T('bureau.prefValeurOrigine', 'Valeur d’origine : {valeur}', { valeur: libellePref(p, p.def) });
     feuille.appendChild(d);
   }
 
@@ -5555,8 +5625,8 @@ window.BureauFrutiz = (function () {
     for (var i = 0; i < (p.choices || []).length; i++) {
       if (p.choices[i].v === v) return p.choices[i].label;
     }
-    if (p.type === 'b') return v === 'N' ? 'Non' : 'Oui';
-    return v === '' ? '(vide)' : String(v);
+    if (p.type === 'b') return v === 'N' ? T('bureau.non', 'Non') : T('bureau.oui', 'Oui');
+    return v === '' ? T('bureau.prefVide', '(vide)') : String(v);
   }
 
   /**
@@ -5568,7 +5638,7 @@ window.BureauFrutiz = (function () {
     var boite = document.createElement('div');
     var choix = p.choices && p.choices.length
       ? p.choices
-      : (p.type === 'b' ? [{ v: 'Y', label: 'Oui' }, { v: 'N', label: 'Non' }] : null);
+      : (p.type === 'b' ? [{ v: 'Y', label: T('bureau.oui', 'Oui') }, { v: 'N', label: T('bureau.non', 'Non') }] : null);
     // Une longue liste (le salon par défaut : onze choix) se replie en liste
     // déroulante ; le serveur le dit par `liste`.
     if (choix && p.liste) {
@@ -5650,6 +5720,49 @@ window.BureauFrutiz = (function () {
     if (!prefEtat) return;
     prefEtat.brouillon = Object.assign({}, prefEtat.defauts);
     afficherPref(prefEtat.choix);
+  }
+
+  /*
+   * LE CHOIX DE LA LANGUE — « Langue / Language », dans « Mon compte ».
+   *
+   * Pas de préférence d'époque derrière (main.swf ne parlait que français) :
+   * la langue est celle du COMPTE, que le serveur garde (`POST
+   * /api/light/langue {sid, lang}`) pour lui écrire ses propres messages, puis
+   * `FPI18n.changer` la retient dans le navigateur et recharge la page — le
+   * bureau entier repart dans l'autre langue. Le choix s'applique tout de
+   * suite, sans attendre « Enregistrer » : qui ne lit pas encore la langue de
+   * la fenêtre n'a pas à deviner le bon bouton.
+   */
+  var PF_LANGUES = [['fr', 'Français'], ['en', 'English']];
+  function champLangue() {
+    var boite = document.createElement('div');
+    boite.className = 'pf-langue';
+    PF_LANGUES.forEach(function (c) {
+      var l = document.createElement('label');
+      l.className = 'pf-choix';
+      l.lang = c[0];
+      var r = document.createElement('input');
+      r.type = 'radio';
+      r.name = 'pf-langue';
+      r.value = c[0];
+      r.checked = (c[0] === FPI18n.langue);
+      r.addEventListener('change', function () { if (r.checked) changerLangue(c[0]); });
+      l.appendChild(r);
+      l.appendChild(document.createTextNode(c[1]));
+      boite.appendChild(l);
+    });
+    return boite;
+  }
+  function changerLangue(lang) {
+    var fini = function () { FPI18n.changer(lang); };
+    var sid = jetonSid();
+    if (!sid) { fini(); return; }
+    // Le serveur peut refuser (session échue) : la page change de langue quand même.
+    fetch('/api/light/langue', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sid: sid, lang: lang }),
+    }).then(fini, fini);
   }
 
   // `box.Pref.save` (0xca24e) : la copie passe dans le compte, puis
@@ -5842,9 +5955,9 @@ window.BureauFrutiz = (function () {
   var FICHE_ICONES = [
     { cls: 'fiche-mp',       art: 'fiche-ico-chat' },
     { cls: 'fiche-mail',     art: 'fiche-ico-mail' },
-    { cls: 'fiche-blog',     art: 'fiche-ico-blog',    titre: 'Son blog' },
-    { cls: 'fiche-contact',  art: 'fiche-ico-contact', titre: 'Ajouter à mes contacts' },
-    { cls: 'fiche-noire',    art: 'fiche-ico-noire',   titre: 'Mettre en liste noire' },
+    { cls: 'fiche-blog',     art: 'fiche-ico-blog',    titre: T('bureau.ficheBlog', 'Son blog') },
+    { cls: 'fiche-contact',  art: 'fiche-ico-contact', titre: T('bureau.ficheAjouterContact', 'Ajouter à mes contacts') },
+    { cls: 'fiche-noire',    art: 'fiche-ico-noire',   titre: T('bureau.ficheListeNoire', 'Mettre en liste noire') },
     { cls: 'fiche-kick',     art: 'fiche-ico-kick' },
     { cls: 'fiche-ban',      art: 'fiche-ico-ban' },
     { cls: 'fiche-totoche',  art: 'fiche-ico-mute' },
@@ -5900,14 +6013,14 @@ window.BureauFrutiz = (function () {
     // `getIconList` les veut dans l'ordre blog · carnet · liste noire. Chacun
     // se glissant juste APRÈS le courrier, on les monte à REBOURS : le dernier
     // posé finit en tête.
-    neuf('fiche-noire', 'fiche-ico-noire', 'Mettre en liste noire', function () {
+    neuf('fiche-noire', 'fiche-ico-noire', T('bureau.ficheListeNoire', 'Mettre en liste noire'), function () {
       var sid = jetonSid(), u = pseudo();
       if (!sid || !u) return;
-      if (!window.confirm('Mettre « ' + u + ' » en liste noire ?')) return;
+      if (!window.confirm(T('bureau.ficheListeNoireSur', 'Mettre « {nom} » en liste noire ?', { nom: u }))) return;
       fetch('/ff/mk?sid=' + encodeURIComponent(sid) + '&folder=blacklist&t=contact&u='
         + encodeURIComponent(u)).then(function () { chargerContacts(); });
     });
-    neuf('fiche-contact', 'fiche-ico-contact', 'Ajouter à mes contacts', function (ev) {
+    neuf('fiche-contact', 'fiche-ico-contact', T('bureau.ficheAjouterContact', 'Ajouter à mes contacts'), function (ev) {
       var sid = jetonSid(), u = pseudo();
       if (!sid || !u) return;
       // AJOUTÉ, IL DISPARAÎT. `getIconList` ne pose le cœur que « si pas déjà
@@ -5918,7 +6031,7 @@ window.BureauFrutiz = (function () {
       fetch('/ff/mk?sid=' + encodeURIComponent(sid) + '&folder=mycontact&t=contact&u='
         + encodeURIComponent(u)).then(function () { chargerContacts(); });
     });
-    neuf('fiche-blog', 'fiche-ico-blog', 'Son blog', function () {
+    neuf('fiche-blog', 'fiche-ico-blog', T('bureau.ficheBlog', 'Son blog'), function () {
       window.open('/bouilloscope/?u=' + encodeURIComponent(pseudo()), '_blank');
     });
   }
@@ -6482,7 +6595,7 @@ window.BureauFrutiz = (function () {
     var ico = document.createElement('button');
     ico.type = 'button';
     ico.className = 'fb-onglet-ico';
-    ico.title = 'Menu de l\'onglet';
+    ico.title = T('bureau.menuOnglet', 'Menu de l\'onglet');
     ico.style.backgroundImage = 'url(' + fruitUrl(fruit) + ')';
     ico.addEventListener('click', function (e) {
       e.stopPropagation();              // le clic sur la plaque ACTIVE ; ici, non
@@ -6752,20 +6865,20 @@ window.BureauFrutiz = (function () {
   function menuDuSlot(idOnglet) {
     if (idOnglet === 'bureau') {
       return [
-        { titre: 'Se déconnecter', faire: deconnecter },
+        { titre: T('bureau.seDeconnecter', 'Se déconnecter'), faire: deconnecter },
         // L'entrée d'époque menait au light ; les deux ont échangé leurs
         // rôles (cf. `passerEnFlash`) et c'est main.swf qu'elle ouvre.
-        { titre: 'Mode Flash', faire: passerEnFlash },
+        { titre: T('bureau.modeFlash', 'Mode Flash'), faire: passerEnFlash },
         // `flHalfHide` décide du libellé, pas de l'action : c'est la même
         // bascule dans les deux sens.
-        { titre: repli.actif ? 'Afficher barre' : 'Mode rapide',
+        { titre: repli.actif ? T('bureau.afficherBarre', 'Afficher barre') : T('bureau.modeRapide', 'Mode rapide'),
           faire: function () { basculerRepli(); } },
-        { titre: 'Recherche', faire: ouvrirRecherche },
+        { titre: T('bureau.recherche', 'Recherche'), faire: ouvrirRecherche },
       ];
     }
     var m = [
-      { titre: 'Vers bureau', faire: function () { versBureau(idOnglet); } },
-      { titre: 'Fermer', faire: function () {
+      { titre: T('bureau.versBureau', 'Vers bureau'), faire: function () { versBureau(idOnglet); } },
+      { titre: T('commun.fermer', 'Fermer'), faire: function () {
         var s = slotDe(idOnglet);
         if (s) fermerFenetre(s.panneau);
       } },
@@ -6777,14 +6890,14 @@ window.BureauFrutiz = (function () {
        taille, sur son écran. Les trois jeux restés en Flash n'en ont pas
        besoin — ils s'ouvrent DÉJÀ ainsi et n'ont pas d'onglet. */
     var jeu = jeuDuSlot(idOnglet);
-    if (jeu) m.push({ titre: 'Déporter', faire: function () { deporterJeu(jeu, idOnglet); } });
+    if (jeu) m.push({ titre: T('bureau.deporter', 'Déporter'), faire: function () { deporterJeu(jeu, idOnglet); } });
     // LE FORUM AUSSI. Il l'avait d'office — le bureau d'époque l'envoie
     // dehors, et le portage a longtemps suivi ; il s'ouvre maintenant ici
     // comme les autres rubriques, et sortir redevient un choix. C'est le seul
     // contenu non-jeu qui vaille d'être vu seul : il a sa largeur, ses
     // brouillons, et l'on continue de discuter à côté.
     var s = slotDe(idOnglet);
-    if (s && s.panneau === 'forum-panel') m.push({ titre: 'Déporter', faire: deporterForum });
+    if (s && s.panneau === 'forum-panel') m.push({ titre: T('bureau.deporter', 'Déporter'), faire: deporterForum });
     return m;
   }
 
@@ -6830,19 +6943,20 @@ window.BureauFrutiz = (function () {
        fenêtre du jeu sur le bureau SANS l'interrompre. Un jeu à peine ouvert
        (rien cliqué, rien tapé) se déporte sans question. */
     if (!confirme && P.entame && P.entame(tab)) {
-      var nom = JEUX_NOM[tab] || 'ce jeu';
-      demander('Déporter ' + nom + ' ? ',
-        'Ta partie en cours sera relancée : le jeu repart de zéro dans la nouvelle fenêtre. '
+      var nom = JEUX_NOM[tab] || T('bureau.ceJeu', 'ce jeu');
+      demander(T('bureau.deporterQuestion', 'Déporter {jeu} ? '
+        + 'Ta partie en cours sera relancée : le jeu repart de zéro dans la nouvelle fenêtre. '
           + 'Pour la garder, choisis « Vers bureau » : le jeu passe en fenêtre sur le bureau, sans s’arrêter.',
+        { jeu: nom }), '',
         [
-          { titre: 'Vers bureau', faire: function () { if (idOnglet) versBureau(idOnglet); } },
-          { titre: 'Déporter', faire: function () { deporterJeu(tab, idOnglet, true); } },
-          { titre: 'Annuler', faire: function () {} },
+          { titre: T('bureau.versBureau', 'Vers bureau'), faire: function () { if (idOnglet) versBureau(idOnglet); } },
+          { titre: T('bureau.deporter', 'Déporter'), faire: function () { deporterJeu(tab, idOnglet, true); } },
+          { titre: T('commun.annuler', 'Annuler'), faire: function () {} },
         ]);
       return;
     }
     if (!P.deporter(tab, rub.l, rub.h)) {
-      alerte('Fenêtre bloquée : ', 'le navigateur a refusé d’ouvrir la fenêtre du jeu.');
+      alerte(T('bureau.jeuBloque', 'Fenêtre bloquée : le navigateur a refusé d’ouvrir la fenêtre du jeu.'));
       return;
     }
     var panneau = $(rub.panneau);
@@ -7120,7 +7234,7 @@ window.BureauFrutiz = (function () {
     // tel quel dans le moteur (`if(Key.isDown(17))`).
     var plier = document.createElement('button');
     plier.className = 'fen-btn plier';
-    plier.title = 'Mettre en onglet';
+    plier.title = T('bureau.mettreEnOnglet', 'Mettre en onglet');
     plier.addEventListener('click', function (e) {
       // Ctrl : pas de glissade, ET l'onglet prend la main — c'est le même
       // `Key.isDown(17)` qui commande les deux (`putInTab` → `addSlot(…, true)`).
@@ -7141,7 +7255,7 @@ window.BureauFrutiz = (function () {
     });
     var fermer = document.createElement('button');
     fermer.className = 'fen-btn fermer';
-    fermer.title = 'Fermer';
+    fermer.title = T('commun.fermer', 'Fermer');
     titre.appendChild(pastille);
     titre.appendChild(txt);
     titre.appendChild(plier);
@@ -7162,7 +7276,7 @@ window.BureauFrutiz = (function () {
     if (!rub.fixe) {
       var poignee = document.createElement('div');
       poignee.className = 'fen-poignee';
-      poignee.title = 'Redimensionner';
+      poignee.title = T('bureau.redimensionner', 'Redimensionner');
       fen.appendChild(poignee);
       rendreRedimensionnable(fen, poignee, minimum);
     } else {
@@ -7415,34 +7529,35 @@ window.BureauFrutiz = (function () {
   var GS_BOUILLE = '0n0000000000000000000000';
   var GS_MOTS = {
     nom: 'Gaspard',
-    recherche: 'Recherche',
-    attente: 'Veuillez patienter...',
-    injoignable: 'L’accès au serveur Frutiparc semble impossible. '
-      + 'Pensez à vérifier votre connexion internet.',
+    recherche: T('bureau.recherche', 'Recherche'),
+    attente: T('bureau.gsAttente', 'Veuillez patienter...'),
+    injoignable: T('bureau.gsInjoignable', 'L’accès au serveur Frutiparc semble impossible. '
+      + 'Pensez à vérifier votre connexion internet.'),
+    // Le `$n` d'époque reste dans les deux langues : `resultatsGaspard` le remplace.
     resultats: {
-      e: 'J’ai trouvé $n résultats correspondants à votre recherche :',
-      s: 'J’ai trouvé $n résultats proches de votre recherche :',
+      e: T('bureau.gsResultatsExacts', 'J’ai trouvé $n résultats correspondants à votre recherche :'),
+      s: T('bureau.gsResultatsProches', 'J’ai trouvé $n résultats proches de votre recherche :'),
     },
-    rien: 'Désolé, je n’ai rien trouvé correspondant à votre recherche.',
-    conseil: 'Essayez de faire une recherche plus large : indiquez un seul mot '
+    rien: T('bureau.gsRien', 'Désolé, je n’ai rien trouvé correspondant à votre recherche.'),
+    conseil: T('bureau.gsConseil', 'Essayez de faire une recherche plus large : indiquez un seul mot '
       + 'plutôt qu’une phrase. Par exemple, cherchez <i>titems</i> plutôt que '
       + '<i>C’est quoi les titems ?</i>. Vérifiez également l’orthographe.'
       + '<br/><br/>Si vous avez besoin de <b>support technique</b>, vous pouvez '
       + 'envoyer un mail à : '
-      + '<a href="mailto:gaspard@frutiparc.com">gaspard@frutiparc.com</a>',
+      + '<a href="mailto:gaspard@frutiparc.com">gaspard@frutiparc.com</a>'),
     groupes: {
-      cat_tree: 'Rubriques :',
-      cat_ls: 'Dans cette rubrique :',
-      seealso: 'Voir également :',
+      cat_tree: T('bureau.gsRubriques', 'Rubriques :'),
+      cat_ls: T('bureau.gsDansRubrique', 'Dans cette rubrique :'),
+      seealso: T('bureau.gsVoirEgalement', 'Voir également :'),
     },
   };
   // « error.http.<k> », les motifs que le serveur peut renvoyer (0x8045e).
   var GS_ERREURS = {
-    1: 'Une erreur inconue s’est produite sur le serveur (HTTP)',
-    2: 'Action non autorisée',
-    3: 'Requête non valide',
-    4: 'Une erreur s’est produite sur le serveur',
-    5: 'Cette action vous est interdite pour le moment',
+    1: T('bureau.gsErreur1', 'Une erreur inconue s’est produite sur le serveur (HTTP)'),
+    2: T('bureau.gsErreur2', 'Action non autorisée'),
+    3: T('bureau.gsErreur3', 'Requête non valide'),
+    4: T('bureau.gsErreur4', 'Une erreur s’est produite sur le serveur'),
+    5: T('bureau.gsErreur5', 'Cette action vous est interdite pour le moment'),
   };
 
   function panneauGaspard() {
@@ -7454,8 +7569,8 @@ window.BureauFrutiz = (function () {
     // `displayLeftIconList` : la colonne, dans `margin.left`.
     var icones = document.createElement('div');
     icones.className = 'gs-icones';
-    icones.appendChild(gelule('ecrans', 'Afficher les bouilles'));
-    icones.appendChild(gelule('users', 'Afficher les frutiz présents'));
+    icones.appendChild(gelule('ecrans', T('bureau.gsAfficherBouilles', 'Afficher les bouilles')));
+    icones.appendChild(gelule('users', T('bureau.gsAfficherPresents', 'Afficher les frutiz présents')));
     p.appendChild(icones);
 
     // `displayScreenList` : la pile des bouilles, sous la colonne. Fermée à
@@ -7473,7 +7588,7 @@ window.BureauFrutiz = (function () {
     var champ = document.createElement('input');
     champ.type = 'text';
     champ.className = 'gs-in';
-    champ.setAttribute('aria-label', 'Poser une question à Gaspard');
+    champ.setAttribute('aria-label', T('bureau.gsQuestion', 'Poser une question à Gaspard'));
     bas.appendChild(champ);
     p.appendChild(bas);
 
@@ -7653,7 +7768,7 @@ window.BureauFrutiz = (function () {
         d.querySelector('.nom').textContent = nom;
       }
       if (estGaspard(nom)) {
-        d.title = 'Parler à ' + GS_MOTS.nom;
+        d.title = T('bureau.gsParlerA', 'Parler à {nom}', { nom: GS_MOTS.nom });
         d.addEventListener('click', function (ev) {
           ev.stopImmediatePropagation();
           ouvrirGaspard();
@@ -7903,8 +8018,8 @@ window.BureauFrutiz = (function () {
   }
   // `help.link_back` : DEUX liens séparés d'un tiret — `getPrevious` et
   // `getContent` sans argument, qui ramène à l'index.
-  var GS_RETOUR = '<a href="#" data-gs="precedent">Précédent</a> - '
-    + '<a href="#" data-gs="index">Index de l’aide</a>';
+  var GS_RETOUR = '<a href="#" data-gs="precedent">' + T('bureau.gsPrecedent', 'Précédent') + '</a> - '
+    + '<a href="#" data-gs="index">' + T('bureau.gsIndexAide', 'Index de l’aide') + '</a>';
 
   // `displayWait` (0xbe2a8) : une seule ligne, en `sid: 2`. Le bandeau garde
   // le nom de la page qu'on quitte — le SWF ne le retitre pas ici.
@@ -7987,10 +8102,15 @@ window.BureauFrutiz = (function () {
    *
    * Le champ, c'est celui du RANG (le chiffre sous la coupe) : survoler une
    * icône y écrit le nom de la rubrique, en sortir y remet le classement.
+   *
+   * Les mots s'écrivent dans la fonte LcdSwf, qui n'a QUE des minuscules a-z,
+   * les chiffres, `%` et `.` : en anglais aussi, pas de capitale, d'accent,
+   * d'apostrophe ni de trait d'union (history, events, games…).
    */
   var GS_NOMS = {                       // `nameList`, après le retournement
-    Aide: 'gaspard', Forum: 'forum', Mail: 'messages',
-    Historique: 'historique', Warning: 'evenements', Jeux: 'jeux',
+    Aide: T('bureau.lcdAide', 'gaspard'), Forum: T('bureau.lcdForum', 'forum'),
+    Mail: T('bureau.lcdMail', 'messages'), Historique: T('bureau.lcdHistorique', 'historique'),
+    Warning: T('bureau.lcdEvenements', 'evenements'), Jeux: T('bureau.lcdJeux', 'jeux'),
   };
   /*
    * LES NEUF BARRES D'XP DE L'ENCART — DEUX BOÎTES PEINTES, ET NON NEUF.
@@ -8237,9 +8357,9 @@ window.BureauFrutiz = (function () {
     { cle: 'mandalaDroite', x: 167.15 + 0.1, y: 21.8, l: 19.25, h: 20, act: 'pressRight',
       titre: '' },
     { cle: 'mandalaSwap', x: 0.75, y: 43.7, l: 50.05, h: 20, act: 'pressSwap',
-      titre: 'Changer de cadran' },
+      titre: T('bureau.changerCadran', 'Changer de cadran') },
     { cle: 'mandalaValider', x: 136.35, y: 43.8, l: 50.1, h: 20, act: 'pressValidate',
-      titre: 'Mode rapide' },
+      titre: T('bureau.modeRapide', 'Mode rapide') },
   ];
   // Les deux peaux, chargées d'ordinaire par `Wheel.loadSkin` depuis
   // /wheel/wheel<wheelId>.swf : ici, leurs dessins déjà sortis.
@@ -8606,10 +8726,10 @@ window.BureauFrutiz = (function () {
     var nub = document.createElement('button');
     nub.type = 'button';
     nub.id = 'mode-rapide';
-    nub.title = 'Revenir à la barre';
+    nub.title = T('bureau.revenirBarre', 'Revenir à la barre');
     var img = document.createElement('i');
     var txt = document.createElement('span');
-    txt.textContent = 'mode rapide';
+    txt.textContent = T('bureau.modeRapideMin', 'mode rapide');
     nub.appendChild(img);
     nub.appendChild(txt);
     nub.addEventListener('click', function () { basculerRepli(false); });
@@ -8694,11 +8814,13 @@ window.BureauFrutiz = (function () {
   var CH_LISSAGE = 0.9;          // coef = coef × 0,9 + ratio × 0,1, par image
   var CH_SEUIL = 0.995;          // et fini au-delà
   var CH_CADENCE = 10;           // une image d'époque = 10 ms (100 im/s)
-  var CH_TITRE = 'CHARGEMENT';
-  var CH_PREFIXE = 'fichiers restants : ';
-  var CH_INFO_TITRE = 'Information :';
-  var CH_INFO = 'Ce chargement comprend tous les éléments de l’interface de'
-    + ' frutiparc ce qui vous permettra de naviguer plus rapidement ensuite !';
+  // Les mots de `textes` (chargement.json, le relevé français) : l'anglais
+  // vit dans /i18n/en/bureau.js, chargé avant cette page.
+  var CH_TITRE = T('bureau.chargementTitre', 'CHARGEMENT');
+  var CH_PREFIXE = T('bureau.chargementPrefixe', 'fichiers restants : ');
+  var CH_INFO_TITRE = T('bureau.chargementInfoTitre', 'Information :');
+  var CH_INFO = T('bureau.chargementInfo', 'Ce chargement comprend tous les éléments de l’interface de'
+    + ' frutiparc ce qui vous permettra de naviguer plus rapidement ensuite !');
 
   var pageChargement = null;
   function ouvrirChargement() {
@@ -8827,7 +8949,7 @@ window.BureauFrutiz = (function () {
     haut.appendChild(coinNoir);        // mcInterfaceBlack (2)
     haut.appendChild(barreOnglets);    // mcTabBlack (4) puis mcTab (8)
     haut.appendChild(coin);            // mcInterface (10)
-    ongletBureau = creerOnglet('bureau', 'Bureau', null);
+    ongletBureau = creerOnglet('bureau', T('bureau.ongletBureau', 'Bureau'), null);
     dessinerOnglets();
 
     // LE LECTEUR FRUSION (le clip `frusion` #324, en couches), avec sa
@@ -8860,7 +8982,10 @@ window.BureauFrutiz = (function () {
     // `langText.search.title`. Le dessin (la gélule grise et sa loupe) est le
     // bouton du SWF extrait tel quel : recherche.svg.
     bande.innerHTML = '<div class="sl-liste"></div>'
-      + '<button type="button" class="sl-recherche" title="Recherche de frutiz">Recherche</button>';
+      + '<button type="button" class="sl-recherche"></button>';
+    var rechercheBande = bande.querySelector('.sl-recherche');
+    rechercheBande.title = T('bureau.titreRecherche', 'Recherche de frutiz');
+    rechercheBande.textContent = T('bureau.recherche', 'Recherche');
     var ombre = document.createElement('div');
     ombre.id = 'side-list-ombre';
     var languette = document.createElement('button');

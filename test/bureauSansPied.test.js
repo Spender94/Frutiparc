@@ -39,7 +39,7 @@ test('la ligne du compte ne descend plus sur le bureau', () => {
 test('« Se déconnecter » passe au menu du fond d’écran', () => {
   const menu = JS.slice(JS.indexOf('function menuDuBureau'),
     JS.indexOf('function ouvrirDossierBureau'));
-  assert.match(menu, /sortir\.textContent = 'Se déconnecter';/);
+  assert.match(menu, /sortir\.textContent = T\('bureau\.seDeconnecter', 'Se déconnecter'\);/);
   // il appuie sur le bouton du tiroir : une seule porte de sortie, pas deux
   assert.match(menu, /var q = \$\('#logout-btn'\);\s*\n\s*if \(q\) q\.click\(\);/);
   // et « Nouveau dossier » reste la première entrée

@@ -38,23 +38,23 @@ test('la boîte de réception est un EXPLORATEUR, au gabarit d’époque', () =>
   // `win.Explorer` pose `pos = {50, 50, 400, 400}` et s'ouvre au milieu ; le
   // relevé 1:1 donne la fenêtre en 411 × 401, contour compris. Et c'est la
   // fenêtre JAUNE : `winType = "winExplorer"`, d'où la banane en pastille.
-  assert.match(JS, /mail:\s+\{ panneau: '#mail-panel',\s+titre: 'Boîte de réception',\s*\n\s*fruit: 'winExplorer', l: 412, h: 402,/);
+  assert.match(JS, /mail:\s+\{ panneau: '#mail-panel',\s+titre: T\('bureau\.boiteReception', 'Boîte de réception'\),\s*\n\s*fruit: 'winExplorer', l: 412, h: 402,/);
   // Le minimum vient de `initFrameSet` : navigatorFrame 80×28 au-dessus de
   // fileIconListFrame 100×100, plus le chrome de la fenêtre.
   assert.match(JS, /min: minFenetre\(100, 28 \+ 100\), centre: true \}/);
   // `lister` : De|À 140, Sujet 200 (big), Date 80 — et le tri part sur la
   // date, en DESC (`currentSort`).
-  assert.match(JS, /\{ cle: 'qui', titre: 'Expéditeur', titreEnvoi: 'Destinataire', tri: 'from', l: 140 \}/);
-  assert.match(JS, /\{ cle: 'subject', titre: 'Sujet', tri: 'name', big: true \}/);
-  assert.match(JS, /\{ cle: 'date', titre: 'Date', tri: 'date', l: 80 \}/);
+  assert.match(JS, /\{ cle: 'qui', titre: T\('bureau\.mailExpediteur', 'Expéditeur'\),\s*\n\s*titreEnvoi: T\('bureau\.mailDestinataire', 'Destinataire'\), tri: 'from', l: 140 \}/);
+  assert.match(JS, /\{ cle: 'subject', titre: T\('bureau\.mailColSujet', 'Sujet'\), tri: 'name', big: true \}/);
+  assert.match(JS, /\{ cle: 'date', titre: T\('bureau\.mailColDate', 'Date'\), tri: 'date', l: 80 \}/);
   assert.match(JS, /var mailTri = \{ champ: 'date', desc: true \}/);
 });
 
 test('la barre d’outils : le dossier parent et l’enveloppe, rien d’autre', () => {
   // `initNavigatorIconList` : pour une boîte aux lettres, `flNewDirectory` et
   // `flRemoveAll` sont faux, `flUp` et `flMail` vrais.
-  assert.match(JS, /navBouton\('nav_up', 'Dossier parent'/);
-  assert.match(JS, /navBouton\('nav_new_mail', 'Écrire un courrier'/);
+  assert.match(JS, /navBouton\('nav_up', T\('bureau\.dossierParent', 'Dossier parent'\)/);
+  assert.match(JS, /navBouton\('nav_new_mail', T\('bureau\.ecrireCourrier', 'Écrire un courrier'\)/);
   assert.doesNotMatch(JS, /navBouton\('nav_new_folder'/);
   assert.doesNotMatch(JS, /navBouton\('nav_empty_recyclebin'/);
   // Les onglets du mobile n'existent pas d'époque : on change de boîte par le
@@ -83,7 +83,7 @@ test('lire et écrire : les gabarits de winViewMail et winMail', () => {
   // `win.ViewMail.attachInfo` : QUATRE lignes de 20, étiquette de 60 à DROITE.
   // Les mots portent leurs deux-points, et le « A » n'a pas d'accent — c'est
   // lang_french.as qui les écrit (cf. test/courrierBureau.test.js).
-  assert.match(JS, /\[\['date', 'Date :'\], \['from', 'De :'\], \['to', 'A :'\], \['subject', 'Sujet :'\]\]/);
+  assert.match(JS, /\[\['date', T\('bureau\.mailDate', 'Date :'\)\], \['from', T\('bureau\.mailDe', 'De :'\)\],\s*\n\s*\['to', T\('bureau\.mailA', 'A :'\)\], \['subject', T\('bureau\.mailSujet', 'Sujet :'\)\]\]/);
   assert.match(CSS, /\.mx-ligne,\s*\n\s*body\.bureau-frutiz \.fen #mail-panel \.mx-de \{\s*\n\s*display: flex; align-items: center; height: 20px;/);
   assert.match(CSS, /\.mx-lab \{\s*\n\s*flex: 0 0 60px; width: 60px; color: #222222;/);
   // L'alignement N'EST PLUS commun aux deux vues, et ce n'était pas une
@@ -95,7 +95,7 @@ test('lire et écrire : les gabarits de winViewMail et winMail', () => {
   assert.match(CSS, /\.mail-form label \{\s*\n\s*flex: 0 0 60px; width: 60px; text-align: left;/);
   // `attachEndButton` : « Supprimer », un grand espace, puis « Répondre » et
   // « Transférer » — les trois mots de lang_french.as.
-  assert.match(JS, /pou\.textContent = 'Supprimer'/);
+  assert.match(JS, /pou\.textContent = T\('bureau\.mailSupprimer', 'Supprimer'\)/);
   assert.match(CSS, /#mail-supprimer \{ order: 1; \}/);
   assert.match(CSS, /#mail-repondre \{ order: 2; margin-left: auto; \}/);
   // `win.Mail.attachInfo` : la ligne « De », que `box.Mail.preInit` remplit
@@ -170,7 +170,7 @@ test('la bouille qui joue une émotion ne se DOUBLE plus', () => {
 test('LA BOUTIQUE : deux colonnes, et les pièces sorties du SWF', () => {
   // `win.Shop` : la fenêtre du fruit VERT (`winType = "winShop"`). Relevé
   // 1:1 — x 8..483 / y 104..507, soit 476 × 404.
-  assert.match(JS, /boutique:\s+\{ panneau: '#shop-sheet',\s+titre: 'Boutique', fruit: 'winShop',\s*\n\s*l: 476, h: 404,/);
+  assert.match(JS, /boutique:\s+\{ panneau: '#shop-sheet',\s+titre: T\('bureau\.titreBoutique', 'Boutique'\), fruit: 'winShop',\s*\n\s*l: 476, h: 404,/);
   // Les onze pièces extraites du SWF, et leurs formes.
   const EX = fs.readFileSync(path.join(ROOT, 'scripts/extract-frutiz-bureau.js'), 'utf8');
   const pieces = [

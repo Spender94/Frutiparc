@@ -3691,6 +3691,18 @@ body.bureau-frutiz .fen #shop-sheet .bq-plus {
   background: url('/frutiz/sprites/shop-plus-kikooz.svg') center / 150px 60px no-repeat;
   cursor: pointer; color: transparent; font-size: 0;
 }
+/* EN ANGLAIS, la plaque perd ses lettres françaises (le même dessin, sans
+   « OBTENIR DES KIKOOZ ») et le bouton montre son propre texte — « Get
+   kikooz », T('bureau.obtenirKikooz') — à leur place : à gauche de la pièce,
+   en capitales brunes cernées de blanc comme les lettres d'origine. */
+body.bureau-frutiz:lang(en) .fen #shop-sheet .bq-plus {
+  background-image: url('/frutiz/sprites/shop-plus-kikooz-en.svg');
+  box-sizing: border-box; padding: 0 62px 0 8px;
+  font: 700 13px/16px Verdana, Arial, sans-serif; letter-spacing: 1px;
+  text-transform: uppercase; text-align: center; color: #802F04;
+  text-shadow: -1px 0 #FFFFFF, 1px 0 #FFFFFF, 0 -1px #FFFFFF, 0 1px #FFFFFF,
+               -1px -1px #FFFFFF, 1px 1px #FFFFFF, -1px 1px #FFFFFF, 1px -1px #FFFFFF;
+}
 
 /* ── LA MESSAGERIE ────────────────────────────────────────────────────────
    D'époque ce ne sont pas trois vues d'une fenêtre mais TROIS fenêtres : la
@@ -4079,6 +4091,13 @@ body.bureau-frutiz .fen #mail-panel .mx-flag[aria-pressed="true"] {
   background: var(--mx-ico) 0 0 / 20px 20px no-repeat,
               url('/frutiz/sprites/but-flag-bas.svg') 0 0 / 20px 20px no-repeat;
 }
+/* EN ANGLAIS, G (gras) et S (souligné) ne disent rien : B (bold) et U
+   (underline) les remplacent. Ce sont des PICTOS, dessinés comme les trois
+   d'époque (même encre `#5B0B0B`, même corps, le U sur le trait du S) : pas
+   de couleur écrite ici, la nuit les traite donc comme le I, qui est le même
+   dans les deux langues et garde son dessin. */
+body.bureau-frutiz:lang(en) .fen #mail-panel .mx-flag-gras { --mx-ico: url('/frutiz/sprites/but-flag-gras-en.svg'); }
+body.bureau-frutiz:lang(en) .fen #mail-panel .mx-flag-souligne { --mx-ico: url('/frutiz/sprites/but-flag-souligne-en.svg'); }
 /* `{type:'spacer', big:1}` : le menu des corps est poussé au bout. */
 body.bureau-frutiz .fen #mail-panel .mx-outils-esp { flex: 1 1 auto; }
 /* LE MENU DES CORPS, `comboBox` de 100 px, décalé de `dy: 4`. `newElement`

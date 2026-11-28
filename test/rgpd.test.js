@@ -175,8 +175,8 @@ test('les autres voient l’âge, pas la date ; et rien avant dix-huit ans', asy
 test('sans date de naissance, les clients n’affichent pas « 0 ans »', () => {
   const bureau = fs.readFileSync(path.join(ROOT, 'public/bureau-frutiz.js'), 'utf8');
   // La ligne de résultat de recherche, et la bulle de survol d'une bouille.
-  assert.match(bureau, /age\.textContent = info\.age \? info\.age \+ ' ans' : '';/);
-  assert.match(bureau, /\(i\.age \? i\.age \+ ' ans, ' : ''\)/);
+  assert.match(bureau, /age\.textContent = info\.age \? T\('bureau\.ageAns', '\{age\} ans', \{ age: info\.age \}\) : '';/);
+  assert.match(bureau, /: i\.age \? T\('bureau\.tipAvecAge', ' : \{age\} ans, \{region\} \(\{pays\}\), niveau \{niveau\}',/);
   // Le light, lui, ne montrait déjà l'âge que s'il en avait un.
   const light = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
   assert.match(light, /if \(d\.basic\.age !== null && d\.basic\.age !== undefined\) meta = d\.basic\.age \+ " ans";/);

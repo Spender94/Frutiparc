@@ -139,7 +139,7 @@ test('la barre de style existe, avec les vrais dessins de `butFlagSmallPink`', (
 test('l’ordre de la barre : G I S, l’espace élastique, puis le menu des corps', () => {
   // L'InitArray de 0x781a5 se lit à l'envers : flBold, flItalic, flUnderline,
   // {spacer big:1}, comboBox.
-  assert.match(JS, /var MAIL_DRAPEAUX = \[\['gras', 'g', 'Gras'\], \['italique', 'i', 'Italique'\],\s*\n\s*\['souligne', 's', 'Souligné'\]\];/);
+  assert.match(JS, /var MAIL_DRAPEAUX = \[\['gras', 'g', T\('bureau\.mailGras', 'Gras'\)\], \['italique', 'i', T\('bureau\.mailItalique', 'Italique'\)\],\s*\n\s*\['souligne', 's', T\('bureau\.mailSouligne', 'Souligné'\)\]\];/);
   const bloc = JS.slice(JS.indexOf("outils.className = 'mx-outils'"), JS.indexOf("form2.insertBefore(outils"));
   assert.ok(bloc.indexOf('mx-outils-esp') < bloc.indexOf("createElement('select')"),
     'l’espace élastique vient AVANT le menu');
@@ -153,7 +153,7 @@ test('les sept corps de `mail.font_size`, « Normal » en place, et `dy: 4`', ()
   assert.match(LANG, /mail\.font_size = "Trop gros;Tr.s gros;Gros;Normal;Petit;Tr.s petit;Illisible"/);
   // Les corps ne sont pas au choix : `AdvancedTextInput.cbSizeEqui` (0x7970d)
   // les porte en clair — [6, 8, 10, 12, 14, 16, 18], que l'InitArray retourne.
-  assert.match(JS, /var MAIL_CORPS = \[\['Trop gros', 18\], \['Très gros', 16\], \['Gros', 14\],\s*\n\s*\['Normal', 12\], \['Petit', 10\], \['Très petit', 8\], \['Illisible', 6\]\];/);
+  assert.match(JS, /var MAIL_CORPS = \[\[T\('bureau\.mailTropGros', 'Trop gros'\), 18\], \[T\('bureau\.mailTresGros', 'Très gros'\), 16\],\s*\n\s*\[T\('bureau\.mailGros', 'Gros'\), 14\], \[T\('bureau\.mailNormal', 'Normal'\), 12\], \[T\('bureau\.mailPetit', 'Petit'\), 10\],\s*\n\s*\[T\('bureau\.mailTresPetit', 'Très petit'\), 8\], \[T\('bureau\.mailIllisible', 'Illisible'\), 6\]\];/);
   // `def: "normal"` : le menu s'ouvre sur le corps du message, 12.
   assert.match(JS, /taille\.value = '12';/);
   // `width: 100` et `dy: 4` — les deux mesures du comboBox.
@@ -179,7 +179,7 @@ test('les drapeaux agissent sur le champ — et l’écart est écrit', () => {
 test('la case `savetooutbox`, dessinée comme `de.CheckBox`', () => {
   // Les guillemets du libellé sont échappés dans le fichier de langue.
   assert.match(LANG, /mail\.add_in_outbox = "Ajouter dans \\"Messages envoy.s\\"";/);
-  assert.match(JS, /var MAIL_COPIE = 'Ajouter dans "Messages envoyés"';/);
+  assert.match(JS, /var MAIL_COPIE = T\('bureau\.mailCopie', 'Ajouter dans "Messages envoyés"'\);/);
   assert.match(JS, /lab\.innerHTML = '<input type="checkbox" id="mail-copie" checked>/);
   // `drawGfx` (0xa971e) : la case en `inputColor.light` cerclée de
   // `inputColor.dark`, SANS arrondi (`curve: 0`) ; la coche est un carré
@@ -218,7 +218,8 @@ test('la visionneuse date en toutes lettres, la liste en chiffres', () => {
   assert.match(JS, /date: mailDateLongue\(m\.date\),/);
   // « $D/$N $H:$I » : PAS D'ANNÉE. On en affichait une.
   const courte = /function mailDateCourte\(s\) \{[\s\S]*?\n  \}/.exec(JS)[0];
-  assert.match(courte, /return m \? m\[3\] \+ '\/' \+ m\[2\] \+ ' ' \+ m\[4\] \+ ':' \+ m\[5\] : String\(s \|\| ''\);/);
+  // Le style « jourHeure » de T.date : « 27/08 20:17 » en français.
+  assert.match(courte, /return m \? T\.date\(new Date\(\+m\[1\], \+m\[2\] - 1, \+m\[3\], \+m\[4\], \+m\[5\]\), 'jourHeure'\) : String\(s \|\| ''\);/);
   // Les douze mois et les sept jours de lang_french.as. « aout » n'a pas
   // d'accent circonflexe d'époque : on garde la faute.
   assert.match(LANG, /date\.month\["8"\] = "aout"/);
@@ -231,7 +232,8 @@ test('mailDateLongue rend « jeudi 27 aout 20:17 »', () => {
   const src = /var MAIL_JOURS = [\s\S]*?function mailDateLongue\(s\) \{[\s\S]*?\n  \}/.exec(JS);
   assert.ok(src, 'mailDateLongue doit exister');
   // eslint-disable-next-line no-new-func
-  const f = new Function(src[0] + '; return mailDateLongue;')();
+  // T, celui du serveur : sans langue courante, le français écrit dans le code.
+  const f = new Function('T', src[0] + '; return mailDateLongue;')(require('../public/js/i18n.js').T);
   assert.strictEqual(f('2026-08-27 20:17:04'), 'jeudi 27 aout 20:17');
   // `$d` est le quantième SANS zéro, `$H:$I` l'heure AVEC.
   assert.strictEqual(f('2026-01-05 09:03:00'), 'lundi 5 janvier 09:03');

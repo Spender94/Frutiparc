@@ -156,7 +156,7 @@ test('la languette « mode rapide » est celle du SWF', () => {
   // Le champ d'époque : Verdana gras 10, `#4D7417`, à 16,3 du dessin.
   assert.match(CSS, /font: 700 10px Verdana, Arial, sans-serif; color: #4D7417;/);
   assert.match(CSS, /#mode-rapide span \{\s*position: absolute; left: 16\.3px;/);
-  assert.match(JS, /txt\.textContent = 'mode rapide';/);
+  assert.match(JS, /txt\.textContent = T\('bureau\.modeRapideMin', 'mode rapide'\);/);
   // `_visible = false` jusqu'à `endMove` : elle n'apparaît qu'une fois la
   // barre partie.
   assert.match(CSS, /#mode-rapide \{[\s\S]*?visibility: hidden;/);

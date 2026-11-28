@@ -74,12 +74,12 @@ test('les libellés sont ceux de lang_french.as, au mot près', () => {
   assert.match(LANG, /langText\.mail\.forward = "Transf.rer";/);
   assert.match(LANG, /langText\.mail\.reply = "R.pondre";/);
   assert.match(LANG, /langText\.mail\.write_new_mail = "Composer un nouveau message";/);
-  assert.match(JS, /if \(pou\) pou\.textContent = 'Supprimer';/);
-  assert.match(JS, /tr\.textContent = 'Transférer';/);
+  assert.match(JS, /if \(pou\) pou\.textContent = T\('bureau\.mailSupprimer', 'Supprimer'\);/);
+  assert.match(JS, /tr\.textContent = T\('bureau\.mailTransferer', 'Transférer'\);/);
   assert.doesNotMatch(JS, /Mettre à la corbeille'/);
   // Les chevrons du gabarit tactile tombent.
-  assert.match(JS, /if \(ret\) ret\.textContent = 'Retour';/);
-  assert.match(JS, /if \(ann\) ann\.textContent = 'Annuler';/);
+  assert.match(JS, /if \(ret\) ret\.textContent = T\('bureau\.mailRetour', 'Retour'\);/);
+  assert.match(JS, /if \(ann\) ann\.textContent = T\('commun\.annuler', 'Annuler'\);/);
   assert.match(LIGHT, /id="mail-retour">‹ Retour<\/button>/, 'le mobile garde son chevron');
 });
 
@@ -87,10 +87,10 @@ test('les étiquettes portent leurs deux-points, et le A n’a pas d’accent', 
   // `mail.date` = « Date : », `mail.from` = « De : », `mail.to` = « A : »,
   // `mail.subject` = « Sujet : ».
   assert.match(LANG, /langText\.mail\.to = "A :";/);
-  assert.match(JS, /\[\['date', 'Date :'\], \['from', 'De :'\], \['to', 'A :'\], \['subject', 'Sujet :'\]\]/);
-  assert.match(JS, /<span class="mx-lab">De :<\/span>/);
-  assert.match(JS, /if \(lblA\) lblA\.textContent = 'A :';/);
-  assert.match(JS, /if \(lblS\) lblS\.textContent = 'Sujet :';/);
+  assert.match(JS, /\[\['date', T\('bureau\.mailDate', 'Date :'\)\], \['from', T\('bureau\.mailDe', 'De :'\)\],\s*\n\s*\['to', T\('bureau\.mailA', 'A :'\)\], \['subject', T\('bureau\.mailSujet', 'Sujet :'\)\]\]/);
+  assert.match(JS, /de\.querySelector\('\.mx-lab'\)\.textContent = T\('bureau\.mailDe', 'De :'\);/);
+  assert.match(JS, /if \(lblA\) lblA\.textContent = T\('bureau\.mailA', 'A :'\);/);
+  assert.match(JS, /if \(lblS\) lblS\.textContent = T\('bureau\.mailSujet', 'Sujet :'\);/);
   // Le mobile garde les siens dans son gabarit.
   assert.match(LIGHT, /<label for="mail-a">À<\/label>/);
 });
@@ -101,16 +101,18 @@ test('répondre et transférer citent le message, au gabarit d’époque', () =>
   assert.match(LANG, /mail\.reply_tpl = '<br><br><b>--- En r.ponse au message ---<\/b>/);
   assert.match(LANG, /mail\.forward_tpl = '<br><br><b>--- Message transf.r. ---<\/b>/);
   const bloc = JS.slice(JS.indexOf('function citerMail'), JS.indexOf('function habillerMail'));
-  assert.match(bloc, /var entete = quoi === 'reply' \? '--- En réponse au message ---' : '--- Message transféré ---';/);
+  // Chaque gabarit est une seule clé de traduction, comme une seule entrée
+  // de lang_french.as.
+  assert.match(bloc, /'\\n\\n--- En réponse au message ---\\nDate : \{date\}\\nDe : \{de\}\\nA : \{a\}\\nSujet : \{sujet\}\\n\\n'/);
+  assert.match(bloc, /'\\n\\n--- Message transféré ---\\nDate : \{date\}\\nDe : \{de\}\\nA : \{a\}\\nSujet : \{sujet\}\\n\\n'/);
   // `$d` n'est pas la date brute : les deux gabarits la passent par
   // `Lang.formatDateString(date, "long")` (0xaec2b et 0xaed9b) — la date en
   // toutes lettres, comme dans l'en-tête de la visionneuse. On citait
   // l'horodatage du serveur (« 2026-08-27 22:13:39 »).
-  assert.match(bloc, /'Date : ' \+ mailDateLongue\(m\.date\) \+ '\\n'/);
-  assert.match(bloc, /'A : ' \+ \(m\.to \|\| ''\) \+ '\\n'/);
+  assert.match(bloc, /var champs = \{ date: mailDateLongue\(m\.date\), de: m\.from \|\| '', a: m\.to \|\| '', sujet: s \};/);
   // `box.ViewMail.forward` (0xaecd9) : « Tr: » collé, et pas de doublon si le
   // sujet en porte déjà un (le SWF teste « tr: » ET « tr : »).
-  assert.match(bloc, /var prefixe = quoi === 'reply' \? 'Re: ' : 'Tr: ';/);
+  assert.match(bloc, /quoi === 'reply' \? T\('bureau\.mailSujetReponse', 'Re: \{sujet\}', \{ sujet: x \}\)\s*\n\s*: T\('bureau\.mailSujetTransfert', 'Tr: \{sujet\}', \{ sujet: x \}\);/);
   assert.match(bloc, /var deja = quoi === 'reply' \? \/\^re\\s\*:\/i : \/\^tr\\s\*:\/i;/);
   // Transférer laisse le destinataire à choisir ; répondre vise l'expéditeur.
   assert.match(bloc, /M\.ecrire\(quoi === 'reply' \? \(m\.from \|\| ''\) : '',/);
@@ -127,8 +129,8 @@ test('ecrireMail accepte un corps, et le mobile n’en passe pas', () => {
 
 test('trois fenêtres d’époque, trois titres', () => {
   assert.match(JS, /retitrer\('mail-panel', val\.subject\);/);
-  assert.match(JS, /if \(vue === 'ecriture'\) retitrer\('mail-panel', 'Composer un nouveau message'\);/);
-  assert.match(JS, /else if \(vue === 'liste'\) retitrer\('mail-panel', MAIL_DOSSIERS\[mailDossierVu\] \|\| 'Courrier'\);/);
+  assert.match(JS, /if \(vue === 'ecriture'\) retitrer\('mail-panel', T\('bureau\.composerMessage', 'Composer un nouveau message'\)\);/);
+  assert.match(JS, /else if \(vue === 'liste'\) retitrer\('mail-panel', MAIL_DOSSIERS\[mailDossierVu\] \|\| T\('bureau\.courrier', 'Courrier'\)\);/);
   assert.match(JS, /retitrerMail: retitrerMail,/);
   // Le light prévient à chaque changement de vue, et seulement lui.
   // …avec le DOSSIER : le bureau ne l'apprenait qu'à l'arrivée de la liste,

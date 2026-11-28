@@ -71,7 +71,7 @@ test('la fenêtre reprend les constantes de `win.Search.init`', () => {
   // Le TITRE est celui du fichier de langue, au mot près :
   // `_global.langText.search.title = "Recherche de frutiz"` (lang_french.as),
   // que `box.Search` lit par `Lang.fv("search.title")` (0x9854c).
-  assert.match(JS, /recherche:\s*\{ panneau: '#recherche-panel', titre: 'Recherche de frutiz', fruit: 'winSearchFrutiz',\s*\n\s*l: 284, h: \d+, fixe: true, min: minFenetre\(270, 20 \+ 24\) \}/);
+  assert.match(JS, /recherche:\s*\{ panneau: '#recherche-panel', titre: T\('bureau\.titreRecherche', 'Recherche de frutiz'\), fruit: 'winSearchFrutiz',\s*\n\s*l: 284, h: \d+, fixe: true, min: minFenetre\(270, 20 \+ 24\) \}/);
   assert.match(JS, /var RC_LARGEUR = 270;/);
   assert.match(JS, /var RC_BLOC_MAX = 6;/);
   assert.match(JS, /var RC_TH = 44, RC_MLEFT = 24;/);
@@ -98,7 +98,7 @@ test('`flDocumentFit` : la hauteur suit le contenu, elle n’est pas fixée', ()
 test('le bouton de la bande des contacts et le menu de l’onglet mènent au même endroit', () => {
   assert.match(JS, /\.sl-recherche'\)\.addEventListener\('click', ouvrirRechercheFenetre\);/);
   assert.match(JS, /function ouvrirRecherche\(\) \{ ouvrirRechercheFenetre\(\); \}/);
-  assert.match(JS, /\{ titre: 'Recherche', faire: ouvrirRecherche \}/);
+  assert.match(JS, /\{ titre: T\('bureau\.recherche', 'Recherche'\), faire: ouvrirRecherche \}/);
 });
 
 test('le mot du bouton est un CHAMP, centré et blanc (DefineEditText #438)', () => {
@@ -110,7 +110,8 @@ test('le mot du bouton est un CHAMP, centré et blanc (DefineEditText #438)', ()
   // La zone utile du champ, gouttière de 2 px comprise : x 16,05..87,45.
   assert.match(b, /padding: 1\.7px 8\.45px 0 16\.05px;/);
   // Et le mot est celui d'époque : `_global.langText.help.search`.
-  assert.match(JS, /class="sl-recherche" title="Recherche de frutiz">Recherche<\/button>/);
+  assert.match(JS, /rechercheBande\.title = T\('bureau\.titreRecherche', 'Recherche de frutiz'\);/);
+  assert.match(JS, /rechercheBande\.textContent = T\('bureau\.recherche', 'Recherche'\);/);
 });
 
 test('le bouton est COLLÉ EN BAS — sinon on ne le voit pas d’une fenêtre courte', () => {
@@ -141,11 +142,11 @@ test('le bouton est COLLÉ EN BAS — sinon on ne le voit pas d’une fenêtre c
 
 test('la ligne simple, dans l’ordre et aux largeurs du bytecode', () => {
   const f = JS.slice(JS.indexOf('function panneauRecherche()'), JS.indexOf('function ligneRecherche()'));
-  assert.match(f, /etiquetteRecherche\('pseudo :', 60\)/);
+  assert.match(f, /etiquetteRecherche\(T\('bureau\.rcPseudo', 'pseudo :'\), 60\)/);
   assert.match(f, /pseudo\.maxLength = 18;/);
   assert.match(f, /espaceRecherche\(4\)/);
   assert.match(f, /boutonRecherche\('ok', 'rc-ok'\)/);
-  assert.match(f, /boutonRecherche\('avancée', 'rc-avance'\)/);
+  assert.match(f, /boutonRecherche\(T\('bureau\.rcAvancee', 'avancée'\), 'rc-avance'\)/);
   assert.match(f, /avance\.style\.marginLeft = '3px';/);            // `dx: 3`
   // `restrict` : les touches interdites ne s'écrivent pas.
   assert.match(f, /filtrerSaisie\(pseudo, \/\[\^0-9A-Za-z\]\/g\);/);
@@ -155,19 +156,19 @@ test('la ligne simple, dans l’ordre et aux largeurs du bytecode', () => {
 test('les quatre lignes avancées, avec l’ordre d’origine des sexes', () => {
   const f = JS.slice(JS.indexOf('var av = document.createElement'), JS.indexOf("form.appendChild(av);"));
   // sexe : l'étiquette de 48, puis Masculin 76, Feminin 76, Tous 60.
-  assert.match(f, /etiquetteRecherche\('sexe :', 48\)/);
-  const radios = [...f.matchAll(/radioRecherche\('([MF]?)', '([^']+)', (\d+)/g)]
+  assert.match(f, /etiquetteRecherche\(T\('bureau\.rcSexe', 'sexe :'\), 48\)/);
+  const radios = [...f.matchAll(/radioRecherche\('([MF]?)', T\('[\w.]+', '([^']+)'\), (\d+)/g)]
     .map((m) => m[2] + ':' + m[3]);
   assert.deepStrictEqual(radios, ['Masculin:76', 'Feminin:76', 'Tous:60']);
   // « Tous » est celui qui est coché — c'est lui qui porte la valeur vide.
-  assert.match(f, /radioRecherche\('', 'Tous', 60, true\)/);
+  assert.match(f, /radioRecherche\('', T\('bureau\.rcTous', 'Tous'\), 60, true\)/);
   // âges : deux étiquettes de 66, deux champs de 40 (maxChars 2), 12 entre eux.
-  assert.match(f, /etiquetteRecherche\('age min :', 66\)/);
+  assert.match(f, /etiquetteRecherche\(T\('bureau\.rcAgeMin', 'age min :'\), 66\)/);
   assert.match(f, /espaceRecherche\(12\)/);
-  assert.match(f, /etiquetteRecherche\('age max :', 66\)/);
+  assert.match(f, /etiquetteRecherche\(T\('bureau\.rcAgeMax', 'age max :'\), 66\)/);
   // pays et région : deux étiquettes de 50, deux menus.
-  assert.match(f, /etiquetteRecherche\('pays :', 50\)/);
-  assert.match(f, /etiquetteRecherche\('region :', 50\)/);
+  assert.match(f, /etiquetteRecherche\(T\('bureau\.rcPays', 'pays :'\), 50\)/);
+  assert.match(f, /etiquetteRecherche\(T\('bureau\.rcRegion', 'region :'\), 50\)/);
 });
 
 /*
@@ -266,7 +267,8 @@ test('`onSearch` : le total ne se relit qu’à la première page', () => {
 test('le pied compte comme `displayBloc`', () => {
   const d = JS.slice(JS.indexOf('function afficherResultats('), JS.indexOf('function texteDePage('));
   assert.match(d, /var nbPages = Math\.ceil\(rcEtat\.total \/ RC_BLOC_MAX\);/);
-  assert.match(d, /page \+ '\/' \+ nbPages \+ ' - ' \+ rcEtat\.total\s*\n\s*\+ ' réponse' \+ \(rcEtat\.total > 1 \? 's' : ''\)/);
+  // « 0 réponse », « 1 réponse », « 2 réponses » : la règle française de T.n.
+  assert.match(d, /T\.n\('bureau\.rcReponses', rcEtat\.total,\s*\n\s*\{ one: '\{page\}\/\{pages\} - \{n\} réponse', other: '\{page\}\/\{pages\} - \{n\} réponses' \},\s*\n\s*\{ page: page, pages: nbPages \}\)/);
 });
 
 /* ── UNE ENTRÉE DU LISTING ────────────────────────────────────────────────── */
@@ -303,7 +305,7 @@ test('les deux lignes du document, à leurs formats', () => {
   assert.match(s, /\.rc-reg,[\s\S]{0,80}?\.rc-ville \{\s*\n\s*flex: 1 1 auto; min-width: 0; text-align: right;\s*\n\s*font: 400 10px Verdana/);
   // Sans date de naissance — elle est facultative —, la case reste vide plutôt
   // que d'annoncer « 0 ans ».
-  assert.match(JS, /age\.textContent = info\.age \? info\.age \+ ' ans' : '';/);
+  assert.match(JS, /age\.textContent = info\.age \? T\('bureau\.ageAns', '\{age\} ans', \{ age: info\.age \}\) : '';/);
 });
 
 test('le voyant : le jeu s’il y en a un, sinon le pip de présence', () => {
@@ -342,10 +344,10 @@ test('les menus pays/région suivent `box.onCountryChange`', () => {
   // (frutiparc/lang_french.as, `_global.langText.search.*`) : ils ne sont plus
   // reconstruits. La substitution du titre des régions est `$n` =
   // `regionName.toLowerCase()`, l'attribut `tn` de la table <ct>.
-  assert.match(JS, /var RC_TITRE_PAYS = 'Tout Pays\.\.\.';/);
-  assert.match(JS, /var RC_TITRE_AVANT_PAYS = 'Choisissez votre pays en premier\.\.\.';/);
-  assert.match(JS, /var RC_TITRE_SANS_REGION = 'non disponible';/);
-  assert.match(m, /'Tout\(e\) ' \+ \(n \|\| 'lieu'\) \+ '\.\.\.'/);
+  assert.match(JS, /var RC_TITRE_PAYS = T\('bureau\.rcToutPays', 'Tout Pays\.\.\.'\);/);
+  assert.match(JS, /var RC_TITRE_AVANT_PAYS = T\('bureau\.rcPaysEnPremier', 'Choisissez votre pays en premier\.\.\.'\);/);
+  assert.match(JS, /var RC_TITRE_SANS_REGION = T\('bureau\.rcNonDisponible', 'non disponible'\);/);
+  assert.match(m, /T\('bureau\.rcToutLieu', 'Tout\(e\) \{lieu\}\.\.\.',\s*\n\s*\{ lieu: n \|\| T\('bureau\.rcLieu', 'lieu'\) \}\)/);
 });
 
 test('le serveur sert `tn` et `d`, et garde l’ORDRE du fichier de langue', () => {

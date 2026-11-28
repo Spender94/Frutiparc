@@ -214,7 +214,7 @@ test('la fenêtre est celle de win.Log — même panneau, même gabarit', () => 
   const f = /kikoozlog:  \{[\s\S]*?min: minFenetre\(300, 200\) \},/.exec(JS);
   assert.ok(f, 'RUBRIQUES.kikoozlog doit exister');
   assert.match(f[0], /panneau: '#evt-panel'/);
-  assert.match(f[0], /titre: 'Historique Kikooz'/);
+  assert.match(f[0], /titre: T\('bureau\.historiqueKikooz', 'Historique Kikooz'\)/);
   // 314 × 246 comme les deux autres journaux, et `win.Log.init` pose
   // `flResizable = false`.
   assert.match(f[0], /l: 314, h: 246, fixe: true/);
@@ -226,7 +226,7 @@ test('le bouton blanc de la boutique passe par activateTab', () => {
   // `apresActivateTab`.
   const f = /\[\['shop-ico-journal'[\s\S]*?\}\], \['shop-ico-kikooz'/.exec(JS);
   assert.ok(f, 'le premier bouton blanc doit exister');
-  assert.match(f[0], /'shop-ico-journal', 'Historique Kikooz'/);
+  assert.match(f[0], /'shop-ico-journal', T\('bureau\.historiqueKikooz', 'Historique Kikooz'\)/);
   assert.match(f[0], /if \(window\.activateTab\) window\.activateTab\('kikoozlog'\);/);
   assert.match(f[0], /else ouvrirFenetre\('kikoozlog'\);/);
   // Il ne renvoie plus vers le Club dans un onglet du navigateur.

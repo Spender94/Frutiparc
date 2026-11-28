@@ -58,9 +58,9 @@ test('la rangée de l’encart porte les six noms, gaspard en tête', () => {
   // Et les noms d'époque, ceux que le survol écrit dans le champ du rang.
   const m = /var GS_NOMS = \{([\s\S]*?)\};/.exec(JS);
   assert.ok(m, 'la table des noms doit exister');
-  assert.match(m[1], /Aide: 'gaspard'/);
-  assert.match(m[1], /Warning: 'evenements'/);
-  assert.match(m[1], /Mail: 'messages'/);
+  assert.match(m[1], /Aide: T\('bureau\.lcdAide', 'gaspard'\)/);
+  assert.match(m[1], /Warning: T\('bureau\.lcdEvenements', 'evenements'\)/);
+  assert.match(m[1], /Mail: T\('bureau\.lcdMail', 'messages'\)/);
 });
 
 test('l’icône ouvre la fenêtre, et le survol nomme la rubrique', () => {
@@ -231,18 +231,18 @@ test('les mots sont ceux de lang_french.as, pas des inventions', () => {
   assert.ok(m, 'la table des mots doit exister');
   // help.link_type.* — le portage avait inventé « Voir aussi » et « Les
   // rubriques », qui n'existent nulle part.
-  assert.match(m[0], /cat_tree: 'Rubriques :'/);
-  assert.match(m[0], /cat_ls: 'Dans cette rubrique :'/);
-  assert.match(m[0], /seealso: 'Voir également :'/);
+  assert.match(m[0], /cat_tree: T\('bureau\.gsRubriques', 'Rubriques :'\)/);
+  assert.match(m[0], /cat_ls: T\('bureau\.gsDansRubrique', 'Dans cette rubrique :'\)/);
+  assert.match(m[0], /seealso: T\('bureau\.gsVoirEgalement', 'Voir également :'\)/);
   assert.ok(!/Voir aussi|Les rubriques/.test(m[0]),
     'les libellés inventés doivent avoir disparu');
   // please_wait, et les deux phrases de résultat avec leur $n.
-  assert.match(m[0], /attente: 'Veuillez patienter\.\.\.'/);
-  assert.match(m[0], /e: 'J’ai trouvé \$n résultats correspondants à votre recherche :'/);
-  assert.match(m[0], /s: 'J’ai trouvé \$n résultats proches de votre recherche :'/);
+  assert.match(m[0], /attente: T\('bureau\.gsAttente', 'Veuillez patienter\.\.\.'\)/);
+  assert.match(m[0], /e: T\('bureau\.gsResultatsExacts', 'J’ai trouvé \$n résultats correspondants à votre recherche :'\)/);
+  assert.match(m[0], /s: T\('bureau\.gsResultatsProches', 'J’ai trouvé \$n résultats proches de votre recherche :'\)/);
   // help.link_back : DEUX liens, `getPrevious` et `getContent` sans argument.
-  assert.match(JS, /var GS_RETOUR = '<a href="#" data-gs="precedent">Précédent<\/a> - '/);
-  assert.match(JS, /data-gs="index">Index de l’aide<\/a>/);
+  assert.match(JS, /var GS_RETOUR = '<a href="#" data-gs="precedent">' \+ T\('bureau\.gsPrecedent', 'Précédent'\) \+ '<\/a> - '/);
+  assert.match(JS, /data-gs="index">' \+ T\('bureau\.gsIndexAide', 'Index de l’aide'\) \+ '<\/a>/);
   // `getContent()` sans argument vaut `getContent(1)` (0x7ff27).
   const c = /function contenuGaspard\(id\) \{[\s\S]*?\n  \}/.exec(JS)[0];
   assert.match(c, /if \(id === undefined\) id = 1;/);
@@ -300,8 +300,8 @@ test('une panne du serveur ouvre une alerte, pas une ligne dans la page', () => 
   assert.match(e[0], /alerte\('', txt\)/);
   const m = /var GS_ERREURS = \{[\s\S]*?\n  \};/.exec(JS);
   assert.ok(m, 'les motifs `error.http.<k>` doivent être portés');
-  assert.match(m[0], /2: 'Action non autorisée'/);
-  assert.match(m[0], /3: 'Requête non valide'/);
+  assert.match(m[0], /2: T\('bureau\.gsErreur2', 'Action non autorisée'\)/);
+  assert.match(m[0], /3: T\('bureau\.gsErreur3', 'Requête non valide'\)/);
   const charge = /function chargerGaspard\(o\) \{[\s\S]*?\n  \}/.exec(JS)[0];
   assert.match(charge, /GS_ERREURS\[k\] \|\| GS_ERREURS\[1\]/);
 });

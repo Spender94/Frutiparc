@@ -185,12 +185,12 @@ test('les mots sont ceux du SWF, à la lettre', () => {
   assert.strictEqual(MANIFESTE.textes.titre, 'CHARGEMENT');
   assert.strictEqual(MANIFESTE.textes.prefixe, 'fichiers restants : ');
   assert.strictEqual(MANIFESTE.textes.infoTitre, 'Information :');
-  assert.match(JS, /var CH_TITRE = 'CHARGEMENT';/);
-  assert.match(JS, /var CH_PREFIXE = 'fichiers restants : ';/);
-  assert.match(JS, /var CH_INFO_TITRE = 'Information :';/);
+  assert.match(JS, /var CH_TITRE = T\('bureau\.chargementTitre', 'CHARGEMENT'\);/);
+  assert.match(JS, /var CH_PREFIXE = T\('bureau\.chargementPrefixe', 'fichiers restants : '\);/);
+  assert.match(JS, /var CH_INFO_TITRE = T\('bureau\.chargementInfoTitre', 'Information :'\);/);
   // La phrase d'époque, apostrophes typographiques mises à part.
   const norm = (s) => s.replace(/[’']/g, "'");
-  const dansJs = /var CH_INFO = '([^']*(?:'[^']*)*?)'\s*\n\s*\+ '([^']*)';/.exec(
+  const dansJs = /var CH_INFO = T\('bureau\.chargementInfo', '([^']*(?:'[^']*)*?)'\s*\n\s*\+ '([^']*)'\);/.exec(
     JS.slice(JS.indexOf('var CH_INFO =')).slice(0, 400));
   assert.ok(dansJs, 'CH_INFO introuvable');
   assert.strictEqual(norm(dansJs[1] + dansJs[2]), norm(MANIFESTE.textes.info));

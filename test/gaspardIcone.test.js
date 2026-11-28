@@ -191,7 +191,7 @@ test('la bande d’un présent est fabriquée par le LIGHT, comme au salon', () 
   assert.ok(f, 'majPresentsGaspard doit exister');
   assert.match(f[0], /var d = \(S && S\.ligne\) \? S\.ligne\(nom\) : null;/);
   // Gaspard n'a pas de fiche : son nom mène à sa fenêtre.
-  assert.match(f[0], /d\.title = 'Parler à ' \+ GS_MOTS\.nom;/);
+  assert.match(f[0], /d\.title = T\('bureau\.gsParlerA', 'Parler à \{nom\}', \{ nom: GS_MOTS\.nom \}\);/);
   assert.match(f[0], /ouvrirGaspard\(\);/);
   // `box.Help.init` : moi d'abord, Gaspard ensuite.
   assert.match(JS, /function gensDeGaspard\(\) \{[\s\S]*?if \(moi\) gens\.push\(moi\);\s*\n\s*gens\.push\(GS_MOTS\.nom\);/);
