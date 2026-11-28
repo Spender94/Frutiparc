@@ -23553,7 +23553,9 @@ async function mb2PublierCarteDuJourMaintenant(why, opts) {
   if (topic && topic.is_locked) topic = null;
   if (!topic) {
     const intro = `Chaque nuit, la map du Challenge de Motion Ball 2 change. Chaque matin, je la relève et je la poste ici : la carte du donjon telle que le jeu la montre, et le détail — le départ, la salle du boss, où trouver chaque bille et chaque bonus, les portes, les passages invisibles.\n\nGardez ce sujet sous le coude : la map du jour est toujours dans le dernier message.`;
-    topic = await db.forumCreateTopic(board.id, MB2_CARTOGRAPHE, MB2_SUJET_FORUM, intro, bouille, null);
+    // Le mot d'ouverture, comme les cartes : le français, puis l'anglais.
+    topic = await db.forumCreateTopic(board.id, MB2_CARTOGRAPHE, MB2_SUJET_FORUM,
+      ForumBilingue.postBilingue(intro, ForumBilingue.traduire('en', 'forumbots.pruneau.intro', '')), bouille, null);
     neuf = true;
     console.log(`[MB2] VieuxPruneau ouvre le sujet #${topic.id} « ${MB2_SUJET_FORUM} » dans « ${board.name} »`);
   }
@@ -23718,7 +23720,9 @@ async function dimitriSujet(o) {
     return null;
   }
   if (!board) board = await rubrique();
-  topic = await db.forumCreateTopic(board.id, Dimitri.PSEUDO_NPC, Dimitri.SUJET, Dimitri.INTRO,
+  // Le mot d'accueil, comme ses annonces : le français, puis l'anglais.
+  topic = await db.forumCreateTopic(board.id, Dimitri.PSEUDO_NPC, Dimitri.SUJET,
+    ForumBilingue.postBilingue(Dimitri.INTRO, ForumBilingue.traduire('en', 'forumbots.dimitri.intro', '')),
     users[Dimitri.PSEUDO_NPC].fbouille, Dimitri.HUMEUR);
   await db.setAppState(DIMITRI_SUJET_ETAT, topic.id);
   console.log(`[DIMITRI] ouvre le sujet #${topic.id} « ${Dimitri.SUJET} » dans « ${board.name} »`);

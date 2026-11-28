@@ -71,6 +71,18 @@ module.exports = {
   'forumbots.natacha.conseil.8': 'The rules fit in one line: be nice. That covers everything.',
   'forumbots.natacha.conseil.9': 'Explore without fear: you can\'t break anything, except records.',
 
+  // ── Dimitri : le premier message du sujet, à son ouverture ──
+  'forumbots.dimitri.intro': 'Hello hello! I\'m Dimitri, I run the park\'s betting counter.\n\n'
+    + 'This topic is yours: it\'s all about [b]bets[/b]. Your picks for tomorrow\'s Challenge, '
+    + 'the tournament favourites, the odds that look too good (or not good enough), your strategies, your regrets… '
+    + 'Debate, comment, tease each other nicely!\n\n'
+    + 'And every time someone pulls off a [b]big win[/b] — a bet that pays off big, on a tournament or on the '
+    + 'Challenge medallists —, I come and announce it here: the punter, their stake, the odds and what they pocketed.\n\n'
+    + 'And at the start of every month, I crown the [b]Prunosticator of the month[/b]: whoever won the most kikooz betting. '
+    + 'They scoop the jackpot and wear the title all through the following month!\n\n'
+    + 'To bet: the "Prunostics" icon on the desktop. Its "Ledger" tab keeps track of all your bets. '
+    + 'Get your picks in, I\'m delighted already!',
+
   // ── Dimitri : les gros coups ──
   'forumbots.dimitri.ouvertureUn.0': 'Now that\'s a big win!',
   'forumbots.dimitri.ouvertureUn.1': 'Incredible, incredible!',
@@ -96,9 +108,9 @@ module.exports = {
   // Ce que le parieur avait vu (server.js, quoiPariChallenge et les tournois).
   'forumbots.dimitri.quoi.or': '{nom} taking gold in {jeu}',
   'forumbots.dimitri.quoi.podium': '{nom} on the podium in {jeu}',
-  'forumbots.dimitri.quoi.defi_or': '{nom}\'s challenge: gold in {jeu}',
-  'forumbots.dimitri.quoi.defi_argent': '{nom}\'s challenge: silver or gold in {jeu}',
-  'forumbots.dimitri.quoi.defi_bronze': '{nom}\'s challenge: a medal in {jeu}',
+  'forumbots.dimitri.quoi.defi_or': '{nom}\'s medal dare: gold in {jeu}',
+  'forumbots.dimitri.quoi.defi_argent': '{nom}\'s medal dare: silver or gold in {jeu}',
+  'forumbots.dimitri.quoi.defi_bronze': '{nom}\'s medal dare: any medal in {jeu}',
   'forumbots.dimitri.quoiTournoi': '{nom} to win',
   'forumbots.dimitri.quoiTournoiAffiche': '{nom} to win ({affiche})',
   'forumbots.dimitri.miseAJour': '— Update at {heure} —',
@@ -116,6 +128,11 @@ module.exports = {
   'forumbots.dimitri.mois.chute.0': 'A new month begins: get your Prunostics in!',
   'forumbots.dimitri.mois.chute.1': 'The counters are back to zero. Who\'ll do better this month?',
   'forumbots.dimitri.mois.chute.2': 'Well done! And for everyone else: the rematch starts today.',
+
+  // ── VieuxPruneau : le premier message du sujet, à son ouverture ──
+  'forumbots.pruneau.intro': 'Every night, the Motion Ball 2 Challenge map changes. Every morning, I survey it and post it here: '
+    + 'the dungeon map as the game shows it, and the details — the start, the boss room, where to find each marble and each bonus, '
+    + 'the doors, the invisible passages.\n\nKeep this topic handy: today\'s map is always in the latest message.',
 
   // ── VieuxPruneau : la map du jour ──
   'forumbots.pruneau.titre': '[b]Today\'s map[/b] — Motion Ball 2 Challenge, {jour}.',

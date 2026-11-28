@@ -6267,7 +6267,11 @@ async function deletePushSubscription(endpoint) {
   await pool.query('DELETE FROM push_subscriptions WHERE endpoint = $1', [endpoint]);
 }
 async function loadAllPushSubscriptions() {
-  const { rows } = await pool.query('SELECT username, endpoint, p256dh, auth, lang FROM push_subscriptions');
+  // La langue de l'appareil ; à défaut (un abonnement d'avant la colonne),
+  // celle du compte.
+  const { rows } = await pool.query(
+    `SELECT s.username, s.endpoint, s.p256dh, s.auth, COALESCE(s.lang, u.lang) AS lang
+       FROM push_subscriptions s LEFT JOIN users u ON LOWER(u.username) = LOWER(s.username)`);
   return rows;
 }
 
