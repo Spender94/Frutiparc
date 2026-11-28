@@ -129,7 +129,7 @@ test('le light sait poser la question et envoyer la trame', () => {
   // `chat.call_moderator`, mot pour mot.
   assert.match(JS, /Etes-vous sûr de vouloir prévenir les modérateurs qu'il y a un problème/);
   assert.match(JS, /Attention !<\/b> à n'utiliser qu'en cas de véritable/);
-  assert.match(JS, /okLabel: 'Oui', cancelLabel: 'Non',/);
+  assert.match(JS, /okLabel: T\('bureau\.oui', 'Oui'\), cancelLabel: T\('bureau\.non', 'Non'\),/);
   // `callModerator` : la trame, et rien de plus.
   assert.match(LIGHT, /wsSend\('<bo g="' \+ xmlEscape\(String\(id \|\| state\.room \|\| ""\)\) \+ '" \/>'\);/);
   // `userList.modePresent()` et le salon public, pour refuser avant d'envoyer.

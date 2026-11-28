@@ -376,7 +376,7 @@ test('le forum s’ouvre DANS la fenêtre principale, et « Déporter » l’env
 
   // « DÉPORTER » — l'entrée du menu, comme pour un jeu, et la fenêtre du
   // bureau se referme avec (le forum QUITTE la page).
-  assert.match(JS, /if \(s && s\.panneau === 'forum-panel'\) m\.push\(\{ titre: 'Déporter', faire: deporterForum \}\);/);
+  assert.match(JS, /if \(s && s\.panneau === 'forum-panel'\) m\.push\(\{ titre: T\('bureau\.deporter', 'Déporter'\), faire: deporterForum \}\);/);
   assert.match(JS, /function deporterForum\(\) \{[\s\S]*?if \(!ForumPorte\.deporter\(\)\)[\s\S]*?if \(fenetres\['forum-panel'\]\) fermerFenetre\('forum-panel'\);/);
 
   // La fenêtre déportée vit dans le light, à côté de celle des jeux — mais
@@ -501,7 +501,7 @@ test('un onglet de JEU gagne « Déporter », au-dessus de « Fermer »', () => 
      LA PLACE : `_y = −(i × tabMenuSpace + 16)` met l'index 0 EN BAS. Poussée
      en fin de tableau, l'entrée se dessine donc TOUT EN HAUT, au-dessus de
      « Fermer » — c'est là qu'elle était demandée. */
-  assert.match(JS, /if \(jeu\) m\.push\(\{ titre: 'Déporter', faire: function \(\) \{ deporterJeu\(jeu, idOnglet\); \} \}\);/);
+  assert.match(JS, /if \(jeu\) m\.push\(\{ titre: T\('bureau\.deporter', 'Déporter'\), faire: function \(\) \{ deporterJeu\(jeu, idOnglet\); \} \}\);/);
   // Elle n'existe que pour un onglet qui PORTE un jeu.
   assert.match(JS, /function jeuDuSlot\(idOnglet\) \{\s*\n\s*var s = slotDe\(idOnglet\);\s*\n\s*return s \? jeuDuPanneau\(s\.panneau\) : null;/);
   assert.match(JS, /if \(rub && rub\.panneau === '#' \+ idPanneau\) return tab;/);
@@ -512,8 +512,8 @@ test('un onglet de JEU gagne « Déporter », au-dessus de « Fermer »', () => 
   // bureau », qui détache le jeu sur le bureau sans l'arrêter.
   assert.match(d, /if \(!confirme && P\.entame && P\.entame\(tab\)\) \{/);
   assert.match(d, /Ta partie en cours sera relancée/);
-  assert.match(d, /\{ titre: 'Vers bureau', faire: function \(\) \{ if \(idOnglet\) versBureau\(idOnglet\); \} \}/);
-  assert.match(d, /\{ titre: 'Déporter', faire: function \(\) \{ deporterJeu\(tab, idOnglet, true\); \} \}/);
+  assert.match(d, /\{ titre: T\('bureau\.versBureau', 'Vers bureau'\), faire: function \(\) \{ if \(idOnglet\) versBureau\(idOnglet\); \} \}/);
+  assert.match(d, /\{ titre: T\('bureau\.deporter', 'Déporter'\), faire: function \(\) \{ deporterJeu\(tab, idOnglet, true\); \} \}/);
   const L = fs.readFileSync(path.join(ROOT, 'public/light.html'), 'utf8');
   assert.match(L, /\["pointerdown", "touchstart", "keydown"\]\.forEach/, 'on retient qu\'on a joué dans le cadre');
   assert.match(L, /entame: function \(tab\) \{ return jeuEntame\(tab\); \},/);

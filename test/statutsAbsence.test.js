@@ -106,7 +106,7 @@ test('le mobile lit le PREMIER caractère et pose l’icône à la place du poin
 
 test('le bureau le montre au carnet et dans la recherche', () => {
   assert.match(BUREAU, /function absenceUrl\(nom\) \{ return '\/fb\/statut_' \+ nom \+ '\.png'; \}/);
-  assert.match(BUREAU, /var ABSENCE_NOM = \{ away: 'Absent', phone: 'Au téléphone', zzz: 'Dort',\s*\n\s*work: 'Au travail', eat: 'À table' \};/);
+  assert.match(BUREAU, /var ABSENCE_NOM = \{\s*\n\s*away: T\('bureau\.absent', 'Absent'\), phone: T\('bureau\.auTelephone', 'Au téléphone'\),\s*\n\s*zzz: T\('bureau\.dort', 'Dort'\), work: T\('bureau\.auTravail', 'Au travail'\),\s*\n\s*eat: T\('bureau\.aTable', 'À table'\),\s*\n\s*\};/);
   // Le carnet : le jeu passe devant, l'absence vient ensuite, et hors ligne
   // rien du tout — une socket fermée n'a pas d'humeur.
   assert.match(BUREAU, /var absence = \(enLigne && !jeu && ABSENCE_NOM\[a\.absence\]\) \? a\.absence : '';/);

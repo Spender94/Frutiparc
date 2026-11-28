@@ -124,7 +124,7 @@ test('le bouton et le champ ne sont plus grisés', () => {
 
 test('l’ordre d’époque est suivi : sujet vide → alerte, sinon créer puis fermer', () => {
   const bloc = JS.slice(JS.indexOf('var lancerCreation'), JS.indexOf("creer.addEventListener('click'"));
-  assert.match(bloc, /alerte\('Impossible de créer ce salon : ',\s*\n\s*'Vous devez spécifier un sujet pour créer un salon\.'\);/);
+  assert.match(bloc, /alerte\(T\('bureau\.salonSansSujet',\s*\n\s*'Impossible de créer ce salon : Vous devez spécifier un sujet pour créer un salon\.'\)\);/);
   assert.match(bloc, /S\.creer\(sujet\)\.then\(/);
   assert.match(bloc, /fermerFenetre\('salons-panel'\);/);
   // Les deux phrases sont celles de lang_french.as, au mot près.
@@ -135,7 +135,7 @@ test('l’ordre d’époque est suivi : sujet vide → alerte, sinon créer puis
 test('win.Alert : deux cadres, un bouton « Fermer », au milieu', () => {
   // `initFrameSet` de sprite#812 : frameDoc min 200 × 80, frameButton 200 × 24.
   assert.match(JS, /min: minFenetre\(200, 80 \+ 24\), centre: true, fixe: true,/);
-  assert.match(JS, /ok\.textContent = 'Fermer';/);
+  assert.match(JS, /ok\.textContent = T\('commun\.fermer', 'Fermer'\);/);
   assert.match(LANG, /_global\.langText\.close = "Fermer";/);
   // Le style `frSystem` est blanc, pas vert — ce n'est pas une feuille.
   assert.match(CSS, /\.fb-alerte-doc \{[\s\S]*?background: #FFFFFF;/);

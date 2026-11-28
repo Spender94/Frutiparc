@@ -1360,7 +1360,7 @@ test('l’arbre des réglages du bureau désigne ses cartes par identifiant', ()
    */
   assert.ok(!/\{ local: \d+,/.test(BUREAU),
     'une rubrique désigne encore sa carte par son rang');
-  const entrees = [...BUREAU.matchAll(/\{ local: '([\w-]+)', label: ("[^"]+"|'[^']+')/g)]
+  const entrees = [...BUREAU.matchAll(/\{ local: '([\w-]+)', label: T\('bureau\.\w+', ("[^"]+"|'[^']+')\)/g)]
     .map((m) => ({ id: m[1], label: m[2].slice(1, -1) }));
   assert.strictEqual(entrees.length, 5, 'les cinq cartes de l’appareil sont dans l’arbre');
   // Chaque identifiant existe dans le HTML, et porte bien le titre annoncé.

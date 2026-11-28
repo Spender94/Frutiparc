@@ -270,7 +270,7 @@ test('le titre est celui de la table : « Mes préférences »', () => {
   assert.match(LANG, /_global\.langText\.pref\.title = "Mes pr\S*f\S*rences";/);
   assert.match(LANG, /_global\.langText\.pref\.save = "Enregistrer";/);
   assert.match(LANG, /_global\.langText\.pref\.use_default = "Valeurs par d\S*faut";/);
-  assert.match(JS, /reglages:\s+\{ panneau: '#reglages-panel',\s+titre: 'Mes préférences',/);
+  assert.match(JS, /reglages:\s+\{ panneau: '#reglages-panel',\s+titre: T\('bureau\.titrePreferences', 'Mes préférences'\),/);
   // Le gabarit vient d'`initFrameSet` : 140 pour l'arbre, 200 pour le panneau.
   assert.match(JS, /min: minFenetre\(140 \+ 200, 200\) \},/);
 });
@@ -283,8 +283,8 @@ test('la fenêtre s’habille à l’ouverture, et relit ses valeurs à chaque f
   // redemande `do/prefForm` à chaque fois, et une fenêtre rouverte ne doit pas
   // rouvrir sur un vieux brouillon.
   assert.match(f[0], /if \(prefHabillee\) \{ chargerPrefs\(panneau\); return; \}/);
-  assert.match(f[0], /outils\.appendChild\(prefBouton\('Valeurs par défaut', prefUseDefault\)\);/);
-  assert.match(f[0], /outils\.appendChild\(prefBouton\('Enregistrer', prefSave\)\);/);
+  assert.match(f[0], /outils\.appendChild\(prefBouton\(T\('bureau\.prefValeursDefaut', 'Valeurs par défaut'\), prefUseDefault\)\);/);
+  assert.match(f[0], /outils\.appendChild\(prefBouton\(T\('bureau\.prefEnregistrer', 'Enregistrer'\), prefSave\)\);/);
   // Les cartes de l'appli descendent DANS le document : leurs identifiants ne
   // bougent pas, tout le JS du mobile les cherche par `id`.
   assert.match(f[0], /var corps = panneau\.querySelector\('#reg-corps'\);/);
@@ -364,10 +364,10 @@ test('les cartes de l’appareil se cachent vraiment', () => {
   assert.match(CSS, /ÉCART ASSUMÉ — la rubrique « Cet appareil »/);
   const loc = /var PF_LOCALES = \[\{[\s\S]*?\n  \}\];/.exec(JS);
   assert.ok(loc, 'PF_LOCALES doit exister');
-  assert.match(loc[0], /name: 'Cet appareil',/);
+  assert.match(loc[0], /name: T\('bureau\.prefCetAppareil', 'Cet appareil'\),/);
   // Par IDENTIFIANT, pas par rang : une carte ajoutée en tête de `#reg-corps`
   // décalait tout l'arbre, et « Notifications » ouvrait la carte du voisin.
-  assert.match(loc[0], /\{ local: 'reg-carte-notifs', label: 'Notifications' \},/);
+  assert.match(loc[0], /\{ local: 'reg-carte-notifs', label: T\('bureau\.prefNotifications', 'Notifications'\) \},/);
   assert.ok(!/\{ local: \d+,/.test(JS), 'plus aucune rubrique ne désigne sa carte par son rang');
 });
 

@@ -118,7 +118,7 @@ test('son unique bouton : « Vider la corbeille », et sa question d’époque',
   // `onLoadList` : la corbeille est le seul dossier à porter `flRemoveAll`.
   assert.match(JS, /if \(uid === 'recyclebin'\) \{ t\.flRemoveAll = true; return t; \}/);
   assert.match(JS, /if \(t\.flRemoveAll\) \{/);
-  assert.match(JS, /boutonNav\('empty_recyclebin', 'Vider la corbeille'/);
+  assert.match(JS, /boutonNav\('empty_recyclebin', T\('bureau\.viderCorbeille', 'Vider la corbeille'\)/);
   // lang_french.as, mot pour mot.
   assert.match(JS, /Etes-vous sûr de vouloir vider votre corbeille \?/);
   assert.match(JS, /fetch\('\/ff\/erb\?sid='/);

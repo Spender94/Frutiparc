@@ -66,7 +66,7 @@ const MENU = JS.slice(JS.indexOf('function menuDuSlot(idOnglet)'),
 
 test('les quatre entrées de tout le monde, dans l’ordre du bytecode', () => {
   const noms = [];
-  const re = /\{ titre: (?:'([^']+)'|repli\.actif \? '([^']+)' : '([^']+)')/g;
+  const re = /\{ titre: (?:T\('[\w.]+', '([^']+)'\)|repli\.actif \? T\('[\w.]+', '([^']+)'\) : T\('[\w.]+', '([^']+)'\))/g;
   let m;
   while ((m = re.exec(MENU)) !== null) noms.push(m[1] || m[3]);
   /* « Mode Flash » occupe la place de « Mode light » : les deux modes ont
@@ -77,7 +77,7 @@ test('les quatre entrées de tout le monde, dans l’ordre du bytecode', () => {
 });
 
 test('« flHalfHide » ne décide que du libellé', () => {
-  assert.match(MENU, /titre: repli\.actif \? 'Afficher barre' : 'Mode rapide',\s*\n\s*faire: function \(\) \{ basculerRepli\(\); \}/);
+  assert.match(MENU, /titre: repli\.actif \? T\('bureau\.afficherBarre', 'Afficher barre'\) : T\('bureau\.modeRapide', 'Mode rapide'\),\s*\n\s*faire: function \(\) \{ basculerRepli\(\); \}/);
 });
 
 test('l’outillage des auteurs n’a pas cours ici, mais il est cité', () => {
