@@ -14008,6 +14008,9 @@ function quetesEchapper(s) {
  *  dans sa langue (`lang`, celle du compte par défaut). */
 function quetesEtatPour(username, lang = langueDe(username)) {
   const u = String(username).toLowerCase();
+  // Gromelin parle dans la langue du compte (celle que la requête aurait lue,
+  // cf. langueDeRequete : toutes ces adresses passent le sid).
+  const L = langueDe(u);
   const S = quetesSemaineCourante();
   const vis = quetesVisites.get(u);
   const vuAt = vis && vis.semaine === S.lundi ? vis.vuAt : 0;
@@ -14043,28 +14046,28 @@ function quetesEtatPour(username, lang = langueDe(username)) {
   // Le contrat compte avec les autres une fois signé ; pas encore signé, il a sa réplique.
   const toutes = contrat.quete ? quetes.concat([contrat.quete]) : quetes;
   const aSigner = contrat.etat === 'a_signer';
-  if (!toutes.length && !aSigner) messages.push(Quetes.parole('rien', {}, alea));
+  if (!toutes.length && !aSigner) messages.push(Quetes.parole('rien', {}, alea, L));
   else {
     if (nouvelleSemaine && quetes.length) {
-      messages.push(Quetes.parole(indiv && indiv.connu ? 'semainePerso' : 'semaine', { n: quetes.length }, alea));
+      messages.push(Quetes.parole(indiv && indiv.connu ? 'semainePerso' : 'semaine', { n: quetes.length }, alea, L));
       // Pas encore d'historique : des quêtes faciles, et la promesse de mieux.
-      if (indiv && !indiv.connu) messages.push(Quetes.parole('inconnu', {}, alea));
+      if (indiv && !indiv.connu) messages.push(Quetes.parole('inconnu', {}, alea, L));
     }
     const neuves = toutes.filter((q) => q.fait && q.faitLe > vuAt).sort((a, b) => a.faitLe - b.faitLe);
-    for (const q of neuves) messages.push(Quetes.parole('faite', { titre: quetesEchapper(q.titre), gain: q.gain }, alea));
+    for (const q of neuves) messages.push(Quetes.parole('faite', { titre: quetesEchapper(q.titre), gain: q.gain }, alea, L));
     // Les bricoles confiées au salon depuis la dernière visite, pas encore faites.
     for (const q of quetes.filter((x) => x.gromelin && !x.fait && x.gromelinAt > vuAt)) {
-      messages.push(Quetes.parole('bricole', { titre: quetesEchapper(q.titre), gain: q.gain }, alea));
+      messages.push(Quetes.parole('bricole', { titre: quetesEchapper(q.titre), gain: q.gain }, alea, L));
     }
     const reste = toutes.filter((q) => !q.fait).length;
     // Les meilleurs (Platine, Légende) : une mise à prix ouverte dans un de leurs jeux.
     const forts = indiv && indiv.niveaux ? Object.entries(indiv.niveaux).filter(([, n]) => n === 'platine' || n === 'legende')
       .map(([k]) => Quetes.MESURES[k] && Quetes.MESURES[k].source.rk) : [];
     const prime = nouvelleSemaine && quetesPrimesVue().find((x) => x.ouverte && forts.includes(x.rk) && x.tenantPseudo !== u);
-    if (prime) messages.push(Quetes.parole('prime', { nom: quetesEchapper(prime.nom), tenant: quetesEchapper(prime.tenant), gain: prime.gain }, alea));
-    if (aSigner) messages.push(Quetes.parole('contrat', {}, alea));
-    else if (!reste) messages.push(Quetes.parole('fini', {}, alea));
-    else if (!nouvelleSemaine) messages.push(Quetes.parole('reste', { reste, s: reste > 1 ? 's' : '' }, alea));
+    if (prime) messages.push(Quetes.parole('prime', { nom: quetesEchapper(prime.nom), tenant: quetesEchapper(prime.tenant), gain: prime.gain }, alea, L));
+    if (aSigner) messages.push(Quetes.parole('contrat', {}, alea, L));
+    else if (!reste) messages.push(Quetes.parole('fini', {}, alea, L));
+    else if (!nouvelleSemaine) messages.push(Quetes.parole('reste', { reste, s: reste > 1 ? 's' : '' }, alea, L));
   }
   const nouveau = nouvelleSemaine || toutes.some((q) => q.fait && q.faitLe > vuAt) || quetes.some((q) => q.gromelin && !q.fait && q.gromelinAt > vuAt);
   return {
@@ -14370,7 +14373,7 @@ app.post('/api/quetes/echanger', async (req, res) => {
     console.log(`[QUETES] ${u} change « ${Quetes.titre(ancienne)} » contre « ${Quetes.titre(neuve)} »`);
     quetesBonusPeutEtre(u, S.lundi);
     const etat = quetesEtatPour(u);
-    etat.messages = [Quetes.parole('echange', { titre: quetesEchapper(Quetes.titre(neuve)) }, Math.random)];
+    etat.messages = [Quetes.parole('echange', { titre: quetesEchapper(Quetes.titre(neuve)) }, Math.random, langueDe(u))];
     res.json(etat);
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
@@ -14403,7 +14406,7 @@ app.post('/api/quetes/contrat', async (req, res) => {
     quetesContratPoser(u, Object.assign(c, { choix, signeAt: Date.now() }));
     console.log(`[QUETES] ${u} signe son contrat : « ${Quetes.titre(c.def)} » (${c.def.niveau})`);
     const etat = quetesEtatPour(u);
-    etat.messages = [Quetes.parole('contratSigne', {}, Math.random)];
+    etat.messages = [Quetes.parole('contratSigne', {}, Math.random, langueDe(u))];
     res.json(etat);
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
@@ -17743,10 +17746,11 @@ app.post('/api/admin/gaspard/reglages', adminAuth, async (req, res) => {
   console.log('[GASPARD] réglages :', JSON.stringify(gaspardReglages));
   res.json({ ok: true, reglages: gaspardReglages });
 });
-// L'essai de l'admin : ce que Gaspard répondrait à une question.
+// L'essai de l'admin : ce que Gaspard répondrait à une question — en
+// français, et ce qu'un anglophone lirait (`texteEn`).
 app.get('/api/admin/gaspard/essai', adminAuth, async (req, res) => {
   const r = Gaspard.repondre(String(req.query.q || ''), await gaspardRubriquesDe(), 'toi');
-  res.json({ ok: true, reponse: r });
+  res.json({ ok: true, reponse: Object.assign(r, { texteEn: texteDe('en', r.tr) }) });
 });
 
 app.get('/api/admin/gaspard/topics', adminAuth, async (req, res) => {
@@ -17773,7 +17777,7 @@ app.get('/api/admin/gaspard/topics/:id', adminAuth, async (req, res) => {
 });
 
 app.post('/api/admin/gaspard/topics', adminAuth, async (req, res) => {
-  const { title, body, parent_id, sort_order, keywords, is_index } = req.body || {};
+  const { title, body, parent_id, sort_order, keywords, is_index, title_en, body_en, keywords_en } = req.body || {};
   if (!title || typeof title !== 'string' || title.trim() === '') {
     return res.status(400).json({ error: 'title_required' });
   }
@@ -17785,6 +17789,10 @@ app.post('/api/admin/gaspard/topics', adminAuth, async (req, res) => {
       sort_order: sort_order != null ? parseInt(sort_order, 10) : 0,
       keywords: typeof keywords === 'string' ? keywords : '',
       is_index: !!is_index,
+      // La version anglaise, facultative (vide : le français pour tous).
+      title_en: typeof title_en === 'string' ? title_en.trim() : '',
+      body_en: typeof body_en === 'string' ? body_en : '',
+      keywords_en: typeof keywords_en === 'string' ? keywords_en : '',
     });
     res.status(201).json({ topic: row });
   } catch (e) {
@@ -17796,7 +17804,7 @@ app.post('/api/admin/gaspard/topics', adminAuth, async (req, res) => {
 app.put('/api/admin/gaspard/topics/:id', adminAuth, async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (!Number.isInteger(id)) return res.status(400).json({ error: 'bad_id' });
-  const { title, body, parent_id, sort_order, keywords, is_index } = req.body || {};
+  const { title, body, parent_id, sort_order, keywords, is_index, title_en, body_en, keywords_en } = req.body || {};
   try {
     const row = await db.updateGaspardHelpTopic(id, {
       title: title !== undefined ? String(title) : null,
@@ -17805,6 +17813,9 @@ app.put('/api/admin/gaspard/topics/:id', adminAuth, async (req, res) => {
       sort_order: sort_order !== undefined ? parseInt(sort_order, 10) : null,
       keywords: keywords !== undefined ? String(keywords) : null,
       is_index: is_index !== undefined ? !!is_index : undefined,
+      title_en: title_en !== undefined ? String(title_en || '').trim() : null,
+      body_en: body_en !== undefined ? String(body_en || '') : null,
+      keywords_en: keywords_en !== undefined ? String(keywords_en || '') : null,
     });
     if (!row) return res.status(404).json({ error: 'not_found' });
     res.json({ topic: row });
@@ -17826,6 +17837,124 @@ app.delete('/api/admin/gaspard/topics/:id', adminAuth, async (req, res) => {
     res.status(500).json({ error: 'delete_failed', detail: e.message });
   }
 });
+
+/*
+ * LA VERSION ANGLAISE DES RUBRIQUES SEMÉES (le semis lui-même est au
+ * démarrage, avec la base : « Hierarchical seed »). Clé : le titre français,
+ * tel qu'il est semé ; l'admin les retouche ensuite librement (onglet Aide
+ * Gaspard, champs « EN »). Une rubrique sans anglais se montre en français.
+ */
+const GASPARD_AIDE_EN = {
+  'Bienvenue chez Gaspard': {
+    title_en: 'Welcome from Gaspard',
+    keywords_en: 'index home welcome gaspard contents',
+    body_en: "Hello! I'm <b>Gaspard</b>, your host on Frutiparc.<br/><br/>"
+      + 'Pick a topic below to explore the site, or type your question in the search box.<br/><br/>'
+      + "If you're new here, I'd suggest starting with <i>On the desktop</i>, then <i>The chat</i>.<br/><br/>"
+      + 'Enjoy your visit with the Frutiz!',
+  },
+  'Sur le bureau': {
+    title_en: 'On the desktop',
+    keywords_en: 'desktop icon navigation',
+    body_en: 'The Frutiparc desktop is the home screen you land on after logging in.<br/><br/>'
+      + 'It has several icons, each opening a window: your discs, your inventory, your mailbox, your contacts, and plenty more.<br/><br/>'
+      + 'Click a sub-topic below to find out more.',
+  },
+  'Les ic&#244;nes du bureau': {
+    title_en: 'The desktop icons',
+    keywords_en: 'icon desktop disc inventory mail contact',
+    body_en: 'The main desktop icons:<br/>'
+      + '&#8226; <i>My discs</i>: your game collection<br/>'
+      + '&#8226; <i>Inventory</i>: your accessories, wallpapers and pictos<br/>'
+      + '&#8226; <i>Mailbox</i>: your incoming mail<br/>'
+      + '&#8226; <i>My contacts</i>: your Frutiz friends<br/>'
+      + '&#8226; <i>Shop</i>: accessories and wallpapers to buy with Kikooz',
+  },
+  'La console Frusion': {
+    title_en: 'The Frusion console',
+    keywords_en: 'frusion console disc game play eject',
+    body_en: 'The <b>Frusion console</b> is the machine you play your games on.<br/><br/>'
+      + 'To play, drag a disc from <i>My discs</i> onto the console. To stop, click the eject button or put the disc back in its case.',
+  },
+  'Le chat': {
+    title_en: 'The chat',
+    keywords_en: 'chat room apple conversation command',
+    body_en: 'The Frutiparc chat is made up of several colourful chat rooms, shown as apples at the top left of the desktop.<br/><br/>'
+      + 'Click an apple to join that chat room. Then pick your felt pen colour from the palette and chat away with the other Frutiz.',
+  },
+  'Rejoindre un salon': {
+    title_en: 'Joining a chat room',
+    keywords_en: 'room join apple colour color',
+    body_en: 'To join a chat room, just click one of the coloured apples at the top left of the desktop. Each apple is a themed chat room.',
+  },
+  'Les commandes de chat': {
+    title_en: 'Chat commands',
+    keywords_en: 'command slash help topic profile give kick status away',
+    body_en: 'A few handy chat commands:<br/>'
+      + '&#8226; <i>/help</i> or <i>/aide</i>: opens this window<br/>'
+      + "&#8226; <i>/fiche username</i>: shows a Frutiz's profile<br/>"
+      + "&#8226; <i>/! username message</i>: a message only that Frutiz, who must be in the chat room, will see (it doesn't show up in the logs)<br/>"
+      + '&#8226; <i>/ignore username</i>: you no longer see their messages in the chat rooms (they go on your blacklist); '
+      + '<i>/unignore username</i> to undo it, <i>/ignore</i> on its own for the list<br/>'
+      + '&#8226; <i>/status away</i>, <i>phone</i>, <i>zzz</i>, <i>work</i>, <i>eat</i>: '
+      + "swaps your green dot for a little icon that says what you're up to "
+      + '(<i>/status off</i> to remove it)<br/>'
+      + '&#8226; <i>/give number username</i>: gives Kikooz (the number first!)<br/>'
+      + '&#8226; <i>/d6</i>, <i>/d20</i>&#8230;: rolls a die in front of the whole chat room<br/>'
+      + '&#8226; <i>/lg help</i>: the werewolf commands, when a host is running a game<br/>'
+      + '&#8226; <i>/topic ...</i>: changes the chat room topic (moderators)',
+  },
+  'Mon profil': {
+    title_en: 'My profile',
+    keywords_en: 'profile bouille frutibouille accessory',
+    body_en: 'Your profile is the identity other Frutiz see.<br/><br/>'
+      + 'It includes your <i>Frutibouille</i> (your avatar), your profile card, your accessories and your pictos. You can customise all of it.',
+  },
+  'Ma Frutibouille': {
+    title_en: 'My Frutibouille',
+    keywords_en: 'bouille frutibouille avatar look customise customize editor',
+    body_en: 'Your <b>Frutibouille</b> is your avatar on Frutiparc.<br/><br/>'
+      + 'To customise it, click your own profile and use the bouille editor: hair, eyes, skin, clothes and accessories can all be changed.',
+  },
+  'Les accessoires': {
+    title_en: 'Accessories',
+    keywords_en: 'accessory shop inventory wallpaper background',
+    body_en: 'Your accessories are kept in your <i>Inventory</i>. Use them to dress up your Frutibouille.<br/><br/>'
+      + 'New accessories unlock as you play, or can be bought in the <i>Shop</i> with Kikooz.',
+  },
+  'Mes pictos': {
+    title_en: 'My pictos',
+    keywords_en: 'picto titem reward profile card fruticard',
+    body_en: '<b>Pictos</b> (or <b>titems</b>) are the rewards you earn by playing.<br/><br/>'
+      + 'Each game has its own pictos to unlock by reaching certain goals. All your pictos show up in your <i>Inventory &#8594; Pictos</i> and on your <i>FrutiCard</i>.',
+  },
+  'Les jeux': {
+    title_en: 'The games',
+    keywords_en: 'game disc score challenge medal picto',
+    body_en: 'Frutiparc offers a dozen Flash games you can launch from your discs.<br/><br/>'
+      + 'Each game has its own pictos, its classic ranking (personal records) and its daily challenge (the Challenge).',
+  },
+  'Lancer un jeu': {
+    title_en: 'Launching a game',
+    keywords_en: 'game disc console frusion launch play',
+    body_en: 'Drag a disc from <i>My discs</i> onto the Frusion console. The game opens in its own window.<br/><br/>'
+      + "To put the game away, click the console's eject button or close the window.",
+  },
+  'Les scores et le challenge': {
+    title_en: 'Scores and the Challenge',
+    keywords_en: 'score ranking challenge medal gold silver bronze daily',
+    body_en: 'Your scores come in two kinds:<br/>'
+      + '&#8226; <b>Classic</b>: your best score ever in the game<br/>'
+      + '&#8226; <b>Challenge</b>: your best score of the day, reset every night<br/><br/>'
+      + 'Every day, the three best Challenge players win a gold, silver or bronze medal.',
+  },
+  'Les Kikooz': {
+    title_en: 'Kikooz',
+    keywords_en: 'kikooz money currency shop gift give',
+    body_en: "<b>Kikooz</b> are Frutiparc's virtual currency.<br/><br/>"
+      + 'You earn them by playing, chatting and taking on daily challenges. You can spend them in the <i>Shop</i> or give them to another Frutiz with the <i>/give number username</i> command (for example <i>/give 10 Gaspard</i>).',
+  },
+};
 
 // ───────── Public Gaspard help endpoints (consumed by main.swf) ─────────
 /*
@@ -17895,13 +18024,31 @@ function gaspardBodyXml(body) {
 // whichever topic the admin has flagged as is_index, regardless of id.
 const GASPARD_HOME_ID = 1;
 
+// LA LANGUE DE L'AIDE. Le bureau JS demande `lang=en` quand il parle anglais :
+// chaque rubrique se montre alors dans sa version anglaise quand elle en a une
+// (title_en, body_en — onglet Aide Gaspard de l'admin), en français sinon. Le
+// SWF d'époque ne demande rien : il reste en français. Les rubriques sont
+// mises dans la langue AVANT d'être écrites : `title` et `body` sont ceux
+// qu'on montre, et la recherche lit les mots-clés des deux langues (et le
+// titre français), puisqu'on ne sait pas dans laquelle on cherche.
+function gaspardLangueAide(params) { return FPI18n.valide(params && params.lang) || 'fr'; }
+function gaspardAideEnLangue(liste, lang) {
+  if (lang === 'fr') return liste;
+  return liste.map((t) => Object.assign({}, t, {
+    title: String(t.title_en || '').trim() ? t.title_en : t.title,
+    body: String(t.body_en || '').trim() ? t.body_en : t.body,
+    keywords: [t.keywords, t.keywords_en, t.title].filter(Boolean).join(' '),
+  }));
+}
+
 app.all(['/fh/get', '/legacy/fh/get'], async (req, res) => {
   const params = Object.assign({}, req.query || {}, req.body || {});
+  const lang = gaspardLangueAide(params);
   const idRaw = params.i || params.k || params.id || '';
   const id = parseInt(String(idRaw), 10);
   console.log(`[GASPARD] /fh/get method=${req.method} idRaw=${JSON.stringify(idRaw)} parsedId=${Number.isInteger(id) ? id : '(none)'} q=${JSON.stringify(req.query)} b=${JSON.stringify(req.body || {})}`);
   try {
-    const all = await db.listGaspardHelpTopics();
+    const all = gaspardAideEnLangue(await db.listGaspardHelpTopics(), lang);
     // Les liens d'un groupe. `onGetContent` range chaque `<l>` INTÉRIEUR dans
     // `links[t]` : le groupe est un attribut du lien, pas le nom du conteneur.
     // `cat_ls` = les sous-rubriques de la page courante, `cat_tree` = les
@@ -17942,9 +18089,9 @@ app.all(['/fh/get', '/legacy/fh/get'], async (req, res) => {
     if (!topic) {
       // No admin-defined index → emit a generated welcome so the SWF still
       // has something to render with the root nav.
-      const indexBody = "Bienvenue ! Choisissez une rubrique ci-dessous, ou utilisez la recherche.";
+      const indexBody = t(lang, 'gaspard.aideAccueil', "Bienvenue ! Choisissez une rubrique ci-dessous, ou utilisez la recherche.");
       return res.type('text/xml').send(
-        `<?xml version="1.0" encoding="UTF-8"?>\n<h i="0" n="Index de l'aide"><c>${gaspardBodyXml(indexBody)}</c>${liens(rootTree)}</h>`
+        `<?xml version="1.0" encoding="UTF-8"?>\n<h i="0" n="${escapeXmlText(t(lang, 'gaspard.aideIndex', "Index de l'aide"))}"><c>${gaspardBodyXml(indexBody)}</c>${liens(rootTree)}</h>`
       );
     }
 
@@ -17968,6 +18115,7 @@ app.all(['/fh/get', '/legacy/fh/get'], async (req, res) => {
 app.all(['/fh/search', '/legacy/fh/search'], async (req, res) => {
   const params = Object.assign({}, req.query || {}, req.body || {});
   const query = String(params.s || '').trim().toLowerCase();
+  const lang = gaspardLangueAide(params);
   console.log(`[GASPARD] /fh/search method=${req.method} s=${JSON.stringify(query)} q=${JSON.stringify(req.query)} b=${JSON.stringify(req.body || {})}`);
   // `n` porte le NOMBRE de résultats, et `onSearch` le passe à `Number()` :
   // « no_result » y devenait NaN, ni `< 1` ni `== 1`, et la fenêtre partait
@@ -17976,7 +18124,7 @@ app.all(['/fh/search', '/legacy/fh/search'], async (req, res) => {
     return res.type('text/xml').send('<r n="0" m="e"/>');
   }
   try {
-    const all = await db.listGaspardHelpTopics();
+    const all = gaspardAideEnLangue(await db.listGaspardHelpTopics(), lang);
     const tokens = query.split(/\s+/).filter(Boolean);
     const matchesExact = (t) => {
       const hay = ((t.title || '') + ' ' + (t.keywords || '')).toLowerCase();
@@ -22861,12 +23009,13 @@ app.post('/api/admin/kiloute/questions', adminScope('kiloute'), async (req, res)
   // An image is optional; only accept an id that maps to an uploaded quiz image.
   const image = (b.image && QUIZ_IMAGES[String(b.image)]) ? String(b.image) : null;
   if (!question || answers.length === 0) return res.status(400).json({ error: 'Question et au moins une réponse requises.' });
+  const en = kilouteAnglaisRecu(b);
   let id = KILOUTE_QUESTIONS.reduce((m, q) => Math.max(m, q.id || 0), 0) + 1;
   if (process.env.DATABASE_URL) {
-    try { id = await db.insertKilouteQuestion(question, answers, reveal, KILOUTE_QUESTIONS.length, image); }
+    try { id = await db.insertKilouteQuestion(question, answers, reveal, KILOUTE_QUESTIONS.length, image, { q: en.qEn, a: en.aEn, r: en.rEn }); }
     catch (e) { console.error('[KILOUTE] db insert:', e.message); }
   }
-  const q = { id, q: question, a: answers, r: reveal, image };
+  const q = Object.assign({ id, q: question, a: answers, r: reveal, image }, en);
   KILOUTE_QUESTIONS.push(q);
   console.log(`[ADMIN] Kiloute question #${id} ajoutée`);
   res.json({ ok: true, question: q });
@@ -22881,8 +23030,11 @@ app.patch('/api/admin/kiloute/questions/:id', adminScope('kiloute'), async (req,
   if (b.answers !== undefined) q.a = parseKilouteAnswers(b.answers);
   if (b.reveal !== undefined) q.r = String(b.reveal).trim();
   if (b.image !== undefined) q.image = (b.image && QUIZ_IMAGES[String(b.image)]) ? String(b.image) : null;
+  if (b.questionEn !== undefined || b.answersEn !== undefined || b.revealEn !== undefined) {
+    Object.assign(q, kilouteAnglaisRecu(Object.assign({ questionEn: q.qEn, answersEn: q.aEn, revealEn: q.rEn }, b)));
+  }
   if (process.env.DATABASE_URL) {
-    try { await db.updateKilouteQuestion(id, q.q, q.a, q.r, q.image || null); }
+    try { await db.updateKilouteQuestion(id, q.q, q.a, q.r, q.image || null, { q: q.qEn, a: q.aEn, r: q.rEn }); }
     catch (e) { console.error('[KILOUTE] db update:', e.message); }
   }
   console.log(`[ADMIN] Kiloute question #${id} modifiée`);
@@ -22922,10 +23074,10 @@ app.post('/api/admin/kiloute/questions/import', adminScope('kiloute'), async (re
     if (!q) { errors.push(`#${i + 1} : énoncé ou réponses manquants`); continue; }
     let id = KILOUTE_QUESTIONS.reduce((m, x) => Math.max(m, x.id || 0), 0) + 1;
     if (process.env.DATABASE_URL) {
-      try { id = await db.insertKilouteQuestion(q.q, q.a, q.r, KILOUTE_QUESTIONS.length, q.image); }
+      try { id = await db.insertKilouteQuestion(q.q, q.a, q.r, KILOUTE_QUESTIONS.length, q.image, { q: q.qEn, a: q.aEn, r: q.rEn }); }
       catch (e) { console.error('[KILOUTE] import question:', e.message); errors.push(`#${i + 1} : erreur base de données`); continue; }
     }
-    KILOUTE_QUESTIONS.push({ id, q: q.q, a: q.a, r: q.r, image: q.image });
+    KILOUTE_QUESTIONS.push({ id, q: q.q, a: q.a, r: q.r, image: q.image, qEn: q.qEn, aEn: q.aEn, rEn: q.rEn });
     created.push({ id, q: q.q });
   }
   console.log(`[ADMIN] Import de questions quotidiennes : ${created.length} ajoutée(s), ${errors.length} erreur(s)`);
@@ -23026,6 +23178,8 @@ app.post('/api/admin/kiloute/session/start', adminScope('kiloute'), (req, res) =
     channel: b.channel ? String(b.channel) : '',
     reward: b.reward,
     windowSec: b.windowSec,
+    // `pas` (ms entre deux répliques) : pour l'essayer vite, et pour les tests.
+    pas: b.pas !== undefined ? Math.max(100, Math.min(10000, Number(b.pas) || 0)) : undefined,
   });
   if (!r.ok) return res.status(409).json({ error: r.error });
   console.log(`[ADMIN] Quiz "${r.name}" lancé dans #${r.channel} (${r.count} questions)`);
@@ -23043,8 +23197,9 @@ app.get('/api/admin/kiloute/session/status', adminScope('kiloute'), (req, res) =
 });
 
 // ── Quizz : CRUD (un quiz = nom + récompense + délai + questions) ──
-// Normalise une liste de questions reçue de l'admin → [{ q, a:[], r, image }].
-// Tolère { question/q, answers/a, reveal/r, image } ; retire les invalides.
+// Normalise une liste de questions reçue de l'admin → [{ q, a:[], r, image,
+// qEn, aEn:[], rEn }]. Tolère { question/q, answers/a, reveal/r, image } (et
+// questionEn/qEn, answersEn/aEn, revealEn/rEn) ; retire les invalides.
 function normalizeQuizQuestions(arr) {
   if (!Array.isArray(arr)) return [];
   return arr.map((it) => {
@@ -23052,8 +23207,22 @@ function normalizeQuizQuestions(arr) {
     const a = parseKilouteAnswers(it && (it.a !== undefined ? it.a : it.answers));
     const r = String((it && (it.r !== undefined ? it.r : it.reveal)) || '').trim() || a[0] || '';
     const image = (it && it.image && QUIZ_IMAGES[String(it.image)]) ? String(it.image) : null;
-    return { q, a, r, image };
+    return Object.assign({ q, a, r, image }, kilouteAnglaisRecu(it || {}));
   }).filter((x) => x.q && x.a.length);
+}
+/*
+ * LA VERSION ANGLAISE d'une question, reçue de l'admin (formulaire, import
+ * JSON) : { qEn, aEn, rEn }, toutes facultatives. Sans énoncé anglais, rien
+ * d'anglais (la question se pose en français à tous) ; sans réponse affichée
+ * anglaise, la première réponse acceptée anglaise. Les réponses anglaises
+ * s'ajoutent aux françaises : un salon mêlé peut répondre dans les deux.
+ */
+function kilouteAnglaisRecu(it) {
+  const qEn = String((it.qEn !== undefined ? it.qEn : it.questionEn) || '').trim();
+  if (!qEn) return { qEn: '', aEn: [], rEn: '' };
+  const aEn = parseKilouteAnswers(it.aEn !== undefined ? it.aEn : it.answersEn);
+  const rEn = String((it.rEn !== undefined ? it.rEn : it.revealEn) || '').trim() || aEn[0] || '';
+  return { qEn, aEn, rEn };
 }
 
 // Heure de programmation d'un quiz : "HH:MM" (Europe/Paris) ou null (manuel).
@@ -23081,12 +23250,13 @@ app.post('/api/admin/kiloute/quizzes', adminScope('kiloute'), async (req, res) =
   const windowSec = Math.max(10, Math.min(600, Math.round(Number(b.windowSec) || 90)));
   const time = normalizeQuizTime(b.time);
   const questions = normalizeQuizQuestions(b.questions);
+  const nameEn = String(b.nameEn || '').trim();
   let id = QUIZZES.reduce((m, q) => Math.max(m, q.id || 0), 0) + 1;
   if (process.env.DATABASE_URL) {
-    try { id = await db.insertQuiz(name, reward, windowSec, questions, QUIZZES.length, time); }
+    try { id = await db.insertQuiz(name, reward, windowSec, questions, QUIZZES.length, time, nameEn); }
     catch (e) { console.error('[KILOUTE] quiz insert:', e.message); }
   }
-  const quiz = { id, name, reward, windowSec, time, questions };
+  const quiz = { id, name, nameEn, reward, windowSec, time, questions };
   QUIZZES.push(quiz);
   console.log(`[ADMIN] Quiz #${id} "${name}" créé (${questions.length} questions${time ? ', programmé à ' + time : ''})`);
   res.json({ ok: true, quiz });
@@ -23113,12 +23283,13 @@ app.post('/api/admin/kiloute/quizzes/import', adminScope('kiloute'), async (req,
     const time = normalizeQuizTime(q.time);
     const questions = normalizeQuizQuestions(q.questions);
     if (!questions.length) { errors.push(`#${i + 1} « ${name} » : aucune question valide`); continue; }
+    const nameEn = String(q.nameEn || '').trim();
     let id = QUIZZES.reduce((m, x) => Math.max(m, x.id || 0), 0) + 1;
     if (process.env.DATABASE_URL) {
-      try { id = await db.insertQuiz(name, reward, windowSec, questions, QUIZZES.length, time); }
+      try { id = await db.insertQuiz(name, reward, windowSec, questions, QUIZZES.length, time, nameEn); }
       catch (e) { console.error('[KILOUTE] import insert:', e.message); errors.push(`#${i + 1} « ${name} » : erreur base de données`); continue; }
     }
-    QUIZZES.push({ id, name, reward, windowSec, time, questions });
+    QUIZZES.push({ id, name, nameEn, reward, windowSec, time, questions });
     created.push({ id, name, questions: questions.length });
   }
   console.log(`[ADMIN] Import quizz : ${created.length} créé(s), ${errors.length} erreur(s)`);
@@ -23131,12 +23302,13 @@ app.patch('/api/admin/kiloute/quizzes/:id', adminScope('kiloute'), async (req, r
   if (!quiz) return res.status(404).json({ error: 'not found' });
   const b = req.body || {};
   if (b.name !== undefined) quiz.name = String(b.name).trim() || quiz.name;
+  if (b.nameEn !== undefined) quiz.nameEn = String(b.nameEn || '').trim();
   if (b.reward !== undefined) quiz.reward = Math.max(1, Math.min(10000, Math.round(Number(b.reward) || 60)));
   if (b.windowSec !== undefined) quiz.windowSec = Math.max(10, Math.min(600, Math.round(Number(b.windowSec) || 90)));
   if (b.time !== undefined) quiz.time = normalizeQuizTime(b.time);
   if (b.questions !== undefined) quiz.questions = normalizeQuizQuestions(b.questions);
   if (process.env.DATABASE_URL) {
-    try { await db.updateQuiz(id, quiz.name, quiz.reward, quiz.windowSec, quiz.questions, quiz.time || null); }
+    try { await db.updateQuiz(id, quiz.name, quiz.reward, quiz.windowSec, quiz.questions, quiz.time || null, quiz.nameEn || ''); }
     catch (e) { console.error('[KILOUTE] quiz update:', e.message); }
   }
   console.log(`[ADMIN] Quiz #${id} "${quiz.name}" modifié (${quiz.questions.length} questions${quiz.time ? ', programmé à ' + quiz.time : ''})`);
@@ -35473,13 +35645,23 @@ async function boot() {
           // drapeau, pour que le prochain backlog vide reste vide.
           if (dbq.length === 0) {
             for (let i = 0; i < KILOUTE_DEFAULT_QUESTIONS.length; i++) {
-              const q = KILOUTE_DEFAULT_QUESTIONS[i];
-              await db.insertKilouteQuestion(q.q, q.a, q.r, i);
+              const q = kilouteAvecAnglais(KILOUTE_DEFAULT_QUESTIONS[i]);
+              await db.insertKilouteQuestion(q.q, q.a, q.r, i, null, q.qEn ? { q: q.qEn, a: q.aEn, r: q.rEn } : null);
             }
             KILOUTE_QUESTIONS = await db.loadKilouteQuestions();
             console.log(`[DB] Seeded ${KILOUTE_QUESTIONS.length} Kiloute questions (defaults)`);
           }
           await db.setAppState('kiloute_defauts_semes', new Date().toISOString());
+        }
+        // Les questions livrées, semées avant leur version anglaise : elles la
+        // reçoivent, UNE fois (app_state `kiloute_anglais`, posé avec le quiz
+        // par défaut plus bas) — celles qui en ont une ne bougent pas, et une
+        // version anglaise que l'admin efface ne repousse pas.
+        const kilouteAnglaisFait = !!(await db.getAppState('kiloute_anglais'));
+        for (const q of kilouteAnglaisFait ? [] : KILOUTE_QUESTIONS) {
+          if (q.qEn || !KILOUTE_EN[q.q]) continue;
+          Object.assign(q, kilouteAvecAnglais(q));
+          await db.updateKilouteQuestion(q.id, q.q, q.a, q.r, q.image || null, { q: q.qEn, a: q.aEn, r: q.rEn });
         }
         if (!KILOUTE_QUESTIONS.length) {
           console.log('[DB] Kiloute : backlog VIDE — plus de Question à 60 kikooz tant qu’il n’est pas réapprovisionné.');
@@ -35490,14 +35672,31 @@ async function boot() {
       try {
         QUIZZES = await db.loadQuizzes();
         // Sème les quiz "prêts à l'emploi" absents (repérés par nom) — idempotent.
+        const kilouteAnglaisFait = !!(await db.getAppState('kiloute_anglais'));
         for (const dq of DEFAULT_QUIZZES) {
-          if (QUIZZES.some((q) => q.name === dq.name)) continue;
+          const existant = QUIZZES.find((q) => q.name === dq.name);
+          if (existant) {
+            // Semé avant sa version anglaise : il la reçoit, question par
+            // question, une fois (celles que l'admin a traduites ou changées restent).
+            if (kilouteAnglaisFait) continue;
+            const neuves = existant.questions.map((x) => kilouteAvecAnglais(x));
+            const nomEn = existant.nameEn || KILOUTE_QUIZ_NOM_EN[dq.name] || '';
+            if (neuves.some((x, i) => x.qEn !== existant.questions[i].qEn) || nomEn !== (existant.nameEn || '')) {
+              Object.assign(existant, { questions: neuves, nameEn: nomEn });
+              await db.updateQuiz(existant.id, existant.name, existant.reward, existant.windowSec, existant.questions, existant.time || null, nomEn)
+                .catch((e) => console.error('[DB] quiz anglais :', e.message));
+            }
+            continue;
+          }
           try {
-            const id = await db.insertQuiz(dq.name, dq.reward, dq.windowSec, dq.questions, QUIZZES.length);
-            QUIZZES.push({ id, name: dq.name, reward: dq.reward, windowSec: dq.windowSec, questions: dq.questions.map((x) => ({ q: x.q, a: x.a.slice(), r: x.r, image: x.image || null })) });
+            const questions = dq.questions.map((x) => kilouteAvecAnglais({ q: x.q, a: x.a.slice(), r: x.r, image: x.image || null }));
+            const nameEn = KILOUTE_QUIZ_NOM_EN[dq.name] || '';
+            const id = await db.insertQuiz(dq.name, dq.reward, dq.windowSec, questions, QUIZZES.length, null, nameEn);
+            QUIZZES.push({ id, name: dq.name, nameEn, reward: dq.reward, windowSec: dq.windowSec, questions });
             console.log(`[DB] Seeded default quiz "${dq.name}" (${dq.questions.length} questions)`);
           } catch (e) { console.error('[DB] seed quiz error:', e.message); }
         }
+        if (!kilouteAnglaisFait) await db.setAppState('kiloute_anglais', new Date().toISOString());
         if (QUIZZES.length) console.log(`[DB] Loaded ${QUIZZES.length} quiz(zes)`);
       } catch (e) { console.error('[DB] Quizzes load error:', e.message); }
       try {
@@ -35708,11 +35907,12 @@ async function boot() {
           let seeded = 0;
           for (const cat of seedTree) {
             const { children = [], ...catFields } = cat;
-            const root = await db.createGaspardHelpTopic({ ...catFields, parent_id: null });
+            const root = await db.createGaspardHelpTopic({ ...catFields, ...(GASPARD_AIDE_EN[catFields.title] || {}), parent_id: null });
             seeded++;
             for (let i = 0; i < children.length; i++) {
               await db.createGaspardHelpTopic({
                 ...children[i],
+                ...(GASPARD_AIDE_EN[children[i].title] || {}),
                 parent_id: root.id,
                 sort_order: (i + 1) * 10,
               });
@@ -35722,6 +35922,22 @@ async function boot() {
           console.log(`[GASPARD] Seeded ${seeded} help topic(s) — hierarchy with is_index landing page`);
         } else {
           console.log(`[GASPARD] ${existingTopics.length} help topic(s) already in DB`);
+          // Une base semée AVANT la version anglaise : les rubriques d'origine
+          // (même titre français) la reçoivent, UNE fois (app_state
+          // `gaspard_aide_anglais`) — celles que l'admin a déjà traduites,
+          // renommées ou ajoutées ne bougent pas, et une version anglaise qu'il
+          // efface ensuite ne repousse pas au redémarrage.
+          if (!await db.getAppState('gaspard_aide_anglais')) {
+            let traduites = 0;
+            for (const t of existingTopics) {
+              const en = GASPARD_AIDE_EN[t.title];
+              if (!en || String(t.title_en || '').trim()) continue;
+              await db.updateGaspardHelpTopic(t.id, Object.assign({ parent_id: t.parent_id }, en));
+              traduites++;
+            }
+            await db.setAppState('gaspard_aide_anglais', new Date().toISOString());
+            if (traduites) console.log(`[GASPARD] ${traduites} help topic(s) given their English version`);
+          }
         }
       } catch (e) { console.error('[GASPARD] Seed error:', e.message); }
       try {
@@ -36679,8 +36895,10 @@ function gaspardEcoute(g, username, texte) {
     setTimeout(() => {
       if (!channels[g]) return;
       gaspardVisite(g);
-      npcSay('gaspard', g, `@${nom} ${r.texte}`, 'm', [username]);
-      console.log(`[GASPARD] ${u} sur ${g} : « ${q.slice(0, 60)} » → ${r.source}${r.cle ? ' (' + r.cle + ')' : ''}`);
+      // La réponse dans la langue de chaque lecteur : `r.tr` est la réponse
+      // traduisible (gaspard.js), quelle que soit la langue de la question.
+      npcSay('gaspard', g, { k: 'gaspard.mention', fr: '@{nom} {reponse}', p: { nom, reponse: r.tr } }, 'm', [username]);
+      console.log(`[GASPARD] ${u} sur ${g} : « ${q.slice(0, 60)} » → ${r.source}${r.cle ? ' (' + r.cle + ')' : ''}${r.lu === 'en' ? ' [lu en anglais]' : ''}`);
     }, 900 + Math.random() * 900);
   });
 }
@@ -36707,7 +36925,7 @@ function gaspardAccueillir(g, username) {
   setTimeout(() => {
     if (!channels[g] || !channels[g].users.has(u)) return;   // déjà reparti
     gaspardVisite(g);
-    npcSaySequence('gaspard', g, Gaspard.bienvenue(nom, k), () => gaspardVisite(g), 'm', 3500, [username]);
+    npcSaySequence('gaspard', g, Gaspard.bienvenueTextes(nom, k), () => gaspardVisite(g), 'm', 3500, [username]);
   }, 2500);
   console.log(`[GASPARD] accueille ${u} sur ${g}${k ? ` (+${k} kikooz)` : ''}`);
 }
@@ -37014,13 +37232,15 @@ setInterval(() => {
 
 // ── Gromelin — grumpy visitor, rarer than Irma: storms into the busiest room,
 // grumbles a few lines, and leaves. ──
+// Chaque réplique est un texte à clé (zone « gromelin »,
+// i18n-serveur/en/gromelin.js) : chacun l'entend ronchonner dans sa langue.
 const GROMELIN_LINES = [
   "Grumpf",
   "Mmmmh, y a encore du monde ici ?",
   "Vous n'avez rien de mieux à faire qu'à traîner sur ce site minable ?",
   "Allez, du balai ! J'ai du boulot moi.",
   "On est plus tranquille à Légumia...",
-];
+].map((fr, i) => ({ k: 'gromelin.ronchon.' + i, fr }));
 
 /*
  * LE MÉTIER DE GROMELIN. À chaque passage (quatre par jour, tickVisiteurs), il
@@ -37031,12 +37251,15 @@ const GROMELIN_LINES = [
  * plus peuplé, comme avant ; les autres fois, il ne vient pas. `force` :
  * l'admin désigne le joueur et la bricole.
  */
+// Les répliques sont des textes à clé ; le titre de la quête y est un
+// paramètre, tel que Quetes.titre le donne (le catalogue des quêtes a sa
+// propre traduction).
 const GROMELIN_LIGNES_BRICOLE = (nom, titre, gain) => [
   'Grumpf.',
-  `${nom}. Oui, toi. Approche.`,
-  `J'ai une bricole pour toi : « ${titre} ». ${gain} kikooz si c'est fait avant dimanche minuit.`,
-  `C'est dans ton carnet de quêtes, ${nom}. Ne me fais pas regretter.`,
-];
+  '{nom}. Oui, toi. Approche.',
+  "J'ai une bricole pour toi : « {titre} ». {gain} kikooz si c'est fait avant dimanche minuit.",
+  "C'est dans ton carnet de quêtes, {nom}. Ne me fais pas regretter.",
+].map((fr, i) => ({ k: 'gromelin.bricole.' + i, fr, p: { nom, titre, gain } }));
 function gromelinChoisirJoueur() {
   const ch = channels[ANIM_CHANNEL];
   if (!ch) return null;
@@ -37182,10 +37405,74 @@ const KILOUTE_DEFAULT_QUESTIONS = [
   { q: "Dans quelle ville se trouve la statue du Christ Rédempteur ?", a: ["rio", "rio de janeiro"], r: "Rio de Janeiro" },
 ];
 
+/*
+ * LA VERSION ANGLAISE DES QUESTIONS LIVRÉES — le backlog ci-dessus et le quiz
+ * par défaut plus bas —, par énoncé français. Elle accompagne le semis (et
+ * rejoint une base semée avant elle, cf. le chargement au démarrage). Pour les
+ * questions de l'admin, c'est le formulaire (champs « EN ») ou l'import JSON
+ * (qEn, aEn, rEn). Les réponses anglaises s'AJOUTENT aux françaises.
+ */
+const KILOUTE_EN = {
+  "Quelle est la capitale de l'Australie ?": { q: 'What is the capital of Australia?', a: ['canberra'], r: 'Canberra' },
+  "Quel océan borde la côte ouest de la France ?": { q: 'Which ocean borders the west coast of France?', a: ['atlantic', 'atlantic ocean', 'the atlantic'], r: 'The Atlantic Ocean' },
+  "Quel est le plus grand océan du monde ?": { q: 'What is the largest ocean in the world?', a: ['pacific', 'pacific ocean', 'the pacific'], r: 'The Pacific Ocean' },
+  "Qui a peint la Joconde ?": { q: 'Who painted the Mona Lisa?', a: ['vinci', 'leonardo', 'leonardo da vinci', 'da vinci'], r: 'Leonardo da Vinci' },
+  "En quelle année a eu lieu la prise de la Bastille ?": { q: 'In what year was the Bastille stormed?', a: ['1789'], r: '1789' },
+  "Quel est le symbole chimique de l'or ?": { q: 'What is the chemical symbol for gold?', a: ['au'], r: 'Au' },
+  "Combien de minutes dure un match de football (temps réglementaire) ?": { q: 'How many minutes does a football match last (regulation time)?', a: ['90'], r: '90 minutes' },
+  "Quelle planète est surnommée la planète rouge ?": { q: 'Which planet is nicknamed the Red Planet?', a: ['mars'], r: 'Mars' },
+  "Quelle est la monnaie du Japon ?": { q: 'What is the currency of Japan?', a: ['yen', 'the yen'], r: 'The yen' },
+  "Quel animal est surnommé le roi de la jungle ?": { q: 'Which animal is nicknamed the king of the jungle?', a: ['lion', 'the lion'], r: 'The lion' },
+  "Combien font 7 x 8 ?": { q: 'What is 7 x 8?', a: ['56'], r: '56' },
+  "Dans quel pays se trouve la tour de Pise ?": { q: 'In which country is the Leaning Tower of Pisa?', a: ['italy'], r: 'Italy' },
+  "Quel gaz les plantes absorbent-elles pour la photosynthèse ?": { q: 'Which gas do plants absorb for photosynthesis?', a: ['carbon dioxide', 'co2'], r: 'Carbon dioxide (CO2)' },
+  "Qui a écrit Les Misérables ?": { q: 'Who wrote Les Misérables?', a: ['hugo', 'victor hugo'], r: 'Victor Hugo' },
+  "Sur quel continent se trouve l'Égypte ?": { q: 'On which continent is Egypt?', a: ['africa'], r: 'Africa' },
+  "Quelle est la capitale de l'Espagne ?": { q: 'What is the capital of Spain?', a: ['madrid'], r: 'Madrid' },
+  "Quel organe pompe le sang dans le corps humain ?": { q: 'Which organ pumps blood around the human body?', a: ['heart', 'the heart'], r: 'The heart' },
+  "Quel est l'animal terrestre le plus rapide ?": { q: 'What is the fastest land animal?', a: ['cheetah', 'the cheetah'], r: 'The cheetah' },
+  "Quelle est la plus haute montagne du monde ?": { q: 'What is the highest mountain in the world?', a: ['everest', 'mount everest', 'mt everest'], r: 'Mount Everest' },
+  "Quel pays a offert la statue de la Liberté aux États-Unis ?": { q: 'Which country gave the Statue of Liberty to the United States?', a: ['france'], r: 'France' },
+  "Quel métal est liquide à température ambiante ?": { q: 'Which metal is liquid at room temperature?', a: ['mercury'], r: 'Mercury' },
+  "Combien de touches a un piano standard ?": { q: 'How many keys does a standard piano have?', a: ['88'], r: '88' },
+  "Quelle est la capitale du Canada ?": { q: 'What is the capital of Canada?', a: ['ottawa'], r: 'Ottawa' },
+  "Qui a développé la théorie de la relativité ?": { q: 'Who developed the theory of relativity?', a: ['einstein', 'albert einstein'], r: 'Albert Einstein' },
+  "Quel est le plus petit pays du monde ?": { q: 'What is the smallest country in the world?', a: ['vatican', 'vatican city', 'the vatican'], r: 'Vatican City' },
+  "Quel fruit est associé à Newton et la gravité ?": { q: 'Which fruit is linked to Newton and gravity?', a: ['apple', 'an apple', 'the apple'], r: 'The apple' },
+  "Quelle est la planète la plus proche du Soleil ?": { q: 'Which planet is closest to the Sun?', a: ['mercury'], r: 'Mercury' },
+  "Quelle planète possède de magnifiques anneaux ?": { q: 'Which planet has magnificent rings?', a: ['saturn'], r: 'Saturn' },
+  "Quel est le plus long fleuve d'Afrique ?": { q: 'What is the longest river in Africa?', a: ['nile', 'the nile'], r: 'The Nile' },
+  "Dans quelle ville se trouve la statue du Christ Rédempteur ?": { q: 'In which city is the Christ the Redeemer statue?', a: ['rio', 'rio de janeiro'], r: 'Rio de Janeiro' },
+  // Le quiz « Nostalgie années 2000 »
+  "On démarre en douceur ! En quelle année l'euro est-il arrivé dans nos porte-monnaie (pièces et billets) ?": { q: "Let's start gently! In what year did the euro land in our wallets (coins and notes)?", a: ['2002'], r: '2002' },
+  "Quelle messagerie instantanée, avec ses « wizz » qui faisaient trembler l'écran, rythmait toutes nos soirées ?": { q: 'Which instant messenger, with its “nudges” that shook the screen, set the pace of all our evenings?', a: ['msn', 'msn messenger', 'messenger', 'windows live messenger', 'live messenger'], r: 'MSN Messenger' },
+  "Sur quelle plateforme de Skyrock teniez-vous votre blog, avec les fameux « lâche tes coms » ?": { q: 'On which Skyrock platform did you keep your blog, with its famous “drop a comment”?', a: ['skyblog', 'skyblogs', 'sky blog'], r: 'Skyblog' },
+  "Quel baladeur lancé par Apple en 2001, avec sa célèbre molette, a révolutionné la musique nomade ?": { q: 'Which music player launched by Apple in 2001, with its famous click wheel, revolutionised music on the go?', a: ['ipod', 'the ipod'], r: 'The iPod' },
+  "Quelle console de Sony, sortie en 2000, est devenue la plus vendue de tous les temps ?": { q: 'Which Sony console, released in 2000, became the best-selling console of all time?', a: ['ps2', 'playstation 2', 'playstation2', 'the ps2', 'play station 2'], r: 'The PlayStation 2' },
+  "Quelle émission a lancé la télé-réalité en France en 2001, en enfermant des candidats dans un loft ?": { q: 'Which show launched reality TV in France in 2001 by locking contestants in a loft?', a: ['loft story', 'loft'], r: 'Loft Story' },
+  "Quel télé-crochet de TF1 a révélé Jenifer, toute première gagnante en 2002 ?": { q: 'Which TF1 talent show made a star of Jenifer, its very first winner in 2002?', a: ['star academy', 'star ac', 'starac'], r: 'Star Academy' },
+  "Quel footballeur a marqué les esprits avec un coup de boule en finale de la Coupe du monde 2006 ?": { q: 'Which footballer made headlines with a headbutt in the 2006 World Cup final?', a: ['zidane', 'zinedine zidane', 'zizou'], r: 'Zinedine Zidane' },
+  "Quel jeu de simulation de vie, sorti en 2000, vous faisait bâtir des maisons et baragouiner le « simlish » ?": { q: 'Which life simulation game, released in 2000, had you building houses and babbling in “Simlish”?', a: ['the sims', 'sims'], r: 'The Sims' },
+  "Quel site de partage de vidéos, fondé en 2005, a inventé le « buzz » et le « t'as vu cette vidéo ?! »": { q: 'Which video-sharing site, founded in 2005, invented going viral and “have you seen this video?!”', a: ['youtube', 'you tube'], r: 'YouTube' },
+  "Quel réseau social créé en 2004 par Mark Zuckerberg a fini par détrôner Skyblog et MySpace ?": { q: 'Which social network created in 2004 by Mark Zuckerberg ended up dethroning Skyblog and MySpace?', a: ['facebook', 'fb'], r: 'Facebook' },
+  "Quel petit animal virtuel de poche fallait-il nourrir sans arrêt, sous peine de le voir... disparaître ?": { q: 'Which little pocket-sized virtual pet had to be fed non-stop, or else it would... disappear?', a: ['tamagotchi', 'the tamagotchi'], r: 'The Tamagotchi' },
+  "Quel téléphone Nokia quasi incassable, livré avec le jeu Snake, trônait dans toutes les poches ?": { q: "Which near-indestructible Nokia phone, with the game Snake built in, was in everyone's pocket?", a: ['3310', 'nokia 3310', 'the 3310'], r: 'The Nokia 3310' },
+  "Quelle chanteuse, idole des préados au début des années 2000, chantait « Près de moi » ?": { q: 'Which singer, idol of the pre-teens in the early 2000s, sang “Près de moi”?', a: ['lorie'], r: 'Lorie' },
+  "Quelle émission d'aventure de TF1, présentée par Denis Brogniart, a débarqué en 2001 ?": { q: 'Which TF1 adventure show, hosted by Denis Brogniart, arrived in 2001?', a: ['koh lanta', 'kohlanta', 'koh-lanta'], r: 'Koh-Lanta' },
+  "Pour finir : quelle trilogie de Peter Jackson, adaptée de Tolkien, a illuminé les cinémas de 2001 à 2003 ?": { q: 'To finish: which Peter Jackson trilogy, adapted from Tolkien, lit up cinemas from 2001 to 2003?', a: ['the lord of the rings', 'lord of the rings', 'lotr'], r: 'The Lord of the Rings' },
+};
+// Le nom anglais des quiz livrés.
+const KILOUTE_QUIZ_NOM_EN = { 'Nostalgie années 2000': 'Noughties nostalgia' };
+// Une question avec son anglais à plat (qEn, aEn, rEn), quand il est connu.
+function kilouteAvecAnglais(q) {
+  const en = KILOUTE_EN[q.q];
+  return Object.assign({}, q, en && !q.qEn ? { qEn: en.q, aEn: en.a.slice(), rEn: en.r } : {});
+}
+
 // Mutable, admin-managed at runtime. Loaded from DB at startup (seeded with the
 // defaults on first run); each entry carries an `id` for CRUD. Falls back to the
 // in-memory defaults when there is no database configured.
-let KILOUTE_QUESTIONS = KILOUTE_DEFAULT_QUESTIONS.map((q, i) => ({ id: i + 1, q: q.q, a: q.a.slice(), r: q.r }));
+let KILOUTE_QUESTIONS = KILOUTE_DEFAULT_QUESTIONS.map((q, i) => kilouteAvecAnglais({ id: i + 1, q: q.q, a: q.a.slice(), r: q.r }));
 
 // Quizz (événements multi-questions, lancés à la demande) — gérés à part du
 // backlog quotidien ci-dessus. Chargés depuis la base au boot ; chaque entrée :
@@ -37225,7 +37512,7 @@ const DEFAULT_QUIZZES = [
 // persistant) ; avec une base, il est chargé + semé au boot (voir plus bas).
 let QUIZZES = process.env.DATABASE_URL
   ? []
-  : DEFAULT_QUIZZES.map((q, i) => ({ id: i + 1, name: q.name, reward: q.reward, windowSec: q.windowSec, questions: q.questions.map((x) => ({ q: x.q, a: x.a.slice(), r: x.r, image: x.image || null })) }));
+  : DEFAULT_QUIZZES.map((q, i) => ({ id: i + 1, name: q.name, nameEn: KILOUTE_QUIZ_NOM_EN[q.name] || '', reward: q.reward, windowSec: q.windowSec, questions: q.questions.map((x) => kilouteAvecAnglais({ q: x.q, a: x.a.slice(), r: x.r, image: x.image || null })) }));
 
 // ── Trombinoscope : annuaire des Frutiz (pseudo + code bouille) ──
 // Alimenté par l'admin via import CSV (données retrouvées sur les blogs
@@ -37356,6 +37643,21 @@ function kilouteAwardKikooz(username, amount, quizName) {
 // All of Kiloute's lines go out in the animator/blue style (t="c").
 function kilouteSay(channelName, text) { npcSay('kiloute79', channelName, text, 'c'); }
 
+/*
+ * CE QUE L'ADMIN ÉCRIT, DANS SES DEUX LANGUES — l'énoncé, la réponse
+ * affichée, le nom d'un quiz. Un texte à clé (`kiloute.libre`) dont les deux
+ * versions sont des PARAMÈTRES : la ligne se refait au rejeu comme les
+ * autres, et sans anglais tout le monde lit le français. Un salon mêlé
+ * entend donc la question chacun dans sa langue ; les réponses acceptées
+ * sont les deux listes à la fois (kilouteReponses).
+ */
+function kilouteLibre(fr, en) { return { k: 'kiloute.libre', fr: '{fr}', p: { fr: String(fr || ''), en: String(en || '') } }; }
+function kilouteEnonce(q) { return kilouteLibre(q.q, q.qEn); }
+function kilouteAffiche(q) { return kilouteLibre(q.r, q.qEn ? q.rEn : ''); }
+function kilouteReponses(q) { return (q.a || []).concat(q.qEn ? (q.aEn || []) : []); }
+// Une ligne fixe de MikeHorny (`kiloute.<cle>`).
+function kilouteLigne(cle, fr, p) { return { k: 'kiloute.' + cle, fr, p }; }
+
 // Broadcast an IMAGE frame (t="i") AS MikeHorny — same wire format as the human
 // /image command, but server-initiated (no animator gate to clear). The desktop
 // SWF opens it in a window; the Light/mobile client renders it inline in the
@@ -37392,14 +37694,14 @@ function kilouteCheckAnswer(channelName, username, rawText) {
   quiz.answered = true;
   if (quiz.timeoutId) clearTimeout(quiz.timeoutId);
   const winner = getDisplayName(username);
-  kilouteSay(channelName, "Stoooooooooooop !");
+  kilouteSay(channelName, kilouteLigne('stop', "Stoooooooooooop !"));
   setTimeout(() => {
     kilouteSay(channelName, kpick(KILOUTE_CORRECT)(winner, quiz.display));
     kilouteAwardKikooz(username, 60);
     setTimeout(() => {
       kilouteSay(channelName, kpick(KILOUTE_REWARD)(winner, 1, 60));
       setTimeout(() => {
-        kilouteSay(channelName, "Merci à tous d'avoir joué, vous êtes formidables ! À demain 19h pour une nouvelle Question à 60 kikooz !");
+        kilouteSay(channelName, kilouteLigne('merciSoir', "Merci à tous d'avoir joué, vous êtes formidables ! À demain 19h pour une nouvelle Question à 60 kikooz !"));
         setTimeout(kilouteLeave, 4500);
       }, 4000);
     }, 3500);
@@ -37415,20 +37717,21 @@ function kilouteRun(forcedChannel) {
   if (!q) { console.log('[KILOUTE] backlog de questions vide — on passe.'); return; }
   npcJoin('kiloute79', channelName);
   console.log(`[KILOUTE] Question à 60 kikooz dans #${channelName}: ${q.q}`);
-  kilouteQuiz = { channel: channelName, answers: q.a, display: q.r, answered: false, timeoutId: null };
+  // Les réponses des deux langues comptent ; la réponse se dit dans la langue de chacun.
+  kilouteQuiz = { channel: channelName, answers: kilouteReponses(q), display: kilouteAffiche(q), answered: false, timeoutId: null };
   const qImage = resolveQuizImage(q.image);
   npcSaySequence('kiloute79', channelName, [
     kpick(KILOUTE_DAILY_HELLO),
-    "C'est l'heure de votre rendez-vous préféré : la QUESTION À 60 KIKOOZ !",
-    "Le premier qui donne la bonne réponse rafle les 60 kikooz ! Vous êtes prêts ?!",
-    "Alors attention, voici la question :",
+    kilouteLigne('soir.annonce', "C'est l'heure de votre rendez-vous préféré : la QUESTION À 60 KIKOOZ !"),
+    kilouteLigne('soir.regle', "Le premier qui donne la bonne réponse rafle les 60 kikooz ! Vous êtes prêts ?!"),
+    kilouteLigne('soir.attention', "Alors attention, voici la question :"),
   ], () => {
     if (!kilouteQuiz || kilouteQuiz.answered) return;
     // Pose la question (précédée de son image le cas échéant) puis ouvre la
     // fenêtre de 3 minutes ; sans bonne réponse, Kiloute révèle et s'en va.
     const askAndArm = () => {
       if (!kilouteQuiz || kilouteQuiz.answered) return;
-      kilouteSay(channelName, q.q);
+      kilouteSay(channelName, kilouteEnonce(q));
       // POSÉE, DONC BRÛLÉE. On la retire ICI et pas au tirage : entre les deux
       // il y a vingt secondes d'introduction, et une question qu'on n'aurait
       // finalement pas dite ne doit pas disparaître du backlog.
@@ -37436,9 +37739,9 @@ function kilouteRun(forcedChannel) {
       kilouteQuiz.timeoutId = setTimeout(() => {
         if (!kilouteQuiz || kilouteQuiz.answered) return;
         npcSaySequence('kiloute79', channelName, [
-          "Oh ? Personne ? Vraiment ?! Quelle déception !",
-          `La bonne réponse était ${q.r}.`,
-          "À demain pour une nouvelle Question à 60 kikooz, ne manquez pas ce rendez-vous !",
+          kilouteLigne('soir.personne', "Oh ? Personne ? Vraiment ?! Quelle déception !"),
+          kilouteLigne('soir.reponse', 'La bonne réponse était {r}.', { r: kilouteAffiche(q) }),
+          kilouteLigne('soir.aDemain', "À demain pour une nouvelle Question à 60 kikooz, ne manquez pas ce rendez-vous !"),
         ], () => setTimeout(kilouteLeave, 3000), 'c', 5000);
       }, 3 * 60 * 1000);
     };
@@ -37469,32 +37772,44 @@ function kpick(arr) {
   return arr[i];
 }
 
-// Phrases d'introduction (1re ligne du quiz, variée). ${ANIM_NAME} = pseudo.
-const KILOUTE_INTRO_HELLO = [
-  `Bonsoiiiir les Frutiz ! ${ANIM_NAME} débarque pour un GRAND QUIZ spécial !`,
-  `Salut la compagnie ! C'est ${ANIM_NAME}, et c'est l'heure du QUIZ !`,
-  `Ouvrez grand les oreilles, Frutiz : ${ANIM_NAME} lance son GRAND QUIZ !`,
-  `Hé ho les champions ! ${ANIM_NAME} est là pour un quiz de folie !`,
-  `Coucou la Frutifamille ! Ici ${ANIM_NAME}, prêt à faire chauffer les méninges !`,
-  `Roulez tambours ! ${ANIM_NAME} vous a mitonné un quiz aux petits oignons !`,
-  `Installez-vous bien : ${ANIM_NAME} ouvre les portes de son grand quiz !`,
-  `C'est l'événement du jour, les amis : le grand quiz de ${ANIM_NAME} commence !`,
-];
+/*
+ * LES BANQUES DE PHRASES, DANS LA LANGUE DE CHACUN. Chaque phrase est un
+ * texte à clé (zone « kiloute », i18n-serveur/en/kiloute.js : un animateur de
+ * jeu télé, enjoué, en anglais aussi) : `kiloute.<banque>.<rang>`. Une banque
+ * à trous est une liste de FONCTIONS qui rendent le texte à clé, ses trous en
+ * paramètres — kpick(banque)(…) s'écrit comme avant. `{anim}` est le pseudo
+ * affiché de l'animateur (ANIM_NAME).
+ */
+const kilouteBanque = (banque, phrases) => phrases.map((fr, i) => ({ k: `kiloute.${banque}.${i}`, fr, p: { anim: ANIM_NAME } }));
+// Une phrase qui s'accorde au nombre de bonnes réponses : { one, other }.
+const kiloutePhrase = (k, fr, n, p) => (typeof fr === 'string' ? { k, fr, p } : { k, n, formes: fr, p });
+
+// Phrases d'introduction (1re ligne du quiz, variée).
+const KILOUTE_INTRO_HELLO = kilouteBanque('intro', [
+  'Bonsoiiiir les Frutiz ! {anim} débarque pour un GRAND QUIZ spécial !',
+  "Salut la compagnie ! C'est {anim}, et c'est l'heure du QUIZ !",
+  'Ouvrez grand les oreilles, Frutiz : {anim} lance son GRAND QUIZ !',
+  'Hé ho les champions ! {anim} est là pour un quiz de folie !',
+  'Coucou la Frutifamille ! Ici {anim}, prêt à faire chauffer les méninges !',
+  'Roulez tambours ! {anim} vous a mitonné un quiz aux petits oignons !',
+  'Installez-vous bien : {anim} ouvre les portes de son grand quiz !',
+  "C'est l'événement du jour, les amis : le grand quiz de {anim} commence !",
+]);
 // Préambule annoncé avant chaque question (n = numéro, t = total, r = kikooz).
 const KILOUTE_PREAMBLE = [
-  (n, t, r) => `Question ${n} sur ${t} — ${r} kikooz à gagner !`,
-  (n, t, r) => `Allez, question ${n} ! ${r} kikooz pour le plus rapide !`,
-  (n, t, r) => `On passe à la question ${n} sur ${t}. ${r} kikooz en jeu !`,
-  (n, t, r) => `Voici la question numéro ${n} ! ${r} kikooz à la clé !`,
-  (n, t, r) => `Question ${n}... préparez vos doigts ! ${r} kikooz à rafler !`,
-  (n, t, r) => `Top, c'est la question ${n} sur ${t} ! ${r} kikooz attendent leur gagnant.`,
-  (n, t, r) => `Numéro ${n} sur ${t}, tenez-vous prêts : ${r} kikooz sur la table !`,
-  (n, t, r) => `Et voici la ${n}ᵉ question ! Toujours ${r} kikooz pour qui trouve en premier.`,
-];
+  'Question {n} sur {t} — {r} kikooz à gagner !',
+  'Allez, question {n} ! {r} kikooz pour le plus rapide !',
+  'On passe à la question {n} sur {t}. {r} kikooz en jeu !',
+  'Voici la question numéro {n} ! {r} kikooz à la clé !',
+  'Question {n}... préparez vos doigts ! {r} kikooz à rafler !',
+  "Top, c'est la question {n} sur {t} ! {r} kikooz attendent leur gagnant.",
+  'Numéro {n} sur {t}, tenez-vous prêts : {r} kikooz sur la table !',
+  'Et voici la {n}ᵉ question ! Toujours {r} kikooz pour qui trouve en premier.',
+].map((fr, i) => (n, t, r) => ({ k: `kiloute.preambule.${i}`, fr, p: { n, t, r } }));
 // Petites phrases de transition entre deux questions. Volontairement axées
 // « on respire / on ne se précipite pas » : les joueurs reprochaient à
 // l'animateur d'enchaîner trop vite, ces transitions posent le rythme.
-const KILOUTE_TRANSITIONS = [
+const KILOUTE_TRANSITIONS = kilouteBanque('transition', [
   "Prenez le temps de souffler un instant...",
   "On respire un bon coup avant la suite.",
   "Petite pause, et on repart tranquillement.",
@@ -37509,50 +37824,52 @@ const KILOUTE_TRANSITIONS = [
   "Tranquillement, sereinement... place à la suivante.",
   "On garde le sourire, la prochaine question approche.",
   "Une petite respiration... et hop, on enchaîne en douceur.",
-];
-// Réaction quand quelqu'un trouve (w = pseudo, r = réponse affichée).
+]);
+// Réaction quand quelqu'un trouve (w = pseudo, r = réponse affichée — un
+// texte dans ses deux langues, cf. kilouteAffiche).
 const KILOUTE_CORRECT = [
-  (w, r) => `Stoooop ! Bravooo ${w} !!! La réponse était bien : ${r}.`,
-  (w, r) => `Et c'est ${w} qui dégaine en premier ! C'était : ${r}. Magnifique !`,
-  (w, r) => `Ouiiii ! ${w} a tout bon : ${r} ! Quel flair !`,
-  (w, r) => `Excellent ${w} ! ${r}, évidemment ! Tu es en feu !`,
-  (w, r) => `Bien joué ${w} ! La bonne réponse était ${r}. Les autres, accrochez-vous !`,
-  (w, r) => `Imbattable ${w} ! ${r}, c'était ça ! Chapeau !`,
-  (w, r) => `Et toc ! ${w} trouve : ${r} ! Du grand art !`,
-  (w, r) => `Parfait ${w} ! ${r}, sans hésiter ! Bravo l'artiste !`,
-  (w, r) => `Dans le mille, ${w} ! La réponse était bien ${r}.`,
-  (w, r) => `Quelle rapidité, ${w} ! ${r}, et c'est tout bon !`,
-];
+  'Stoooop ! Bravooo {w} !!! La réponse était bien : {r}.',
+  "Et c'est {w} qui dégaine en premier ! C'était : {r}. Magnifique !",
+  'Ouiiii ! {w} a tout bon : {r} ! Quel flair !',
+  'Excellent {w} ! {r}, évidemment ! Tu es en feu !',
+  'Bien joué {w} ! La bonne réponse était {r}. Les autres, accrochez-vous !',
+  "Imbattable {w} ! {r}, c'était ça ! Chapeau !",
+  'Et toc ! {w} trouve : {r} ! Du grand art !',
+  "Parfait {w} ! {r}, sans hésiter ! Bravo l'artiste !",
+  'Dans le mille, {w} ! La réponse était bien {r}.',
+  "Quelle rapidité, {w} ! {r}, et c'est tout bon !",
+].map((fr, i) => (w, r) => ({ k: `kiloute.bravo.${i}`, fr, p: { w, r } }));
 // Annonce du gain (w = pseudo, n = nb de bonnes réponses, k = kikooz).
 const KILOUTE_REWARD = [
-  (w, n, k) => `+${k} kikooz pour ${w} ! (${n} bonne${n > 1 ? 's' : ''} réponse${n > 1 ? 's' : ''} pour ${w})`,
-  (w, n, k) => `Et hop, ${k} kikooz qui tombent dans la poche de ${w} !`,
-  (w, n, k) => `${k} kikooz pour ${w}, déjà ${n} bonne${n > 1 ? 's' : ''} réponse${n > 1 ? 's' : ''} au compteur !`,
-  (w, n, k) => `Voilà ${k} kikooz bien mérités pour ${w} !`,
-  (w, n, k) => `Ka-ching ! ${k} kikooz pour ${w} (total : ${n} bonne${n > 1 ? 's' : ''}) !`,
-  (w, n, k) => `${w} empoche ${k} kikooz de plus ! Continue comme ça !`,
-  (w, n, k) => `Encore ${k} kikooz pour ${w} ! La cagnotte grossit !`,
-];
+  { one: '+{kz} kikooz pour {w} ! ({n} bonne réponse pour {w})', other: '+{kz} kikooz pour {w} ! ({n} bonnes réponses pour {w})' },
+  'Et hop, {kz} kikooz qui tombent dans la poche de {w} !',
+  { one: '{kz} kikooz pour {w}, déjà {n} bonne réponse au compteur !', other: '{kz} kikooz pour {w}, déjà {n} bonnes réponses au compteur !' },
+  'Voilà {kz} kikooz bien mérités pour {w} !',
+  { one: 'Ka-ching ! {kz} kikooz pour {w} (total : {n} bonne) !', other: 'Ka-ching ! {kz} kikooz pour {w} (total : {n} bonnes) !' },
+  '{w} empoche {kz} kikooz de plus ! Continue comme ça !',
+  'Encore {kz} kikooz pour {w} ! La cagnotte grossit !',
+].map((fr, i) => (w, n, k) => kiloutePhrase(`kiloute.gain.${i}`, fr, n, { w, kz: k }));
 // Quand personne ne trouve dans le temps imparti (r = réponse affichée).
 const KILOUTE_TIMEOUT = [
-  (r) => `Trop tard ! La réponse était : ${r}. Personne ne marque sur cette question !`,
-  (r) => `Oh, personne ?! Dommage... c'était ${r}. On se rattrape à la suivante !`,
-  (r) => `Le temps est écoulé ! La réponse était ${r}. Pas de panique, ça continue !`,
-  (r) => `Aïe, celle-là vous a eus ! C'était ${r}. Allez, la prochaine est pour vous !`,
-  (r) => `Buzzz ! Fin du temps. La réponse : ${r}. Ce n'est que partie remise !`,
-  (r) => `Personne cette fois... c'était ${r}. On y retourne tranquillement !`,
-  (r) => `Eh non ! La réponse était ${r}. Pas grave, on a tout notre temps pour la suite.`,
-];
+  'Trop tard ! La réponse était : {r}. Personne ne marque sur cette question !',
+  "Oh, personne ?! Dommage... c'était {r}. On se rattrape à la suivante !",
+  'Le temps est écoulé ! La réponse était {r}. Pas de panique, ça continue !',
+  "Aïe, celle-là vous a eus ! C'était {r}. Allez, la prochaine est pour vous !",
+  "Buzzz ! Fin du temps. La réponse : {r}. Ce n'est que partie remise !",
+  "Personne cette fois... c'était {r}. On y retourne tranquillement !",
+  "Eh non ! La réponse était {r}. Pas grave, on a tout notre temps pour la suite.",
+].map((fr, i) => (r) => ({ k: `kiloute.tropTard.${i}`, fr, p: { r } }));
 // Salutations de la "Question à 60 kikooz" quotidienne (1re ligne, variée).
-const KILOUTE_DAILY_HELLO = [
-  `Bonsoiiiir les Frutiz ! ${ANIM_NAME} est dans la place !`,
-  `Hé oh, les Frutiz ! ${ANIM_NAME} débarque avec sa fameuse question !`,
-  `Coucou tout le monde ! ${ANIM_NAME} pointe le bout de son nez !`,
-  `C'est moi, ${ANIM_NAME} ! Prêts pour le rendez-vous du soir ?`,
-  `Bonsoir la Frutifamille ! ${ANIM_NAME} à votre service pour la question du jour !`,
-];
+const KILOUTE_DAILY_HELLO = kilouteBanque('bonsoir', [
+  'Bonsoiiiir les Frutiz ! {anim} est dans la place !',
+  'Hé oh, les Frutiz ! {anim} débarque avec sa fameuse question !',
+  'Coucou tout le monde ! {anim} pointe le bout de son nez !',
+  "C'est moi, {anim} ! Prêts pour le rendez-vous du soir ?",
+  'Bonsoir la Frutifamille ! {anim} à votre service pour la question du jour !',
+]);
 
-// Démarre un quiz (événement multi-questions). opts: { quizId, channel?, reward?, windowSec? }.
+// Démarre un quiz (événement multi-questions). opts: { quizId, channel?, reward?, windowSec?, pas? }.
+// `pas` : les millisecondes entre deux répliques (d'ordinaire, celles d'un animateur qui prend son temps).
 // Le quiz porte ses propres questions + récompense + délai ; channel/reward/window
 // sont surchargeables au lancement. Renvoie { ok, channel, count, name } ou { ok:false, error }.
 function kilouteStartSession(opts) {
@@ -37563,7 +37880,8 @@ function kilouteStartSession(opts) {
   const quiz = QUIZZES.find((q) => q.id === Number(opts.quizId));
   if (!quiz) return { ok: false, error: 'Quiz introuvable.' };
   // Snapshot des questions (l'édition du quiz en cours de partie n'impacte pas la session live).
-  const questions = (quiz.questions || []).map((q) => ({ q: q.q, a: (q.a || []).slice(), r: q.r, image: q.image || null }));
+  const questions = (quiz.questions || []).map((q) => ({ q: q.q, a: (q.a || []).slice(), r: q.r, image: q.image || null,
+    qEn: q.qEn || '', aEn: (q.aEn || []).slice(), rEn: q.rEn || '' }));
   if (!questions.length) return { ok: false, error: 'Ce quiz ne contient aucune question.' };
 
   const channel = (opts.channel && channels[opts.channel]) ? opts.channel : mostPopulatedChannel();
@@ -37578,16 +37896,18 @@ function kilouteStartSession(opts) {
     // betweenMs = pause après la révélation, avant d'annoncer la question
     // suivante. Relevé de 5s à 7s : les joueurs reprochaient un enchaînement
     // trop rapide « sans respirer entre les questions ». Réglable ici.
-    reward, windowMs, betweenMs: 7000, quizName: quiz.name,
+    reward, windowMs, betweenMs: opts.pas ? opts.pas * 2 : 7000, quizName: quiz.name, pas: opts.pas || null,
   };
   npcJoin('kiloute79', channel);
   console.log(`[KILOUTE] Quiz "${quiz.name}" lancé dans #${channel} — ${questions.length} questions, ${reward} kikooz/question`);
   npcSaySequence('kiloute79', channel, [
     kpick(KILOUTE_INTRO_HELLO),
-    `Aujourd'hui, le quiz « ${quiz.name} » : ${questions.length} question${questions.length > 1 ? 's' : ''}, et ${reward} kikooz par bonne réponse !`,
-    "Le premier qui donne la bonne réponse rafle la mise. Tenez-vous prêts...",
-    "C'est partiiii !",
-  ], () => kilouteSessionAsk(kilouteSession), 'c', 4000);
+    { k: 'kiloute.quiz.annonce', n: questions.length, p: { nom: kilouteLibre(quiz.name, quiz.nameEn), kz: reward },
+      formes: { one: "Aujourd'hui, le quiz « {nom} » : {n} question, et {kz} kikooz par bonne réponse !",
+        other: "Aujourd'hui, le quiz « {nom} » : {n} questions, et {kz} kikooz par bonne réponse !" } },
+    kilouteLigne('quiz.regle', "Le premier qui donne la bonne réponse rafle la mise. Tenez-vous prêts..."),
+    kilouteLigne('quiz.parti', "C'est partiiii !"),
+  ], () => kilouteSessionAsk(kilouteSession), 'c', kilouteSession.pas || 4000);
   return { ok: true, channel, count: questions.length, name: quiz.name };
 }
 
@@ -37612,13 +37932,13 @@ function kilouteSessionAsk(s) {
     const qImage = resolveQuizImage(q.image);
     const ask = () => {
       if (kilouteSession !== s) return;
-      kilouteSay(s.channel, q.q);
+      kilouteSay(s.channel, kilouteEnonce(q));
       s.acceptingAnswers = true;
       // Fenêtre de réponse : sans bonne réponse, on révèle et on enchaîne.
       s.timeoutId = setTimeout(() => {
         if (kilouteSession !== s || !s.acceptingAnswers) return;
         s.acceptingAnswers = false;
-        kilouteSay(s.channel, kpick(KILOUTE_TIMEOUT)(q.r));
+        kilouteSay(s.channel, kpick(KILOUTE_TIMEOUT)(kilouteAffiche(q)));
         setTimeout(() => kilouteSessionAdvance(s), 4500);
       }, s.windowMs);
     };
@@ -37626,7 +37946,7 @@ function kilouteSessionAsk(s) {
     // bureau (SWF), inline dans le chat en mode Light.
     if (qImage) { kilouteSayImage(s.channel, qImage); setTimeout(ask, 2000); }
     else ask();
-  }, 'c', 3000);
+  }, 'c', s.pas || 3000);
 }
 
 // Passe à la question suivante après une courte pause.
@@ -37645,7 +37965,7 @@ function kilouteSessionCheckAnswer(channelName, username, rawText) {
   const q = s.questions[s.idx];
   if (!q) return;
   const norm = ' ' + normalizeAnswer(unescapeXml(rawText)) + ' ';
-  const hit = q.a.some((a) => { const na = normalizeAnswer(a); return na && norm.indexOf(' ' + na + ' ') !== -1; });
+  const hit = kilouteReponses(q).some((a) => { const na = normalizeAnswer(a); return na && norm.indexOf(' ' + na + ' ') !== -1; });
   if (!hit) return;
   s.acceptingAnswers = false;
   if (s.timeoutId) { clearTimeout(s.timeoutId); s.timeoutId = null; }
@@ -37655,9 +37975,9 @@ function kilouteSessionCheckAnswer(channelName, username, rawText) {
   s.scores[username].n += 1;
   s.scores[username].kikooz += s.reward;
   npcSaySequence('kiloute79', s.channel, [
-    kpick(KILOUTE_CORRECT)(winner, q.r),
+    kpick(KILOUTE_CORRECT)(winner, kilouteAffiche(q)),
     kpick(KILOUTE_REWARD)(winner, s.scores[username].n, s.reward),
-  ], () => kilouteSessionAdvance(s), 'c', 3000);
+  ], () => kilouteSessionAdvance(s), 'c', s.pas || 3000);
 }
 
 // Clôt la session : classement final + remerciements, puis Kiloute s'en va.
@@ -37669,21 +37989,22 @@ function kilouteSessionEnd(s) {
   const ranking = Object.keys(s.scores)
     .map((u) => ({ u, n: s.scores[u].n, k: s.scores[u].kikooz }))
     .sort((a, b) => b.k - a.k || b.n - a.n);
-  const lines = ["Et voilà, c'est la fin de notre grand quiz ! Quelle ambiance !"];
+  const lines = [kilouteLigne('quiz.fin', "Et voilà, c'est la fin de notre grand quiz ! Quelle ambiance !")];
   if (!ranking.length) {
-    lines.push("Personne n'a marqué cette fois-ci... ce sera pour la prochaine, j'en suis sûr !");
+    lines.push(kilouteLigne('quiz.personne', "Personne n'a marqué cette fois-ci... ce sera pour la prochaine, j'en suis sûr !"));
   } else {
-    lines.push("Voici le classement de ce quiz :");
+    lines.push(kilouteLigne('quiz.classement', "Voici le classement de ce quiz :"));
     ranking.slice(0, 3).forEach((r, i) => {
       const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉';
-      lines.push(`${medal} ${getDisplayName(r.u)} — ${r.k} kikooz (${r.n} bonne${r.n > 1 ? 's' : ''})`);
+      lines.push({ k: 'kiloute.quiz.podium', n: r.n, p: { medaille: medal, nom: getDisplayName(r.u), kz: r.k },
+        formes: { one: '{medaille} {nom} — {kz} kikooz ({n} bonne)', other: '{medaille} {nom} — {kz} kikooz ({n} bonnes)' } });
     });
-    lines.push(`Un immense bravo à ${getDisplayName(ranking[0].u)}, grand gagnant de ce quiz !`);
+    lines.push(kilouteLigne('quiz.bravo', 'Un immense bravo à {nom}, grand gagnant de ce quiz !', { nom: getDisplayName(ranking[0].u) }));
   }
-  lines.push("Merci à toutes et à tous d'avoir joué, vous êtes formidables ! À très vite !");
+  lines.push(kilouteLigne('quiz.merci', "Merci à toutes et à tous d'avoir joué, vous êtes formidables ! À très vite !"));
   npcSaySequence('kiloute79', s.channel, lines, () => {
     setTimeout(() => { if (kilouteSession === s) { kilouteSession = null; npcLeave('kiloute79'); } }, 3000);
-  }, 'c', 4000);
+  }, 'c', s.pas || 4000);
 }
 
 // Interrompt une session en cours (bouton admin "Arrêter").
@@ -37693,7 +38014,7 @@ function kilouteStopSession() {
   if (s.timeoutId) { clearTimeout(s.timeoutId); s.timeoutId = null; }
   s.acceptingAnswers = false;
   s.ending = true;
-  kilouteSay(s.channel, "Le quiz s'arrête ici ! Merci à tous d'avoir joué, à très bientôt !");
+  kilouteSay(s.channel, kilouteLigne('quiz.stop', "Le quiz s'arrête ici ! Merci à tous d'avoir joué, à très bientôt !"));
   setTimeout(() => { if (kilouteSession === s) { kilouteSession = null; npcLeave('kiloute79'); } }, 3000);
   return { ok: true };
 }
@@ -38288,9 +38609,9 @@ const lgFermetures = new Map();   // salon → setTimeout du rangement d'une par
 const LG_GARDER_FINIE_MS = 15 * 60 * 1000;
 
 // Les phrases du meneur. `t` est un TEXTE TRADUISIBLE (cf. texteDe) : les
-// événements de LoupGarou sont aujourd'hui des chaînes françaises — passés en
-// { k, fr, p }, ils se diront dans la langue de chaque joueur sans rien
-// changer ici. `**gras**` et les retours à la ligne s'appliquent après
+// événements de LoupGarou portent leur forme { k, fr, p } (`tr`, zone
+// « loupgarou », i18n-serveur/en/loupgarou.js), et se disent dans la langue
+// de chaque joueur. `**gras**` et les retours à la ligne s'appliquent après
 // l'échappement (lgBalises).
 function lgBalises(html) {
   return html.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br/>');
@@ -38298,20 +38619,33 @@ function lgBalises(html) {
 function lgTexte(t, lang) {
   return lgBalises(escapeXml(texteDe(lang || 'fr', t)));
 }
-// Une ligne pour le salon : une chaîne, la même pour tous ; un texte à clé,
-// une trame par langue (qui se refait au rejeu si elle tient dans le moule
-// d'une phrase — sans gras ni retour à la ligne ; sinon, rangée en français).
-function lgLigne(t, habiller) {
-  if (typeof t === 'string' || t == null) return habiller(lgTexte(t));
-  return ligneTraduite(t, (html) => habiller(lgBalises(html)));
+// Le corps d'une ligne de salon : la phrase faite, dans son CDATA — en
+// italique pour une petite ligne grise (lgInfo).
+function lgCorps(html, info) { return info ? `<![CDATA[<i>${html}</i>]]>` : `<![CDATA[${html}]]>`; }
+/*
+ * Une ligne pour le salon : une chaîne, la même pour tous ; un texte à clé,
+ * une trame par langue. Ses phrases ont du gras et des retours à la ligne —
+ * hors du moule d'une phrase simple : la famille « loupgarou. » déclare donc
+ * son rendu, qui refait au rejeu ce que le direct a écrit (le paramètre
+ * rangé `lgInfo` dit l'italique de lgInfo).
+ */
+rendreLigne('loupgarou.', (lang, kp, k) => {
+  const texte = texteRange(lang, k, kp);
+  return texte == null ? {} : { corps: lgCorps(lgBalises(escapeXml(texte)), !!kp.lgInfo) };
+});
+function lgLigne(t, habiller, info) {
+  if (typeof t === 'string' || t == null) return habiller(lgCorps(lgTexte(t), info));
+  if (!estTexteCle(t)) return (lang) => habiller(lgCorps(lgTexte(t, lang), info));
+  const kp = Object.assign(parametresRanges(t) || {}, info ? { lgInfo: 1 } : {});
+  return { k: t.k, kp, build: (lang) => habiller(lgCorps(lgTexte(t, lang), info)) };
 }
 function lgPublic(salon, t) {
   const ta = buildChatTimeAttrs();
-  broadcastToChannel(salon, lgLigne(t, (html) => `<${CMD.send} u="admin" t="c" p="" g="${escapeXml(salon)}" h="${ta.h}" d="${ta.d}"><![CDATA[${html}]]></${CMD.send}>`));
+  broadcastToChannel(salon, lgLigne(t, (corps) => `<${CMD.send} u="admin" t="c" p="" g="${escapeXml(salon)}" h="${ta.h}" d="${ta.d}">${corps}</${CMD.send}>`));
 }
 function lgInfo(salon, t) {
   const ta = buildChatTimeAttrs();
-  broadcastToChannel(salon, lgLigne(t, (html) => `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(salon)}" h="${ta.h}" d="${ta.d}"><![CDATA[<i>${html}</i>]]></${CMD.send}>`));
+  broadcastToChannel(salon, lgLigne(t, (corps) => `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(salon)}" h="${ta.h}" d="${ta.d}">${corps}</${CMD.send}>`, true));
 }
 // Une ligne pour un seul joueur — à ses fenêtres ouvertes sur le salon (à
 // toutes, s'il n'y est plus : il ne doit pas manquer son rôle). Chaque
@@ -38323,8 +38657,9 @@ function lgSecret(salon, u, t) {
   const dedans = socks.filter((s) => { const cl = xmlSocketClients.get(s); return cl && cl.channels && cl.channels.has(salon); });
   for (const s of (dedans.length ? dedans : socks)) sendToClient(s, tr.pour(langueClient(xmlSocketClients.get(s))));
 }
+// La vue d'un joueur, ses libellés dans SA langue (celle de la socket).
 function lgVueA(sock, cl, p) {
-  const v = p ? LoupGarou.vue(p, cl.username, isChannelStaff(cl.username, p.salon), Date.now()) : { ferme: true };
+  const v = p ? LoupGarou.vue(p, cl.username, isChannelStaff(cl.username, p.salon), Date.now(), langueClient(cl)) : { ferme: true };
   const json = JSON.stringify(v).replace(/]]>/g, ']]\\u003e');
   sendToClient(sock, `<${CMD.send} u="admin" t="lg" p="" g="${escapeXml(p ? p.salon : '')}" h="" d=""><![CDATA[${json}]]></${CMD.send}>`);
 }
@@ -38360,10 +38695,12 @@ function lgEnregistrer() {
 }
 function lgDiffuser(p, evts, options) {
   for (const e of evts || []) {
-    if (e.a === 'public') lgPublic(p.salon, e.t);
-    else if (e.a === 'info') lgInfo(p.salon, e.t);
-    else if (e.a === 'secret') lgSecret(p.salon, e.u, e.t);
-    else if (e.a === 'meneur') lgSecret(p.salon, p.meneur, e.t);
+    // `tr` : le texte traduisible de l'événement (le français est dans `t`).
+    const t = e.tr || e.t;
+    if (e.a === 'public') lgPublic(p.salon, t);
+    else if (e.a === 'info') lgInfo(p.salon, t);
+    else if (e.a === 'secret') lgSecret(p.salon, e.u, t);
+    else if (e.a === 'meneur') lgSecret(p.salon, p.meneur, t);
     else if (e.a === 'fin') lgPayer(p, e);
   }
   if (options && options.leger) return;      // un murmure de la meute : rien d'autre ne change
@@ -38388,13 +38725,13 @@ function lgPayer(p, e) {
   const donneur = p.meneur;
   // L'enveloppe est celle des animateurs : un modérateur qui mène une partie
   // n'en a pas (les rôles se respectent) — la gloire, mais pas les kikooz.
-  if (!isAnimator(donneur)) { lgInfo(p.salon, 'Le meneur n’a pas d’enveloppe : pas de prix cette fois.'); return; }
+  if (!isAnimator(donneur)) { lgInfo(p.salon, { k: 'loupgarou.serveur.pasDEnveloppe', fr: 'Le meneur n’a pas d’enveloppe : pas de prix cette fois.' }); return; }
   let part = prix;
   {
     const rec = getAnimatorWeekRecord(donneur);
     const reste = Math.max(0, ANIMATOR_WEEKLY_KIKOOZ - rec.given);
     part = Math.min(prix, Math.floor(reste / gagnants.length));
-    if (part <= 0) { lgInfo(p.salon, 'L’enveloppe du meneur est vide cette semaine : pas de prix, mais la gloire !'); return; }
+    if (part <= 0) { lgInfo(p.salon, { k: 'loupgarou.serveur.enveloppeVide', fr: 'L’enveloppe du meneur est vide cette semaine : pas de prix, mais la gloire !' }); return; }
     rec.given += part * gagnants.length;
     saveAnimatorKikooz();
   }
@@ -38412,7 +38749,10 @@ function lgPayer(p, e) {
         .catch((err) => console.error('[DB] kikooz gift log error:', err.message));
     }
   }
-  lgPublic(p.salon, `${part} kikooz pour chaque gagnant : ${gagnants.map((u) => getDisplayName(u)).join(', ')} !${part < prix ? ' (L’enveloppe du meneur n’en permettait pas plus.)' : ''}`);
+  const noms = gagnants.map((u) => getDisplayName(u)).join(', ');
+  lgPublic(p.salon, part < prix
+    ? { k: 'loupgarou.serveur.prixReduit', fr: '{n} kikooz pour chaque gagnant : {noms} ! (L’enveloppe du meneur n’en permettait pas plus.)', p: { n: part, noms } }
+    : { k: 'loupgarou.serveur.prix', fr: '{n} kikooz pour chaque gagnant : {noms} !', p: { n: part, noms } });
   console.log(`[LOUPGAROU] prix : ${part} kikooz × ${gagnants.length} (meneur ${donneur})`);
 }
 /** Une commande /lg (ligne = ce qui suit « /lg »). */
@@ -38423,10 +38763,12 @@ function lgCommande(client, g, ligne) {
   const mots = String(ligne || '').trim().split(/\s+/).filter(Boolean);
   const premier = LoupGarou.normaliser(mots[0] || '');
   let p = lgParties.get(g);
-  if (['ouvrir', 'nouvelle', 'creer', 'open'].includes(premier)) {
-    if (!staff) return lgSecret(g, u, 'Seuls les animateurs (dans leur salon) et les modérateurs ouvrent une partie de loup-garou.');
-    if (isPrivateChannel(g)) return lgSecret(g, u, 'Pas de loup-garou dans une discussion privée.');
-    if (p && p.phase !== 'fin') return lgSecret(g, u, 'Une partie est déjà en cours dans ce salon (/lg fin pour l’arrêter).');
+  // Chaque réponse part dans la langue de qui la lit (lgSecret).
+  const dire = (cle, fr) => lgSecret(g, u, { k: 'loupgarou.serveur.' + cle, fr });
+  if (['ouvrir', 'nouvelle', 'creer', 'open', 'new', 'create'].includes(premier)) {
+    if (!staff) return dire('ouvrirStaff', 'Seuls les animateurs (dans leur salon) et les modérateurs ouvrent une partie de loup-garou.');
+    if (isPrivateChannel(g)) return dire('ouvrirPrive', 'Pas de loup-garou dans une discussion privée.');
+    if (p && p.phase !== 'fin') return dire('dejaEnCours', 'Une partie est déjà en cours dans ce salon (/lg fin pour l’arrêter).');
     const r = LoupGarou.lireReglages(mots.slice(1));
     p = LoupGarou.creer({ salon: g, meneur: u, meneurNom: nom, now: Date.now(), prix: r.prix || 0 });
     Object.assign(p.options.chronos, r.chronos);
@@ -38434,11 +38776,12 @@ function lgCommande(client, g, ligne) {
     lgFermetures.delete(g);
     lgParties.set(g, p);
     console.log(`[LOUPGAROU] partie ouverte dans ${g} par ${u}`);
-    return lgDiffuser(p, LoupGarou.ouverture(p).concat([{ a: 'meneur', t: LoupGarou.aide(p, u, true) }]));
+    return lgDiffuser(p, LoupGarou.ouverture(p).concat([{ a: 'meneur', t: LoupGarou.aide(p, u, true), tr: LoupGarou.aideT(p, u, true) }]));
   }
   if (!p) {
-    if (!premier || ['aide', 'help', '?', 'commandes'].includes(premier)) return lgSecret(g, u, LoupGarou.aide(null, u, staff));
-    return lgSecret(g, u, staff ? 'Pas de partie dans ce salon : /lg ouvrir pour en lancer une (/lg aide pour tout savoir).' : 'Pas de partie de loup-garou dans ce salon pour le moment.');
+    if (!premier || ['aide', 'help', '?', 'commandes', 'commands'].includes(premier)) return lgSecret(g, u, LoupGarou.aideT(null, u, staff));
+    return staff ? dire('pasDePartieStaff', 'Pas de partie dans ce salon : /lg ouvrir pour en lancer une (/lg aide pour tout savoir).')
+      : dire('pasDePartie', 'Pas de partie de loup-garou dans ce salon pour le moment.');
   }
   // « ajouter » : un pseudo présent dans le salon.
   const compte = (a) => {
@@ -38458,7 +38801,7 @@ function lgFiltrerParole(client, g, texte) {
   if (!p) return false;
   const par = LoupGarou.parole(p, client.username, isChannelStaff(client.username, g));
   if (par.meute) { lgDiffuser(p, LoupGarou.meute(p, client.username, texte), { leger: true }); return true; }
-  if (!par.ok) { lgSecret(g, client.username, par.raison); return true; }
+  if (!par.ok) { lgSecret(g, client.username, par.raisonT || par.raison); return true; }
   return false;
 }
 async function lgCharger() {
@@ -41420,7 +41763,7 @@ case 'send': {
     // Pas d'image non plus pendant la nuit d'un loup-garou (ni de la part d'un mort).
     if (lgParties.has(g)) {
       const par = LoupGarou.parole(lgParties.get(g), client.username, isChannelStaff(client.username, g));
-      if (!par.ok) { lgSecret(g, client.username, par.raison || 'Pas d’image pendant la nuit.'); break; }
+      if (!par.ok) { lgSecret(g, client.username, par.raisonT || par.raison || { k: 'loupgarou.serveur.pasDImage', fr: 'Pas d’image pendant la nuit.' }); break; }
     }
     /*
      * `/image` (et son abréviation `/img`) EST OUVERTE À TOUT LE MONDE.

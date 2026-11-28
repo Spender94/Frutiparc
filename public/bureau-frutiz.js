@@ -7852,11 +7852,14 @@ window.BureauFrutiz = (function () {
     chargerGaspard(gsEtat.precedents.pop());
   }
 
+  // Hors du français, la langue suit (`lang=`) : le serveur sert alors la
+  // version anglaise des rubriques qui en ont une.
   function urlGaspard(base, params) {
     var q = [];
     for (var k in params) if (params[k] !== undefined && params[k] !== null) {
       q.push(encodeURIComponent(k) + '=' + encodeURIComponent(params[k]));
     }
+    if (window.FPI18n && FPI18n.langue && FPI18n.langue !== 'fr') q.push('lang=' + encodeURIComponent(FPI18n.langue));
     return base + (q.length ? '?' + q.join('&') : '');
   }
 
