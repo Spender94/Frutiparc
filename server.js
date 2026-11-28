@@ -3400,8 +3400,8 @@ async function tournamentSetMatchWinner(t, match, winner, score1, score2) {
 
 // `matches` (facultatif) : les affiches du tour — pour reconnaître le tour
 // préliminaire (cf. tournoiCoupe.js).
-function tournamentRoundName(round, totalRounds, matches) {
-  return TC.nomDuTour(round, totalRounds, matches);
+function tournamentRoundName(round, totalRounds, matches, lang) {
+  return TC.nomDuTour(round, totalRounds, matches, lang);
 }
 // Rendu SVG du bracket (look « bracket classique » vert Frutiparc, vainqueur en
 // gras). Servi tel quel comme image partageable sur le forum via [img].
@@ -12316,6 +12316,7 @@ app.get('/api/paris', async (req, res) => {
   try {
     const moi = resolveUsernameFromSid(String(req.query.sid || '')) || '';
     const user = moi ? users[moi] : null;
+    const L = langueDeRequete(req);
     const tournois = [];
     for (const t of await parisTournoisVisibles()) {
       const matches = await db.getTournamentMatches(t.id);
@@ -12328,8 +12329,8 @@ app.get('/api/paris', async (req, res) => {
       const rounds = matches.map((m) => Number(m.round));
       const fin = rounds.length ? Math.max(...rounds) : 0;
       const nomTour = (m) => (t.format === 'duel'
-        ? TD.nomDuTour(Number(m.round), matches.filter((x) => Number(x.round) === Number(m.round)).length)
-        : tournamentRoundName(Number(m.round), fin, matches.filter((x) => Number(x.round) === Number(m.round))));
+        ? TD.nomDuTour(Number(m.round), matches.filter((x) => Number(x.round) === Number(m.round)).length, L)
+        : tournamentRoundName(Number(m.round), fin, matches.filter((x) => Number(x.round) === Number(m.round)), L));
       const scores = await scoresDesCotes(t, matches);
       const fiche = (m) => {
         const liste = (parMatch.get(m.id) || []).filter((p) => p.statut !== 'rembourse');
@@ -12377,14 +12378,15 @@ function prunosticPrevenir(joueur, parieur, texte) {
 }
 
 app.post('/api/paris', async (req, res) => {
+  // (`t` y nomme le tournoi : le texte passe par FPI18n.traduire.)
   const L = langueDeRequete(req);
-  if (!process.env.DATABASE_URL) return res.status(400).json({ ok: false, code: 'fermes', message: t(L, 'paris.indisponibles', 'Les paris ne sont pas disponibles.') });
+  if (!process.env.DATABASE_URL) return res.status(400).json({ ok: false, code: 'fermes', message: FPI18n.traduire(L, 'paris.indisponibles', 'Les paris ne sont pas disponibles.') });
   const b = req.body || {};
   const moi = resolveUsernameFromSid(String(b.sid || ''));
-  if (!moi) return res.status(401).json({ ok: false, code: 'auth', message: t(L, 'paris.connecteToi', 'Connecte-toi pour parier.') });
+  if (!moi) return res.status(401).json({ ok: false, code: 'auth', message: FPI18n.traduire(L, 'paris.connecteToi', 'Connecte-toi pour parier.') });
   const user = users[moi];
-  if (!user) return res.status(503).json({ ok: false, code: 'auth', message: t(L, 'paris.compteIndisponible', 'Compte indisponible, réessaie.') });
-  if (parisVerrous.has(moi)) return res.status(429).json({ ok: false, code: 'patience', message: t(L, 'paris.patience', 'Un pari est déjà en cours d’enregistrement.') });
+  if (!user) return res.status(503).json({ ok: false, code: 'auth', message: FPI18n.traduire(L, 'paris.compteIndisponible', 'Compte indisponible, réessaie.') });
+  if (parisVerrous.has(moi)) return res.status(429).json({ ok: false, code: 'patience', message: FPI18n.traduire(L, 'paris.patience', 'Un pari est déjà en cours d’enregistrement.') });
   parisVerrous.add(moi);
   try {
     const m = await db.getTournamentMatch(Number(b.match));
@@ -12398,14 +12400,14 @@ app.post('/api/paris', async (req, res) => {
       choixPrecedent: precedent && precedent.statut === 'ouvert' ? precedent.choix : null,
     });
     if (refus) return res.status(400).json(Object.assign({ ok: false }, refus));
-    if (parisMatchCommence(t, m)) return res.status(400).json({ ok: false, code: 'joue', message: t(L, 'paris.misesFermees', 'Les mises sur ce match sont fermées.') });
+    if (parisMatchCommence(t, m)) return res.status(400).json({ ok: false, code: 'joue', message: FPI18n.traduire(L, 'paris.misesFermees', 'Les mises sur ce match sont fermées.') });
     if (precedent && precedent.statut !== 'ouvert') {
-      return res.status(400).json({ ok: false, code: 'joue', message: t(L, 'paris.matchRegle', 'Les paris sur ce match sont réglés.') });
+      return res.status(400).json({ ok: false, code: 'joue', message: FPI18n.traduire(L, 'paris.matchRegle', 'Les paris sur ce match sont réglés.') });
     }
     const lies = await db.memeAppareil(moi, [m.player1, m.player2]);
     if (lies.length) {
       return res.status(400).json({ ok: false, code: 'appareil',
-        message: t(L, 'paris.memeAppareil', 'Ton compte a été utilisé sur le même appareil qu’un des joueurs de ce match : tu ne peux pas parier dessus.') });
+        message: FPI18n.traduire(L, 'paris.memeAppareil', 'Ton compte a été utilisé sur le même appareil qu’un des joueurs de ce match : tu ne peux pas parier dessus.') });
     }
     const affiche = parisAffiche(m);
     // La cote du moment, figée sur la mise. Un pari mutuel posé avant les
@@ -12415,11 +12417,11 @@ app.post('/api/paris', async (req, res) => {
     const cote = cotes && cotes[choix] ? cotes[choix].cote : null;
     const retour = cote ? CoteTournoi.retourDe(mise, cote) : null;
     const pari = await db.poserPari({ tournamentId: t.id, matchId: m.id, username: moi, choix, mise, affiche, retour, cote });
-    if (!pari) return res.status(400).json({ ok: false, code: 'camp', message: t(L, 'paris.autreCamp', 'Tu as déjà parié sur l’autre joueur de ce match.') });
+    if (!pari) return res.status(400).json({ ok: false, code: 'camp', message: FPI18n.traduire(L, 'paris.autreCamp', 'Tu as déjà parié sur l’autre joueur de ce match.') });
     // Le solde a pu bouger pendant l'écriture (un achat, un don) : on revérifie.
     if ((Number(user.kikooz) || 0) < mise) {
       await db.retirerMise(pari.id, mise, retour).catch(dbErr('retirerMise'));
-      return res.status(400).json({ ok: false, code: 'solde', message: t(L, 'paris.solde', 'Tu n’as pas assez de kikooz.') });
+      return res.status(400).json({ ok: false, code: 'solde', message: FPI18n.traduire(L, 'paris.solde', 'Tu n’as pas assez de kikooz.') });
     }
     user.kikooz = (Number(user.kikooz) || 0) - mise;
     if (user._dbId) db.updateUser(moi, { kikooz: user.kikooz }).catch(dbErr('updateUser pari'));
@@ -12439,7 +12441,7 @@ app.post('/api/paris', async (req, res) => {
       cote: pari.cote == null ? null : Number(pari.cote), retour: pari.retour });
   } catch (e) {
     console.error('[PARIS] mise :', e.message);
-    res.status(500).json({ ok: false, code: 'erreur', message: t(L, 'paris.nonEnregistre', 'Le pari n’a pas pu être enregistré.') });
+    res.status(500).json({ ok: false, code: 'erreur', message: FPI18n.traduire(L, 'paris.nonEnregistre', 'Le pari n’a pas pu être enregistré.') });
   } finally {
     parisVerrous.delete(moi);
   }
@@ -12553,11 +12555,25 @@ function jourDecale(jour, n) {
 }
 const parisChallengeDemain = () => jourDecale(parisDayKey(), 1);
 const parisChallengeHier = () => jourDecale(parisDayKey(), -1);
-function jourLisible(jour) {
+// (`lang` : « samedi 28 novembre » ; « Saturday, November 28 » en anglais.)
+function jourLisible(jour, lang) {
   const d = new Date(jour + 'T12:00:00Z');
-  return d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' });
+  return d.toLocaleDateString(lang && lang !== 'fr' ? 'en-US' : 'fr-FR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' });
 }
-const coteLisible = (c) => '×' + String(c).replace('.', ',');
+// « ×2,5 » ; « ×2.5 » en anglais.
+const coteLisible = (c, lang) => '×' + String(c).replace('.', t(lang || 'fr', 'paris.virgule', ','));
+// L'affiche d'un match (`tournament_paris.affiche`, rangée « Kiwi contre Bob ») :
+// les deux pseudos se relisent, le mot se traduit.
+function afficheLisible(affiche, lang) {
+  const m = /^(.*) contre (.*)$/.exec(String(affiche || ''));
+  return !m || !lang || lang === 'fr' ? String(affiche || '') : t(lang, 'paris.affiche', '{j1} contre {j2}', { j1: m[1], j2: m[2] });
+}
+// « la victoire de Kiwi (Kiwi contre Bob), Coupe d'hiver » — le nom du
+// tournoi est celui de l'organisateur, tel quel.
+function quoiPariTournoi(nom, affiche, tournoi, lang) {
+  return t(lang || 'fr', 'paris.quoi.victoire', 'la victoire de {nom}', { nom })
+    + (affiche ? ` (${afficheLisible(affiche, lang)})` : '') + (tournoi ? `, ${tournoi}` : '');
+}
 // Les jeux du Challenge, tels qu'on parie dessus.
 function jeuxChallengeParis() {
   const jeux = [];
@@ -12665,12 +12681,14 @@ function rangDuType(type) {
   return type === 'or' ? 1 : 3;
 }
 // « Myrtille en or à Swapou 2 », « le défi de Myrtille : l'argent ou l'or à Swapou 2 »…
-function quoiPariChallenge(type, nom, nomJeu) {
-  if (type === 'or') return `${nom} en or à ${nomJeu}`;
-  if (type === 'defi_or') return `le défi de ${nom} : l’or à ${nomJeu}`;
-  if (type === 'defi_argent') return `le défi de ${nom} : l’argent ou l’or à ${nomJeu}`;
-  if (type === 'defi_bronze') return `le défi de ${nom} : une médaille à ${nomJeu}`;
-  return `${nom} médaillé à ${nomJeu}`;
+// (Dans la langue `lang` : une phrase par sorte de pari, `paris.quoi.*`.)
+function quoiPariChallenge(type, nom, nomJeu, lang) {
+  const q = (k, fr) => t(lang || 'fr', 'paris.quoi.' + k, fr, { nom, jeu: nomJeu });
+  if (type === 'or') return q('or', '{nom} en or à {jeu}');
+  if (type === 'defi_or') return q('defiOr', 'le défi de {nom} : l’or à {jeu}');
+  if (type === 'defi_argent') return q('defiArgent', 'le défi de {nom} : l’argent ou l’or à {jeu}');
+  if (type === 'defi_bronze') return q('defiBronze', 'le défi de {nom} : une médaille à {jeu}');
+  return q('podium', '{nom} médaillé à {jeu}');
 }
 // Ceux qui font gagner un pari d'une sorte, dans un jeu : les `rang` premiers
 // de chacun de ses classements (Burning Kiwi : le circuit du jour, quel qu'il soit).
@@ -12678,9 +12696,9 @@ function gagnantsDuType(jeu, podiums, type) {
   const n = rangDuType(type);
   return jeu.rankings.flatMap((rk) => (podiums[rk] || []).slice(0, n)).filter(Boolean);
 }
-function libellePariChallenge(p, jeux) {
+function libellePariChallenge(p, jeux, lang) {
   const j = (jeux || jeuxChallengeParis()).find((x) => x.cle === p.jeu);
-  return `${quoiPariChallenge(p.type, getDisplayName(p.choix), j ? j.nom : p.jeu)} (${jourLisible(p.jour)})`;
+  return `${quoiPariChallenge(p.type, getDisplayName(p.choix), j ? j.nom : p.jeu, lang)} (${jourLisible(p.jour, lang)})`;
 }
 // Les cotes du Challenge d'un jour, jeu par jeu : les 30 jours d'historique
 // qui précèdent la veille (la veille se joue encore quand on mise). Elles ne
@@ -12895,6 +12913,7 @@ app.get('/api/paris/challenge', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json({ ok: true, actif: false });
   try {
     const moi = resolveUsernameFromSid(String(req.query.sid || '')) || '';
+    const L = langueDeRequete(req);
     const user = moi ? users[moi] : null;
     const R = parisChallengeReglages;
     const demain = parisChallengeDemain();
@@ -12961,17 +12980,17 @@ app.get('/api/paris/challenge', async (req, res) => {
     const defi = await defiDuJoueur(moi, demain, paris, hist);
     res.json(Object.assign(base, {
       defi,
-      jour: demain, jourLisible: jourLisible(demain), plafond: Number(R.plafond) || 50,
+      jour: demain, jourLisible: jourLisible(demain, L), plafond: Number(R.plafond) || 50,
       cagnotte: await db.prunosticsCagnotte().catch(() => 0),
       dejaMise: moi ? await db.miseChallengeDuJour(moi, demain) : 0, jeux,
-      autresParis: autres.map((p) => ({ type: p.type, texte: libellePariChallenge(p).replace(getDisplayName(p.choix), nomDe(p.choix)), mise: p.mise,
+      autresParis: autres.map((p) => ({ type: p.type, texte: libellePariChallenge(p, undefined, L).replace(getDisplayName(p.choix), nomDe(p.choix)), mise: p.mise,
         cote: p.cote == null ? null : Number(p.cote), retour: p.retour })),
       hier: {
-        jour: hier, jourLisible: jourLisible(hier),
+        jour: hier, jourLisible: jourLisible(hier, L),
         podiums: jeuxChallengeParis().filter((j) => podiumHier[j.cle] && (!jeuxHier || jeuxHier.includes(j.cle)))
           .map((j) => ({ cle: j.cle, nom: j.nom, podium: podiumHier[j.cle] })),
         mesParis: mesHier.map((p) => ({
-          texte: libellePariChallenge(p).replace(getDisplayName(p.choix), nomDe(p.choix)),
+          texte: libellePariChallenge(p, undefined, L).replace(getDisplayName(p.choix), nomDe(p.choix)),
           mise: p.mise, cote: p.cote == null ? null : Number(p.cote), statut: p.statut, gain: p.gain })),
       },
     }));
@@ -12981,14 +13000,15 @@ app.get('/api/paris/challenge', async (req, res) => {
 });
 
 // LA SEMAINE d'un jour, du lundi au dimanche (jours de Paris).
-// Le mois d'un jour (heure de Paris) : { cle 'AAAA-MM', premier, dernier, lisible 'octobre 2026' }.
-function moisParis(jour) {
+// Le mois d'un jour (heure de Paris) : { cle 'AAAA-MM', premier, dernier, lisible 'octobre 2026' }
+// (`lisible` dans la langue `lang` : « October 2026 »).
+function moisParis(jour, lang) {
   const cle = String(jour).slice(0, 7);
   const [a, m] = cle.split('-').map(Number);
   return {
     cle, premier: cle + '-01',
     dernier: new Date(Date.UTC(a, m, 0)).toISOString().slice(0, 10),
-    lisible: new Date(Date.UTC(a, m - 1, 15)).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric', timeZone: 'UTC' }),
+    lisible: new Date(Date.UTC(a, m - 1, 15)).toLocaleDateString(lang && lang !== 'fr' ? 'en-US' : 'fr-FR', { month: 'long', year: 'numeric', timeZone: 'UTC' }),
   };
 }
 function moisDecale(cle, n) {
@@ -14849,6 +14869,7 @@ app.get('/api/paris/registre', async (req, res) => {
   try {
     const moi = resolveUsernameFromSid(String(req.query.sid || '')) || '';
     const seuil = Math.max(1, Number(parisChallengeReglages.grosCoup) || 100);
+    const L = langueDeRequete(req);
     const mesParis = moi ? await db.registreParis(moi, 300) : [];
     const coups = await db.grosCoupsParis(new Date(Date.now() - 30 * 86400000), seuil, 30);
     const noms = new Map();
@@ -14860,9 +14881,9 @@ app.get('/api/paris/registre', async (req, res) => {
     const quoi = (p) => {
       if (p.sorte === 'challenge') {
         const j = jeux.find((x) => x.cle === p.jeu);
-        return `${quoiPariChallenge(p.type, nomDe(p.choix), j ? j.nom : p.jeu)} (${jourLisible(p.jour)})`;
+        return `${quoiPariChallenge(p.type, nomDe(p.choix), j ? j.nom : p.jeu, L)} (${jourLisible(p.jour, L)})`;
       }
-      return `la victoire de ${nomDe(p.choix)}${p.affiche ? ` (${p.affiche})` : ''}${p.tournoi ? `, ${p.tournoi}` : ''}`;
+      return quoiPariTournoi(nomDe(p.choix), p.affiche, p.tournoi, L);
     };
     const lignes = mesParis.map((p) => ({
       sorte: p.sorte, type: p.type, quand: p.cree_le, quoi: quoi(p), mise: p.mise,
@@ -14880,19 +14901,19 @@ app.get('/api/paris/registre', async (req, res) => {
     };
     bilan.net = bilan.gains - bilan.mises;
     // Le Prunostiqueur du mois : le classement en cours, et le sacré du mois passé.
-    const sem = moisParis(parisDayKey());
-    const passee = moisParis(moisDecale(sem.cle, -1) + '-01');
+    const sem = moisParis(parisDayKey(), L);
+    const passee = moisParis(moisDecale(sem.cle, -1) + '-01', L);
     const enCours = await db.classementParis(sem.premier, sem.dernier, 3);
     const avant = (await db.classementParis(passee.premier, passee.dernier, 3))[0];
     const aNommer = enCours.map((c) => c.username).concat(avant ? [avant.username] : []);
     if (aNommer.length) for (const r of await db.fichesComptes(aNommer)) noms.set(r.username, r.display_name || getDisplayName(r.username));
     const monRang = moi ? enCours.findIndex((c) => c.username === moi) : -1;
     const mois = {
-      lisible: sem.lisible, minParis: 3,
+      cle: sem.cle, lisible: sem.lisible, minParis: 3,
       // Le classement ENTIER (la page n'en montre que le haut, et le reste sur demande).
       classement: enCours.map((c, i) => ({ rang: i + 1, nom: nomDe(c.username), pseudo: c.username, soi: c.username === moi, net: c.net, paris: c.paris, gagnes: c.gagnes })),
       moi: monRang >= 0 ? { rang: monRang + 1, net: enCours[monRang].net } : null,
-      passee: avant && avant.net > 0 ? { lisible: passee.lisible, nom: nomDe(avant.username), net: avant.net } : null,
+      passee: avant && avant.net > 0 ? { cle: passee.cle, lisible: passee.lisible, nom: nomDe(avant.username), net: avant.net } : null,
       cagnotte: await db.prunosticsCagnotte().catch(() => 0),
       plafondCagnotte: Number(parisChallengeReglages.plafondCagnotte) || 0,
     };
@@ -14915,7 +14936,7 @@ app.get('/api/paris/registre', async (req, res) => {
  *                           ce jour, et les matchs de tournoi réglés ce jour-là)
  *   /api/paris/parieur?u=   les paris réglés d'un joueur, 30 derniers jours
  */
-async function parisLignesPubliques(rows) {
+async function parisLignesPubliques(rows, lang = 'fr') {
   const noms = new Map();
   const cles = [...new Set(rows.flatMap((p) => [p.username, p.choix]).map((u) => String(u || '').toLowerCase()).filter(Boolean))];
   if (cles.length) for (const r of await db.fichesComptes(cles)) noms.set(r.username, r.display_name || getDisplayName(r.username));
@@ -14926,7 +14947,7 @@ async function parisLignesPubliques(rows) {
     return {
       sorte: p.sorte, quand: p.regle_le, parieur: nomDe(p.username), pseudo: String(p.username || '').toLowerCase(),
       choix: nomDe(p.choix), type: p.type || null, jeu: p.sorte === 'challenge' ? (j ? j.nom : p.jeu) : null, cleJeu: p.jeu || null,
-      jour: p.jour || null, tournoi: p.tournoi || null, affiche: p.affiche || null,
+      jour: p.jour || null, tournoi: p.tournoi || null, affiche: p.affiche ? afficheLisible(p.affiche, lang) : null,
       mise: Number(p.mise) || 0, cote: p.cote == null ? null : Number(p.cote), statut: p.statut, gain: Number(p.gain) || 0,
     };
   });
@@ -14950,8 +14971,9 @@ app.get('/api/paris/parc', async (req, res) => {
     let jour = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.jour || '')) ? String(req.query.jour) : hier;
     // Le jour en cours (et demain) se joue encore : rien n'est réglé, rien ne se montre.
     if (jour >= aujourdhui) jour = hier;
-    const lignes = await parisLignesPubliques(await db.parisReglesDuJour(jour));
-    res.json({ ok: true, jour, lisible: jourLisible(jour), precedent: jourDecale(jour, -1), suivant: jour < hier ? jourDecale(jour, 1) : null,
+    const L = langueDeRequete(req);
+    const lignes = await parisLignesPubliques(await db.parisReglesDuJour(jour), L);
+    res.json({ ok: true, jour, lisible: jourLisible(jour, L), precedent: jourDecale(jour, -1), suivant: jour < hier ? jourDecale(jour, 1) : null,
       lignes, bilan: parisBilanParJoueur(lignes) });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
@@ -14965,7 +14987,7 @@ app.get('/api/paris/parieur', async (req, res) => {
     const rows = (await db.registreParis(u, 500))
       .filter((p) => p.statut !== 'ouvert' && p.regle_le && new Date(p.regle_le).getTime() >= depuis)
       .map((p) => Object.assign({ username: u }, p));
-    const lignes = await parisLignesPubliques(rows);
+    const lignes = await parisLignesPubliques(rows, langueDeRequete(req));
     const b = parisBilanParJoueur(lignes)[0] || { paris: 0, gagnes: 0, mises: 0, gains: 0, net: 0 };
     res.json({ ok: true, pseudo: u, nom: fiche.display_name || getDisplayName(u), lignes, bilan: b });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }

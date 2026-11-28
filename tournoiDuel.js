@@ -20,6 +20,8 @@
 //               chaque fois : « remise en jeu et tirage au sort intégral ».
 //
 'use strict';
+// La langue des libellés (nomDuTour) : le module des pages, côté serveur.
+const FPI18n = require('./public/js/i18n.js');
 
 const ECART_DEFAUT = 2;      // victoires d'écart pour plier un match
 const POULE_DEFAUT = 3;      // joueurs par poule
@@ -297,15 +299,17 @@ function issue(match, score1, score2, ecart) {
   };
 }
 
-/** Le libellé d'un tour, pour l'affichage (8 joueurs → quarts, demies, finale). */
-function nomDuTour(tour, nbMatchs) {
-  if (Number(tour) === TOUR_POULES) return 'Poules';
-  if (Number(tour) === TOUR_REPECHAGE) return 'Poule de repêchage';
-  if (nbMatchs === 1) return 'Finale';
-  if (nbMatchs === 2) return 'Demi-finales';
-  if (nbMatchs === 4) return 'Quarts de finale';
-  if (nbMatchs === 8) return 'Huitièmes de finale';
-  return 'Tour ' + tour;
+/** Le libellé d'un tour, pour l'affichage (8 joueurs → quarts, demies, finale),
+ *  dans la langue `lang` (le français par défaut ; clés `tournois.duel.*`). */
+function nomDuTour(tour, nbMatchs, lang) {
+  const t = (k, fr, p) => FPI18n.traduire(lang || 'fr', 'tournois.duel.' + k, fr, p);
+  if (Number(tour) === TOUR_POULES) return t('poules', 'Poules');
+  if (Number(tour) === TOUR_REPECHAGE) return t('repechage', 'Poule de repêchage');
+  if (nbMatchs === 1) return t('finale', 'Finale');
+  if (nbMatchs === 2) return t('demi', 'Demi-finales');
+  if (nbMatchs === 4) return t('quarts', 'Quarts de finale');
+  if (nbMatchs === 8) return t('huitiemes', 'Huitièmes de finale');
+  return t('tour', 'Tour {n}', { n: tour });
 }
 
 module.exports = {

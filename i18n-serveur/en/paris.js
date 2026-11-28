@@ -44,4 +44,16 @@ module.exports = {
   'paris.joueurInconnu': 'This player doesn\'t exist.',
   'paris.coteFixe': 'You already have a fixed-odds bet on this player: it stays as it is. Bet on someone else, or on the other pot.',
   'paris.pariInconnu': 'Unknown bet.',
+
+  // ── Ce que dit chaque pari (le registre, la page du Challenge) ──
+  'paris.quoi.or': '{nom} gold at {jeu}',
+  'paris.quoi.podium': '{nom} medalist at {jeu}',
+  'paris.quoi.defiOr': '{nom}\'s challenge: gold at {jeu}',
+  'paris.quoi.defiArgent': '{nom}\'s challenge: silver or gold at {jeu}',
+  'paris.quoi.defiBronze': '{nom}\'s challenge: a medal at {jeu}',
+  'paris.quoi.victoire': '{nom}\'s win',
+  // L'affiche d'un match (« Kiwi contre Bob »).
+  'paris.affiche': '{j1} vs {j2}',
+  // La virgule des cotes (« ×2,5 » → « ×2.5 »).
+  'paris.virgule': '.',
 };
