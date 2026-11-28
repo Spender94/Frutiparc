@@ -337,15 +337,17 @@ function familleFigee(figes, f, texte) {
   if (sait(f)) return `"Kaluga ${f}", ${PILES.verdana}`;
   const s = figes.substituts && figes.substituts[f];
   if (typeof s === 'number' && sait(s)) return `"Kaluga ${s}", ${PILES.verdana}`;
-  // Une pile système peut demander le gras (« bold Verdana, … ») : la fonte
-  // d'origine l'était (les Verdana pixellisées « _st » du SWF).
+  // Une pile peut demander le gras ou l'italique (« bold Verdana, … ») : la
+  // fonte d'origine l'était (les Verdana pixellisées « _st » du SWF, la
+  // Sweet as candy penchée de MotionBall, dont la copie complète est droite).
   if (typeof s === 'string') return s;
   return PILES.verdana;
 }
-// « bold Verdana, … » → le gras devant le corps, comme le veut ctx.font.
+// « bold Verdana, … », « italic "Kaluga 69", … » → le style devant le corps,
+// comme le veut ctx.font.
 function policeFigee(taille, famille) {
-  const gras = /^bold\s+/.test(famille);
-  return `${gras ? 'bold ' : ''}${taille}px ${gras ? famille.replace(/^bold\s+/, '') : famille}`;
+  const m = /^((?:(?:bold|italic)\s+)*)(.*)$/.exec(famille);
+  return `${m[1]}${taille}px ${m[2]}`;
 }
 
 /*

@@ -121,10 +121,11 @@ const JEUX = {
   mb2: {
     dossier: 'Games/motionBall2',
     swfs: [{ nom: 'mb2', fichier: 'motionball.swf' }],
-    // Sweet as candy (884, 33 glyphes) a sa copie complète (69). Kiloton
+    // Sweet as candy (884, 33 glyphes, penchée) a sa copie complète (69,
+    // droite : on la penche). Kiloton
     // (74) n'a que vingt-cinq lettres : une étroite du système. Les « _st »
     // sont des Arial pixellisées : l'Arial du système.
-    substituts: { 884: 69, 74: ETROITE, 124: 'bold ' + ARIAL, 126: 'bold ' + ARIAL, 129: 'bold ' + ARIAL, 136: ARIAL, 133: 'bold ' + ARIAL, 886: 69 },
+    substituts: { 884: 'italic "Kaluga 69", ' + ARIAL, 74: ETROITE, 124: 'bold ' + ARIAL, 126: 'bold ' + ARIAL, 129: 'bold ' + ARIAL, 136: ARIAL, 133: 'bold ' + ARIAL, 886: 69 },
     reglages: {
       // La règle du jeu : une liste à puces, alignée à gauche (les lignes de
       // suite sont en retrait, ce qui trompait la déduction).
