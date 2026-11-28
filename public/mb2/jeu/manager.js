@@ -38,7 +38,7 @@ const Manager = {
     Manager.client = J.client || new J.Client('');
     Manager.mc = mc;
     Manager.next_mode = -1;
-    Manager.mode = new J.Text(mc, 'Connexion en cours...');
+    Manager.mode = new J.Text(mc, K.T('mb2.connexion', 'Connexion en cours...'));
     Manager.client.serviceConnect();
   },
 
@@ -134,7 +134,7 @@ const Manager = {
   loadDone() {
     switch (Manager.play_mode) {
       case Const.MODE_CHALLENGE:
-        Manager.mode.setText('Connexion en cours...');
+        Manager.mode.setText(K.T('mb2.connexion', 'Connexion en cours...'));
         Manager.updates.push(Manager, Manager.do_start_game);
         break;
       case Const.MODE_AVENTURE:
@@ -179,9 +179,9 @@ const Manager = {
     let o = null;
     switch (Manager.play_mode) {
       case Const.MODE_CHALLENGE:
-      case Const.MODE_AVENTURE: o = { score: J.int(s / 100), libelle: 'Ton score' }; break;
-      case Const.MODE_CLASSIC: o = { score: 'niveau ' + s, libelle: 'Ton score' }; break;
-      case Const.MODE_COURSE: o = { score: J.Interf.makeTime(s), libelle: 'Ton temps' }; break;
+      case Const.MODE_AVENTURE: o = { score: J.int(s / 100), libelle: 'Ton score', libelleEn: 'Your score' }; break;
+      case Const.MODE_CLASSIC: o = { score: K.T('mb2.niveau', 'niveau {n}', { n: s }), libelle: 'Ton score', libelleEn: 'Your score' }; break;
+      case Const.MODE_COURSE: o = { score: J.Interf.makeTime(s), libelle: 'Ton temps', libelleEn: 'Your time' }; break;
       default: return;
     }
     racine.FPInvite.finDePartie(o);
