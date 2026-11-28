@@ -131,6 +131,8 @@ J.requete = requete;
  */
 J.montrerPanneEtRelancer = function (message) {
   if (typeof document === 'undefined' || document.getElementById('bkiwi-panne')) return;
+  const K = racine.KalugaMoteur;
+  const T = (cle, fr) => (K && K.T ? K.T(cle, fr) : fr);
   const boite = document.createElement('div');
   boite.id = 'bkiwi-panne';
   boite.style.cssText = [
@@ -140,10 +142,10 @@ J.montrerPanneEtRelancer = function (message) {
     'font:bold 13px Verdana,Arial,sans-serif', 'cursor:pointer',
   ].join(';');
   const titre = document.createElement('div');
-  titre.textContent = String(message || 'Le jeu s’est arrêté');
+  titre.textContent = String(message || T('bkiwi.panne.arret', 'Le jeu s’est arrêté'));
   titre.style.cssText = 'max-width:300px;line-height:1.5;text-shadow:0 1px 0 rgba(0,0,0,.4)';
   const bouton = document.createElement('div');
-  bouton.textContent = 'Relancer le jeu';
+  bouton.textContent = T('bkiwi.panne.relancer', 'Relancer le jeu');
   bouton.style.cssText = [
     'border:3px solid #fff', 'border-radius:14px', 'background:#c9531b',
     'padding:10px 22px', 'font:bold 15px Verdana,Arial,sans-serif',

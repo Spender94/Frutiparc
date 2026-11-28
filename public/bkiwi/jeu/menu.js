@@ -35,6 +35,20 @@ const Key = K.Key;
 const random = J.random;
 const rm = J.rm;
 const vif = J.vif;
+// Les langues (/js/i18n.js, par le moteur : K.T). Le dictionnaire anglais est
+// public/bkiwi/lang/en.js ; le français reste écrit ici.
+const T = (cle, fr, p) => K.T(cle, fr, p);
+/*
+ * LES NOMS DU MENU — titres des pages, libellés des boutons, panneaux de
+ * refus : de courtes étiquettes, traduites par leur français
+ * (`bkiwi.noms`). Les boutons les gardent pour eux (les tests, le jeu les
+ * nomment ainsi) : on ne traduit que ce qu'on affiche.
+ */
+const nom = (fr) => {
+  const t = K.T.table('bkiwi.noms', {});
+  return Object.prototype.hasOwnProperty.call(t, fr) ? t[fr] : fr;
+};
+J.nomMenu = nom;
 
 J.installerMenu = function (M) {
   const client = () => M.client;
@@ -55,7 +69,7 @@ J.installerMenu = function (M) {
     const refuser = (label) => {
       J.playSoundBK('buttonRefuse');
       if (!M.limited._visible) {
-        M.limited.label = label;
+        M.limited.label = nom(label);
         M.limited._visible = true;
         M.limited.gotoAndPlay(1);
       }
@@ -76,14 +90,14 @@ J.installerMenu = function (M) {
         onPushAllow = function () { J.playSoundBK('buttonOk'); J.removeAllButtons(); M.menuMC.infoPanel.gotoAndPlay('hide'); };
         onPushDisallow = function () { refuser(M.demoLabel); };
 
-        M.menuMC.menuTitleANIM.menuTitle.title = 'modes de jeu';
+        M.menuMC.menuTitleANIM.menuTitle.title = nom('modes de jeu');
 
         // Entraînement
         if (J.checkMode(M.TRAINING)) {
           skinBt = M.skinAllow;
           onPush = onPushAllow;
           onEnd = function () { M.vs.menuPhase = 140; M.vs.gameMode = M.TRAINING; };
-          onOver = function () { M.menuMC.infoPanel.txt = 'La piste est à vous ! Entrainement illimité sur la course du jour !'; };
+          onOver = function () { M.menuMC.infoPanel.txt = T('bkiwi.info.entrainement', 'La piste est à vous ! Entrainement illimité sur la course du jour !'); };
           onOut = function () { M.menuMC.infoPanel.txt = ''; };
           J.attachButton(11, 'essais', skinBt, 10, 80, onPush, undefined, onEnd, onOver, onOut);
         } else {
@@ -97,7 +111,7 @@ J.installerMenu = function (M) {
             onPush = onPushDisallow;
             onEnd = undefined;
           }
-          onOver = function () { M.menuMC.infoPanel.txt = 'Faites le meilleur temps sur la course du jour'; };
+          onOver = function () { M.menuMC.infoPanel.txt = T('bkiwi.info.challenge', 'Faites le meilleur temps sur la course du jour'); };
           onOut = function () { M.menuMC.infoPanel.txt = ''; };
           J.attachButton(11, 'challenge', skinBt, 10, 80, onPush, undefined, onEnd, onOver, onOut);
         }
@@ -112,21 +126,21 @@ J.installerMenu = function (M) {
           onPush = onPushDisallow;
           onEnd = undefined;
         }
-        onOver = function () { M.menuMC.infoPanel.txt = 'Découvrez les principes du jeu et entraînez-vous librement'; };
+        onOver = function () { M.menuMC.infoPanel.txt = T('bkiwi.info.tutoriel', 'Découvrez les principes du jeu et entraînez-vous librement'); };
         onOut = function () { M.menuMC.infoPanel.txt = ''; };
         J.attachButton(12, 'tutorial', skinBt, -5, 120, onPush, undefined, onEnd, onOver, onOut);
 
         // Évolution
         onPush = function () { J.playSoundBK('buttonOk'); J.removeAllButtons(); };
         onEnd = function () { M.vs.menuPhase = 6; };
-        onOver = function () { M.menuMC.infoPanel.txt = 'Débloquez de nouvelles fonctionnalités'; };
+        onOver = function () { M.menuMC.infoPanel.txt = T('bkiwi.info.evolution', 'Débloquez de nouvelles fonctionnalités'); };
         onOut = function () { M.menuMC.infoPanel.txt = ''; };
         J.attachButton(13, 'evolution', 1, -20, 160, onPush, undefined, onEnd, onOver, onOut);
 
         // Épreuves
         onPush = function () { J.playSoundBK('buttonOk'); J.removeAllButtons(); };
         onEnd = function () { M.vs.menuPhase = 7; };
-        onOver = function () { M.menuMC.infoPanel.txt = 'Participez aux épreuves organisées sur Frutiparc !'; };
+        onOver = function () { M.menuMC.infoPanel.txt = T('bkiwi.info.epreuves', 'Participez aux épreuves organisées sur Frutiparc !'); };
         onOut = function () { M.menuMC.infoPanel.txt = ''; };
         J.attachButton(14, 'epreuves', 1, -25, 200, onPush, undefined, onEnd, onOver, onOut);
 
@@ -143,7 +157,7 @@ J.installerMenu = function (M) {
           onPush = function () { refuser(motif); };
           onEnd = undefined;
         }
-        onOver = function () { M.menuMC.infoPanel.txt = 'Courez en ligne contre d\'autres pilotes du parc, avec la X Violet !'; };
+        onOver = function () { M.menuMC.infoPanel.txt = T('bkiwi.info.enLigne', 'Courez en ligne contre d\'autres pilotes du parc, avec la X Violet !'); };
         onOut = function () { M.menuMC.infoPanel.txt = ''; };
         J.attachButton(15, 'en ligne', skinBt, -30, 240, onPush, undefined, onEnd, onOver, onOut);
 
@@ -156,7 +170,7 @@ J.installerMenu = function (M) {
 
       // ***** OPTIONS *****
       case 2:
-        M.menuMC.menuTitleANIM.menuTitle.title = 'options';
+        M.menuMC.menuTitleANIM.menuTitle.title = nom('options');
 
         // Bouton détails
         onPush = function () {
@@ -168,10 +182,10 @@ J.installerMenu = function (M) {
         };
         onUpdate = function () {
           this.pushed = false;
-          if (M.qualitySetting == M.AUTO) M.menuButton_21.skin.label = 'details: auto';      // eslint-disable-line eqeqeq
-          if (M.qualitySetting == M.HIGH) M.menuButton_21.skin.label = 'details: hauts';     // eslint-disable-line eqeqeq
-          if (M.qualitySetting == M.MEDIUM) M.menuButton_21.skin.label = 'details: moyen';   // eslint-disable-line eqeqeq
-          if (M.qualitySetting == M.LOW) M.menuButton_21.skin.label = 'details: bas';        // eslint-disable-line eqeqeq
+          if (M.qualitySetting == M.AUTO) M.menuButton_21.skin.label = nom('details: auto');      // eslint-disable-line eqeqeq
+          if (M.qualitySetting == M.HIGH) M.menuButton_21.skin.label = nom('details: hauts');     // eslint-disable-line eqeqeq
+          if (M.qualitySetting == M.MEDIUM) M.menuButton_21.skin.label = nom('details: moyen');   // eslint-disable-line eqeqeq
+          if (M.qualitySetting == M.LOW) M.menuButton_21.skin.label = nom('details: bas');        // eslint-disable-line eqeqeq
           J.setDetailLevel(M.qualitySetting);
         };
         onEnd = function () {};
@@ -179,7 +193,7 @@ J.installerMenu = function (M) {
 
         // Bouton interface
         onPush = function () { J.playSoundBK('buttonSwitch'); this.pushed = false; M.panelON = !M.panelON; this.onUpdate(); };
-        onUpdate = function () { M.menuButton_22.skin.label = M.panelON ? 'interface: oui' : 'interface: non'; };
+        onUpdate = function () { M.menuButton_22.skin.label = nom(M.panelON ? 'interface: oui' : 'interface: non'); };
         onEnd = function () {};
         J.attachButton(22, 'interface: oui', 1, 30, 120, onPush, onUpdate, onEnd);
 
@@ -191,7 +205,7 @@ J.installerMenu = function (M) {
           if (M.soundsON) J.playSoundBK('buttonSwitch');
           this.onUpdate();
         };
-        onUpdate = function () { M.menuButton_23.skin.label = M.soundsON ? 'sons: oui' : 'sons: non'; };
+        onUpdate = function () { M.menuButton_23.skin.label = nom(M.soundsON ? 'sons: oui' : 'sons: non'); };
         onEnd = function () {};
         J.attachButton(23, 'sons: oui', 1, 20, 160, onPush, onUpdate, onEnd);
 
@@ -204,7 +218,7 @@ J.installerMenu = function (M) {
           else J.stopMusic(M.musicMenu);
           this.onUpdate();
         };
-        onUpdate = function () { M.menuButton_24.skin.label = M.musicON ? 'musique: oui' : 'musique: non'; };
+        onUpdate = function () { M.menuButton_24.skin.label = nom(M.musicON ? 'musique: oui' : 'musique: non'); };
         onEnd = function () {};
         J.attachButton(24, 'musique: oui', 1, 13, 200, onPush, onUpdate, onEnd);
 
@@ -224,7 +238,7 @@ J.installerMenu = function (M) {
         J.stack(M.vs.menuPhase);
         M.menuMC.bande._visible = false;
         M.menuMC.infoPanel._visible = false;
-        M.menuMC.menuTitleANIM.menuTitle.title = 'courses';
+        M.menuMC.menuTitleANIM.menuTitle.title = nom('courses');
         M.menuMC.trackSel._visible = true;
         if (M.vs.selectedTrack > 3 && !M.vs.$wss) M.vs.selectedTrack = 0;
         if (M.vs.selectedTrack == 99) M.vs.selectedTrack = 0;                 // eslint-disable-line eqeqeq
@@ -274,7 +288,7 @@ J.installerMenu = function (M) {
         J.stack(M.vs.menuPhase);
         M.menuMC.bande._visible = false;
         M.menuMC.infoPanel._visible = false;
-        M.menuMC.menuTitleANIM.menuTitle.title = 'voitures';
+        M.menuMC.menuTitleANIM.menuTitle.title = nom('voitures');
         M.menuMC.carSel._visible = true;
 
         let currentName;
@@ -330,7 +344,7 @@ J.installerMenu = function (M) {
             // pas sur le scénario — undefined, donc le libellé de la démo)
             J.playSoundBK('buttonRefuse');
             if (!M.limited._visible) {
-              M.limited.label = M.demoLabel;
+              M.limited.label = nom(M.demoLabel);
               M.limited._visible = true;
               M.limited.gotoAndPlay(1);
             }
@@ -391,7 +405,7 @@ J.installerMenu = function (M) {
         onPushDisallow = function () { refuser(M.demoLabel); };
         onPushDisallowMode = function () { refuser(M.modeLabel); };
 
-        M.menuMC.menuTitleANIM.menuTitle.title = 'evolution';
+        M.menuMC.menuTitleANIM.menuTitle.title = nom('evolution');
 
         // Duel
         if (J.checkMode(M.DUEL) && M.vs.$wcs) {
@@ -403,7 +417,7 @@ J.installerMenu = function (M) {
           onPush = !J.checkMode(M.DUEL) ? onPushDisallow : onPushDisallowMode;
           onEnd = undefined;
         }
-        onOver = function () { M.menuMC.infoPanel.txt = 'Affrontez une écurie pour accéder à leur véhicule'; };
+        onOver = function () { M.menuMC.infoPanel.txt = T('bkiwi.info.duel', 'Affrontez une écurie pour accéder à leur véhicule'); };
         onOut = function () { M.menuMC.infoPanel.txt = ''; };
         J.attachButton(61, 'duel', skinBt, 10, 80, onPush, undefined, onEnd, onOver, onOut);
 
@@ -417,7 +431,7 @@ J.installerMenu = function (M) {
           onPush = onPushDisallow;
           onEnd = undefined;
         }
-        onOver = function () { M.menuMC.infoPanel.txt = 'Un accès exclusif aux pistes pour des courses contre la montre!'; };
+        onOver = function () { M.menuMC.infoPanel.txt = T('bkiwi.info.timeTrial', 'Un accès exclusif aux pistes pour des courses contre la montre!'); };
         onOut = function () { M.menuMC.infoPanel.txt = ''; };
         J.attachButton(62, 'TimeTrial', skinBt, 13, 120, onPush, undefined, onEnd, onOver, onOut);
 
@@ -435,7 +449,7 @@ J.installerMenu = function (M) {
             onPush = onPushDisallow;
             onEnd = undefined;
           }
-          onOver = function () { M.menuMC.infoPanel.txt = 'Gagnez la FrutiCoupe pour activer de nouveaux modes de jeu'; };
+          onOver = function () { M.menuMC.infoPanel.txt = T('bkiwi.info.fruticoupe', 'Gagnez la FrutiCoupe pour activer de nouveaux modes de jeu'); };
           onOut = function () { M.menuMC.infoPanel.txt = ''; };
           if (M.vs.$wss) J.attachButton(63, 'fruticoupe XL', skinBtSmall, 7, 160, onPush, undefined, onEnd, onOver, onOut);
           else J.attachButton(63, 'fruticoupe', skinBt, 16, 160, onPush, undefined, onEnd, onOver, onOut);
@@ -451,7 +465,7 @@ J.installerMenu = function (M) {
           onPush = !J.checkMode(M.SURVIVOR) ? onPushDisallow : onPushDisallowMode;
           onEnd = undefined;
         }
-        onOver = function () { M.menuMC.infoPanel.txt = 'Débloquez les circuits et les coupes XL dans ce tournoi d\'endurance !'; };
+        onOver = function () { M.menuMC.infoPanel.txt = T('bkiwi.info.elite', 'Débloquez les circuits et les coupes XL dans ce tournoi d\'endurance !'); };
         onOut = function () { M.menuMC.infoPanel.txt = ''; };
         if (M.vs.$wss) J.attachButton(64, 'elite XL', skinBt, -4, 200, onPush, undefined, onEnd, onOver, onOut);
         else J.attachButton(64, 'elite', skinBt, -4, 200, onPush, undefined, onEnd, onOver, onOut);
@@ -474,7 +488,7 @@ J.installerMenu = function (M) {
           onPush = !J.checkMode(M.GHOSTRUN) ? onPushDisallow : onPushDisallowMode;
           onEnd = undefined;
         }
-        onOver = function () { M.menuMC.infoPanel.txt = 'Rivalisez avec votre pire adversaire: vous !'; };
+        onOver = function () { M.menuMC.infoPanel.txt = T('bkiwi.info.ghostRun', 'Rivalisez avec votre pire adversaire: vous !'); };
         onOut = function () { M.menuMC.infoPanel.txt = ''; };
         J.attachButton(65, 'ghost run', skinBt, -23, 240, onPush, undefined, onEnd, onOver, onOut);
 
@@ -497,7 +511,7 @@ J.installerMenu = function (M) {
         onPushAllow = function () { J.playSoundBK('buttonOk'); J.removeAllButtons(); M.menuMC.infoPanel.gotoAndPlay('hide'); };
         onPushDisallow = function () { refuser(M.demoLabel); };
 
-        M.menuMC.menuTitleANIM.menuTitle.title = 'epreuves';
+        M.menuMC.menuTitleANIM.menuTitle.title = nom('epreuves');
 
         // KiwiRun
         if (J.checkMode(M.KIWIRUN)) {
@@ -509,7 +523,7 @@ J.installerMenu = function (M) {
           onPush = onPushDisallow;
           onEnd = undefined;
         }
-        onOver = function () { M.menuMC.infoPanel.txt = 'Ramassez au plus vite les bonus placés sur la course !'; };
+        onOver = function () { M.menuMC.infoPanel.txt = T('bkiwi.info.kiwiRun', 'Ramassez au plus vite les bonus placés sur la course !'); };
         onOut = function () { M.menuMC.infoPanel.txt = ''; };
         J.attachButton(71, 'kiwi run', skinBt, 10, 80, onPush, undefined, onEnd, onOver, onOut);
 
@@ -524,7 +538,7 @@ J.installerMenu = function (M) {
       case 8: {
         M.menuMC.bande._visible = false;
         M.menuMC.infoPanel._visible = false;
-        M.menuMC.menuTitleANIM.menuTitle.title = 'extras';
+        M.menuMC.menuTitleANIM.menuTitle.title = nom('extras');
         M.menuMC.trackSel._visible = true;
         for (i = 0; i < M.tracks.length; i++) {
           mc = M.menuMC.trackSel['track' + i];
@@ -564,7 +578,7 @@ J.installerMenu = function (M) {
       // ***** PALMARÈS *****
       case 20:
         J.stack(M.vs.menuPhase);
-        M.menuMC.menuTitleANIM.menuTitle.title = 'palmares';
+        M.menuMC.menuTitleANIM.menuTitle.title = nom('palmares');
         onPush = function () { J.playSoundBK('buttonOk'); J.removeAllButtons(); };
         onEnd = function () {};
         J.attachButton(21, 'Temps', 1, 10, 80, onPush, undefined, onEnd);
@@ -685,7 +699,7 @@ J.installerMenu = function (M) {
 
       // ***** TOUCHES : affichage *****
       case 30:
-        M.menuMC.menuTitleANIM.menuTitle.title = 'touches';
+        M.menuMC.menuTitleANIM.menuTitle.title = nom('touches');
         M.attachMovie('keysManager', 'keys', M.calcDepth(M.DP_INTERF));
         M.keys._x = M.docWidth / 2;
         M.keys._y = M.docHeight / 2;
@@ -693,7 +707,7 @@ J.installerMenu = function (M) {
         M.keys.manager.conflict._visible = false;
         M.keyAsked = undefined;
         for (i = 0; i < M.controlNames.length; i++) {
-          M.keys.manager['controlName_' + i] = M.controlNames[i];
+          M.keys.manager['controlName_' + i] = K.T.table('bkiwi.commandes', M.controlNames)[i];
           M.keys.manager['control_' + i] = M.keyNames[M.controls[i]];
         }
         onPush = function () { rm(M.keys); J.playSoundBK('buttonOk'); J.removeAllButtons(); };
@@ -739,15 +753,15 @@ J.installerMenu = function (M) {
         M.menuMC.bande._visible = false;
         M.menuMC.introCourseANIM._visible = true;
         M.menuMC.introCourseANIM.gotoAndPlay(1);
-        if (M.tracks[M.vs.selectedTrack].totalLaps <= 1) M.menuMC.introCourseANIM.toursTxt = M.tracks[M.vs.selectedTrack].totalLaps + ' tour';
-        else M.menuMC.introCourseANIM.toursTxt = M.tracks[M.vs.selectedTrack].totalLaps + ' tours';
+        if (M.tracks[M.vs.selectedTrack].totalLaps <= 1) M.menuMC.introCourseANIM.toursTxt = T('bkiwi.tour', '{n} tour', { n: M.tracks[M.vs.selectedTrack].totalLaps });
+        else M.menuMC.introCourseANIM.toursTxt = T('bkiwi.tours', '{n} tours', { n: M.tracks[M.vs.selectedTrack].totalLaps });
         for (i = 0; i < M.tracks.length; i++) {
           mc = M.menuMC.introCourseANIM.introCourse.trackSel['track' + i];
           if (!mc) continue;
           mc._visible = (i == M.vs.selectedTrack);                            // eslint-disable-line eqeqeq
         }
         M.menuMC.introCourseANIM.introCourse.title = M.tracks[M.vs.selectedTrack].title.toLowerCase();
-        M.menuMC.introCourseANIM.introCourse.summary = M.tracks[M.vs.selectedTrack].summary;
+        M.menuMC.introCourseANIM.introCourse.summary = T('bkiwi.resume.' + M.vs.selectedTrack, M.tracks[M.vs.selectedTrack].summary);
         M.vs.menuPhase++;
         break;
 
@@ -791,7 +805,7 @@ J.installerMenu = function (M) {
         J.stack(99);
         M.menuMC.bande._visible = true;
         M.menuMC.infoPanel._visible = false;
-        M.menuMC.menuTitleANIM.menuTitle.title = 'menu principal';
+        M.menuMC.menuTitleANIM.menuTitle.title = nom('menu principal');
         // Bouton jouer
         onPush = function () { J.playSoundBK('buttonOk'); J.removeAllButtons(); };
         onEnd = function () {};
@@ -822,7 +836,7 @@ J.installerMenu = function (M) {
       case 100:
         M.createEmptyMovieClip('intro', M.calcDepth(M.DP_PRELOAD));
         M.intro._visible = false;
-        J.startPreload(M.intro, 'intro.swf', 'Chargement de l\'intro');
+        J.startPreload(M.intro, 'intro.swf', T('bkiwi.chargementIntro', 'Chargement de l\'intro'));
         M.vs.menuPhase++;
         break;
       case 101:
@@ -947,7 +961,7 @@ J.installerMenu = function (M) {
       case 122:
         if (J.Stage.width == 350 && J.Stage.height == 350) M.vs.menuPhase = 110;   // eslint-disable-line eqeqeq
         else {
-          J.fatal('Votre frusion ne peut afficher correctement ce jeu', 'bad size: ' + J.Stage.width + 'x' + J.Stage.height);
+          J.fatal(T('bkiwi.panne.taille', 'Votre frusion ne peut afficher correctement ce jeu'), 'bad size: ' + J.Stage.width + 'x' + J.Stage.height);
           M.vs.menuPhase = -1;
         }
         break;
@@ -979,7 +993,7 @@ J.installerMenu = function (M) {
         const trk = /\btrk="(\d+)"/.exec(String(client().dailyData || ''));
         M.vs.selectedTrack = trk ? parseInt(trk[1], 10) : NaN;
         if (client().dailyData == null) {                                     // eslint-disable-line eqeqeq
-          J.fatal('La course du jour n\'a pas été choisie par le grand jury', 'dailyData undefined');
+          J.fatal(T('bkiwi.panne.courseDuJour', 'La course du jour n\'a pas été choisie par le grand jury'), 'dailyData undefined');
         }
         M.menuMC.dailyTrack.trackName = M.tracks[M.vs.selectedTrack] ? M.tracks[M.vs.selectedTrack].title.toLowerCase() : '';
 
@@ -990,8 +1004,8 @@ J.installerMenu = function (M) {
         }
 
         // Nombre de tours
-        if (M.tracks[M.vs.selectedTrack] && M.tracks[M.vs.selectedTrack].totalLaps <= 1) M.menuMC.toursTxt = M.tracks[M.vs.selectedTrack].totalLaps + ' tour';
-        else if (M.tracks[M.vs.selectedTrack]) M.menuMC.toursTxt = M.tracks[M.vs.selectedTrack].totalLaps + ' tours';
+        if (M.tracks[M.vs.selectedTrack] && M.tracks[M.vs.selectedTrack].totalLaps <= 1) M.menuMC.toursTxt = T('bkiwi.tour', '{n} tour', { n: M.tracks[M.vs.selectedTrack].totalLaps });
+        else if (M.tracks[M.vs.selectedTrack]) M.menuMC.toursTxt = T('bkiwi.tours', '{n} tours', { n: M.tracks[M.vs.selectedTrack].totalLaps });
 
         onPush = function () {
           M.menuMC.menuTitleANIM.gotoAndPlay(1);
@@ -1024,7 +1038,7 @@ J.installerMenu = function (M) {
         M.menuMC.bande._visible = false;
         M.menuMC.infoPanel._visible = false;
         M.menuMC.carSel._visible = false;
-        M.menuMC.menuTitleANIM.menuTitle.title = 'en ligne';
+        M.menuMC.menuTitleANIM.menuTitle.title = nom('en ligne');
         M.menuMC.fondMenu.gotoAndStop(1);
         M.menuMC.menuTitleANIM.gotoAndStop(1);
         J.removeAllButtons();
@@ -1045,8 +1059,8 @@ J.installerMenu = function (M) {
         M.menuMC.bande._visible = false;
         M.menuMC.infoPanel.gotoAndPlay(1);
         M.menuMC.infoPanel._visible = true;
-        M.menuMC.infoPanel.txt = 'Choisissez l\'écurie que vous affronterez.';
-        M.menuMC.menuTitleANIM.menuTitle.title = 'adversaire';
+        M.menuMC.infoPanel.txt = T('bkiwi.info.adversaire', 'Choisissez l\'écurie que vous affronterez.');
+        M.menuMC.menuTitleANIM.menuTitle.title = nom('adversaire');
 
         M.attachMovie('teamList', 'teamList', M.calcDepth(M.DP_INTERF));
         M.teamList._x = M.docWidth - 75;
@@ -1120,7 +1134,7 @@ J.installerMenu = function (M) {
             M.sBox._x = M.docWidth / 2;
             M.sBox._y = 100;
             M.sBox.txt = String(sp.chaine);
-            M.sBox.underTxt = sp.state ? 'activé' : 'désactivé';
+            M.sBox.underTxt = sp.state ? T('bkiwi.code.active', 'activé') : T('bkiwi.code.desactive', 'désactivé');
             // Au moins un code de gameplay actif ?
             M.vs.useSpecials = false;
             for (let j = 0; j < M.specials.length; j++) {
@@ -1129,7 +1143,7 @@ J.installerMenu = function (M) {
             // Si la KiwiX est choisie alors que le code est désactivé…
             if (M.vs.selectedCar == 4 && !sp.state && i == 0) M.vs.selectedCar = 0;   // eslint-disable-line eqeqeq
           } else if (!M.limited._visible) {
-            M.limited.label = M.demoLabel;
+            M.limited.label = nom(M.demoLabel);
             M.limited._visible = true;
             M.limited.gotoAndPlay(1);
           }
@@ -1246,7 +1260,7 @@ J.installerMenu = function (M) {
     mc._x = x;
     mc._y = y;
     mc.id = id;
-    mc.skin.label = String(label).toLowerCase();
+    mc.skin.label = String(nom(label)).toLowerCase();
     mc.skin.gotoAndStop(skin);
     mc.onPush = pushFunction;
     mc.onUpdate = updateFunction;

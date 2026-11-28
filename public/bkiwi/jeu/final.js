@@ -15,6 +15,8 @@
 
 const K = racine.KalugaMoteur;
 const J = racine.BkiwiJeu = racine.BkiwiJeu || {};
+// Les langues (/js/i18n.js, par le moteur : K.T) ; public/bkiwi/lang/en.js.
+const T = (cle, fr, p) => K.T(cle, fr, p);
 const G = J.G;
 const random = J.random;
 const rm = J.rm;
@@ -117,7 +119,7 @@ J.installerFinal = function (M) {
           M.attachMovie('tournamentSummary', 'summary', d);
           M.summary._x = M.docWidth / 2;
           M.summary._y = M.docHeight / 2;
-          M.summary.titre = 'BILAN DE LA COURSE';
+          M.summary.titre = T('bkiwi.fin.bilanCourse', 'BILAN DE LA COURSE');
           for (let i = 0; i < M.tournament.podiumRace.length; i++) {
             const c = M.tournament.cars[M.tournament.podiumRace[i]];
             M.summary['car_' + i] = '<P ALIGN="CENTER">' + c.carName + '</P>';
@@ -139,7 +141,7 @@ J.installerFinal = function (M) {
       case 12:
         if (!J.skipTest()) {
           M.vs.finalPhase++;
-          M.summary.titre = 'BILAN DU TOURNOI';
+          M.summary.titre = T('bkiwi.fin.bilanTournoi', 'BILAN DU TOURNOI');
           for (let i = 0; i < M.tournament.podium.length; i++) {
             const c = M.tournament.cars[M.tournament.podium[i]];
             M.summary['car_' + i] = '<P ALIGN="CENTER">' + c.carName + '</P>';
@@ -349,7 +351,7 @@ J.installerFinal = function (M) {
           if (M.race.raceTime == 0 || M.race.raceTime == null || Number.isNaN(M.race.raceTime)) {   // eslint-disable-line eqeqeq
             const msg = 'Invalid score, time=' + M.race.raceTime + ' object=' + J.traceObject(M.race);
             J.report(msg);
-            J.fatal('Défaillance du chronomètre', msg);
+            J.fatal(T('bkiwi.panne.chrono', 'Défaillance du chronomètre'), msg);
             break;
           }
           client().saveScore(M.race.raceTime, miscData);
@@ -379,8 +381,8 @@ J.installerFinal = function (M) {
           if (ecart != 0) {                                                   // eslint-disable-line eqeqeq
             M.announce.win.gotoAndStop(7);
             M.announce.details = '';
-            if (ecart == 1) M.announce.details = 'Vous avez progressé de 1 place';   // eslint-disable-line eqeqeq
-            else if (ranking.oldPos != 0) M.announce.details = 'Vous avez progressé de ' + ecart + ' places !';   // eslint-disable-line eqeqeq
+            if (ecart == 1) M.announce.details = T('bkiwi.fin.progresUne', 'Vous avez progressé de 1 place');   // eslint-disable-line eqeqeq
+            else if (ranking.oldPos != 0) M.announce.details = T('bkiwi.fin.progres', 'Vous avez progressé de {n} places !', { n: ecart });   // eslint-disable-line eqeqeq
           } else {
             M.announce.win.gotoAndStop(8);
           }
@@ -468,14 +470,14 @@ J.installerFinal = function (M) {
       const parti = c && c.distants[a.u] && c.distants[a.u].parti;
       // (la colonne des points du tournoi est étroite : le temps y tient en petit)
       let nom = '<P ALIGN="CENTER"><FONT SIZE="13">' + (a.g ? a.g + '. ' : '') + a.n + '</FONT></P>';
-      let temps = '<P ALIGN="CENTER"><FONT SIZE="9">' + (a.t ? J.timeToString(a.t) : (parti ? 'abandon' : '…')) + '</FONT></P>';
+      let temps = '<P ALIGN="CENTER"><FONT SIZE="9">' + (a.t ? J.timeToString(a.t) : (parti ? T('bkiwi.multi.abandon', 'abandon') : '…')) + '</FONT></P>';
       if (a.u === moi) { nom = '<B>' + nom + '</B>'; temps = '<B>' + temps + '</B>'; }
       M.summary['car_' + i] = nom;
       M.summary['pts_' + i] = temps;
     }
     // Le cadre dit « Votre temps : » — on y met le sien ; l'attente des
     // autres se lit au titre.
-    M.summary.titre = (c && c.resultat) ? 'CLASSEMENT FINAL' : 'CLASSEMENT (EN COURS)';
+    M.summary.titre = (c && c.resultat) ? T('bkiwi.multi.classementFinal', 'CLASSEMENT FINAL') : T('bkiwi.multi.classementEnCours', 'CLASSEMENT (EN COURS)');
     M.summary.timeTxt = (M.race && M.race.raceTime) ? J.timeToString(M.race.raceTime) : '';
   };
 
@@ -577,10 +579,11 @@ J.installerFinal = function (M) {
     if (M.vs.giveUp) { /* abandon : pas de score */ }
     else if (M.vs.gameMode == M.FRUTICUP) {                                   // eslint-disable-line eqeqeq
       const moi = M.tournament && M.tournament.cars && M.tournament.cars[0];
-      if (moi && moi.totalPts != null) { opts.score = moi.totalPts + ' pts'; opts.libelle = 'Tes points'; }
+      if (moi && moi.totalPts != null) { opts.score = moi.totalPts + ' pts'; opts.libelle = 'Tes points'; opts.libelleEn = 'Your points'; }
     } else if (M.race && M.race.raceTime > 0) {
       opts.score = J.timeToString(M.race.raceTime);
       opts.libelle = 'Ton temps';
+      opts.libelleEn = 'Your time';
     }
     return racine.FPInvite.finDePartie(opts);
   };

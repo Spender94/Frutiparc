@@ -120,6 +120,11 @@
   #bk-multi .bkm-btn:not([disabled]):active { background: #f0813d; }
 </style>
 <script src="/js/sid-discret.js"></script>
+<!-- Les langues du parc (voir /js/i18n.js) : en anglais, le dictionnaire du
+     jeu (lang/en.js) arrive pendant l'analyse de la page ; en français, rien.
+     Avant invite.js, qui y lit la langue de son panneau. -->
+<script src="/js/i18n.js"></script>
+<script>FPI18n.charger(['commun', 'widgets', '/bkiwi/lang/{lang}.js']);</script>
 <script src="/js/invite.js"></script>
 </head>
 <body>
@@ -130,7 +135,7 @@
   <div id="b-sens" role="button" aria-label="Changer le sens du doigt">Doigt devant</div>
   <div id="mode-emploi"></div>
 </div>
-<div id="chargement">Chargement de Burning Kiwi…</div>
+<div id="chargement" data-i18n="bkiwi.chargement">Chargement de Burning Kiwi…</div>
 
 <script src="/kaluga/moteur/formes.js"></script>
 <script src="/kaluga/moteur/flash.js"></script>
@@ -165,6 +170,8 @@
 (function () {
   'use strict';
   const K = window.KalugaMoteur;
+  // Le HTML marqué data-i18n (le chargement, le bouton du sens du doigt).
+  if (window.FPI18n) FPI18n.appliquer(document);
   const params = new URLSearchParams(location.search);
   const canvas = document.getElementById('scene');
   const L = 350, H = 350;
@@ -248,13 +255,14 @@
   let sensDerriere = false;
   try { sensDerriere = localStorage.getItem('bkiwi-sens') === 'derriere'; } catch (e) { /* stockage fermé */ }
   const MODE_EMPLOI = {
-    devant: '<b>Touche la piste</b> là où tu veux aller : la voiture y file et accélère tant que ton doigt est posé.',
-    derriere: '<b>Pose le doigt derrière la voiture</b> : elle file à l\'opposé, comme si tu la poussais, et accélère tant que ton doigt est posé.',
+    devant: K.T('bkiwi.doigt.devant', '<b>Touche la piste</b> là où tu veux aller : la voiture y file et accélère tant que ton doigt est posé.'),
+    derriere: K.T('bkiwi.doigt.derriere', '<b>Pose le doigt derrière la voiture</b> : elle file à l\'opposé, comme si tu la poussais, et accélère tant que ton doigt est posé.'),
   };
   const afficherSens = function () {
-    document.getElementById('b-sens').textContent = sensDerriere ? 'Doigt derrière' : 'Doigt devant';
+    document.getElementById('b-sens').setAttribute('aria-label', K.T('bkiwi.doigt.aria', 'Changer le sens du doigt'));
+    document.getElementById('b-sens').textContent = sensDerriere ? K.T('bkiwi.doigt.boutonDerriere', 'Doigt derrière') : K.T('bkiwi.doigt.boutonDevant', 'Doigt devant');
     document.getElementById('mode-emploi').innerHTML = MODE_EMPLOI[sensDerriere ? 'derriere' : 'devant']
-      + '<br><b>Second doigt posé</b> : frein, tant qu\'il reste là. <b>Double-tap</b> : nitro.';
+      + K.T('bkiwi.doigt.suite', '<br><b>Second doigt posé</b> : frein, tant qu\'il reste là. <b>Double-tap</b> : nitro.');
   };
   let doigt = null;             // { id, x, y } en pixels de scène
   let frein = null;             // l'identifiant du second doigt, posé
@@ -482,7 +490,7 @@
     adapter();
     canvas.focus();
   }).catch(function (e) {
-    document.getElementById('chargement').textContent = 'Burning Kiwi n\'a pas pu démarrer : ' + (e && e.message ? e.message : e);
+    document.getElementById('chargement').textContent = K.T('bkiwi.echecDemarrage', 'Burning Kiwi n\'a pas pu démarrer : {erreur}', { erreur: e && e.message ? e.message : e });
     console.error(e);
   });
 })();

@@ -53,5 +53,6 @@ test('au doigt, le sens se choisit : devant ou derrière la voiture', () => {
   assert.strictEqual(cap(false, { x: 175, y: 235 }, 175, 175), 90, 'devant : on va vers le bas, vers le doigt');
   assert.strictEqual(cap(true, { x: 175, y: 235 }, 175, 175), -90, 'derrière : on file vers le haut, à l’opposé');
   // Le mode d'emploi suit le sens choisi.
-  assert.match(page, /derriere: '<b>Pose le doigt derrière la voiture<\/b>/);
+  // (le français est l'argument de repli de K.T : la version anglaise)
+  assert.match(page, /derriere: K\.T\('bkiwi\.doigt\.derriere', '<b>Pose le doigt derrière la voiture<\/b>/);
 });

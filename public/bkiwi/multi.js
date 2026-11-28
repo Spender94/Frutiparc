@@ -38,6 +38,8 @@
 
 const J = racine.BkiwiJeu = racine.BkiwiJeu || {};
 const K = racine.KalugaMoteur;
+// Les langues (/js/i18n.js, par le moteur : K.T, lu à l'appel) ; public/bkiwi/lang/en.js.
+const T = (cle, fr, p) => (K && K.T ? K.T(cle, fr, p) : fr);
 
 const RETARD = 100;             // ms : les voitures des autres se dessinent dans le passé
 const PROLONGE_MAX = 250;       // ms : au-delà, une voiture sans nouvelle s'arrête
@@ -195,7 +197,8 @@ const multi = {
     this.rendre();
   },
   messageErreur(code) {
-    return {
+    // Le serveur envoie un CODE : le texte se choisit ici, dans la langue du joueur.
+    const textes = {
       'salon-plein': 'Ce salon est complet (quatre pilotes).',
       'salon-inconnu': 'Ce salon n’existe plus.',
       'course-en-cours': 'La course est déjà partie.',
@@ -203,7 +206,9 @@ const multi = {
       seul: 'Il faut au moins deux pilotes.',
       'pas-l-hote': 'Seul l’hôte peut faire ça.',
       'not-logged': 'Il faut être connecté au parc.',
-    }[code] || ('Erreur : ' + code);
+    };
+    return Object.prototype.hasOwnProperty.call(textes, code)
+      ? T('bkiwi.multi.erreur.' + code, textes[code]) : T('bkiwi.multi.erreur', 'Erreur : {code}', { code });
   },
 
   // ── Le salon : les actions ──
@@ -379,61 +384,61 @@ const multi = {
     if (!p || p.style.display === 'none') return;
     const M = this.M;
     const moi = this.moi();
-    const nomPiste = (i) => (M.tracks[i] ? M.tracks[i].title : 'circuit ' + i);
+    const nomPiste = (i) => (M.tracks[i] ? M.tracks[i].title : T('bkiwi.multi.circuit', 'circuit {n}', { n: i }));
     const temps = (t) => (t ? J.timeToString(t) : '—');
-    let h = '<div class="bkm-tete"><b>Burning Kiwi en ligne</b><span class="bkm-etat">' + esc(this.etat) + '</span></div>';
+    let h = '<div class="bkm-tete"><b>' + esc(T('bkiwi.multi.titre', 'Burning Kiwi en ligne')) + '</b><span class="bkm-etat">' + esc(this.etat) + '</span></div>';
     if (this.erreur) h += '<div class="bkm-erreur">' + esc(this.erreur) + '</div>';
     const s = this.salon;
     if (!s) {
-      h += '<div class="bkm-section"><div class="bkm-titre">Les courses ouvertes</div>';
-      if (!this.hub.salons.length) h += '<div class="bkm-vide">Aucune course pour l’instant : ouvrez la vôtre !</div>';
+      h += '<div class="bkm-section"><div class="bkm-titre">' + esc(T('bkiwi.multi.ouvertes', 'Les courses ouvertes')) + '</div>';
+      if (!this.hub.salons.length) h += '<div class="bkm-vide">' + esc(T('bkiwi.multi.aucune', 'Aucune course pour l’instant : ouvrez la vôtre !')) + '</div>';
       for (const x of this.hub.salons) {
         const ouverte = x.etat === 'attente' && x.n < 4;
-        h += '<div class="bkm-ligne"><span>Course de <b>' + esc(x.hote) + '</b> · ' + esc(nomPiste(x.piste)) + ' · ' + x.n + '/4' +
-          (x.etat !== 'attente' ? ' · <i>en course</i>' : '') + '</span>' +
-          '<button class="bkm-btn" data-act="rejoindre" data-id="' + esc(x.id) + '"' + (ouverte ? '' : ' disabled') + '>Rejoindre</button></div>';
+        h += '<div class="bkm-ligne"><span>' + T('bkiwi.multi.courseDe', 'Course de {hote}', { hote: '<b>' + esc(x.hote) + '</b>' }) + ' · ' + esc(nomPiste(x.piste)) + ' · ' + x.n + '/4' +
+          (x.etat !== 'attente' ? ' · <i>' + esc(T('bkiwi.multi.enCourse', 'en course')) + '</i>' : '') + '</span>' +
+          '<button class="bkm-btn" data-act="rejoindre" data-id="' + esc(x.id) + '"' + (ouverte ? '' : ' disabled') + '>' + esc(T('bkiwi.multi.rejoindre', 'Rejoindre')) + '</button></div>';
       }
       h += '</div>';
-      h += '<div class="bkm-section"><div class="bkm-titre">Pilotes au stand</div><div class="bkm-noms">' +
-        (this.hub.libres.length ? this.hub.libres.map((j) => esc(j.n)).join(', ') : 'personne') + '</div></div>';
-      h += '<div class="bkm-actions"><button class="bkm-btn bkm-grand" data-act="creer">Ouvrir une course</button>' +
-        '<button class="bkm-btn" data-act="voiture">Ma voiture : ' + esc(J.nomVoiture(M.vs.selectedCar)) + '</button>' +
-        '<button class="bkm-btn bkm-sombre" data-act="retour">Retour</button></div>';
+      h += '<div class="bkm-section"><div class="bkm-titre">' + esc(T('bkiwi.multi.auStand', 'Pilotes au stand')) + '</div><div class="bkm-noms">' +
+        (this.hub.libres.length ? this.hub.libres.map((j) => esc(j.n)).join(', ') : esc(T('bkiwi.multi.personne', 'personne'))) + '</div></div>';
+      h += '<div class="bkm-actions"><button class="bkm-btn bkm-grand" data-act="creer">' + esc(T('bkiwi.multi.ouvrir', 'Ouvrir une course')) + '</button>' +
+        '<button class="bkm-btn" data-act="voiture">' + esc(T('bkiwi.multi.maVoiture', 'Ma voiture : {nom}', { nom: J.nomVoiture(M.vs.selectedCar) })) + '</button>' +
+        '<button class="bkm-btn bkm-sombre" data-act="retour">' + esc(T('bkiwi.multi.retour', 'Retour')) + '</button></div>';
     } else {
       const hote = s.hote === moi;
       const hoteNom = (s.joueurs.find((j) => j.u === s.hote) || {}).n || s.hote;
-      h += '<div class="bkm-section"><div class="bkm-titre">Course de ' + esc(hoteNom) + (s.etat !== 'attente' ? ' · en course' : '') + '</div>';
-      h += '<div class="bkm-piste">Circuit : ' + (hote && s.etat === 'attente'
-        ? '<select data-act="piste">' + M.tracks.map((t, i) => '<option value="' + i + '"' + (i === s.piste ? ' selected' : '') + '>' + esc(t.title) + ' (' + t.totalLaps + ' tours)</option>').join('') + '</select>'
-        : '<b>' + esc(nomPiste(s.piste)) + '</b>' + (M.tracks[s.piste] ? ' (' + M.tracks[s.piste].totalLaps + ' tours)' : '')) + '</div>';
+      h += '<div class="bkm-section"><div class="bkm-titre">' + esc(T('bkiwi.multi.courseDe', 'Course de {hote}', { hote: hoteNom })) + (s.etat !== 'attente' ? ' · ' + esc(T('bkiwi.multi.enCourse', 'en course')) : '') + '</div>';
+      h += '<div class="bkm-piste">' + esc(T('bkiwi.multi.libelleCircuit', 'Circuit :')) + ' ' + (hote && s.etat === 'attente'
+        ? '<select data-act="piste">' + M.tracks.map((t, i) => '<option value="' + i + '"' + (i === s.piste ? ' selected' : '') + '>' + esc(t.title) + ' (' + esc(T('bkiwi.tours', '{n} tours', { n: t.totalLaps })) + ')</option>').join('') + '</select>'
+        : '<b>' + esc(nomPiste(s.piste)) + '</b>' + (M.tracks[s.piste] ? ' (' + esc(T('bkiwi.tours', '{n} tours', { n: M.tracks[s.piste].totalLaps })) + ')' : '')) + '</div>';
       if (this.dernierResultat && this.dernierResultat.length) {
-        h += '<div class="bkm-titre bkm-petit">Dernière course</div>';
+        h += '<div class="bkm-titre bkm-petit">' + esc(T('bkiwi.multi.derniere', 'Dernière course')) + '</div>';
         for (const a of this.dernierResultat) {
-          h += '<div class="bkm-ligne bkm-res"><span>' + (a.g ? a.g + '. ' : '— ') + '<b>' + esc(a.n) + '</b> <i>' + esc(J.nomVoiture(a.c)) + '</i></span><span>' + (a.t ? esc(temps(a.t)) : 'abandon') + '</span></div>';
+          h += '<div class="bkm-ligne bkm-res"><span>' + (a.g ? a.g + '. ' : '— ') + '<b>' + esc(a.n) + '</b> <i>' + esc(J.nomVoiture(a.c)) + '</i></span><span>' + (a.t ? esc(temps(a.t)) : esc(T('bkiwi.multi.abandon', 'abandon'))) + '</span></div>';
         }
       }
-      h += '<div class="bkm-titre bkm-petit">Pilotes (' + s.joueurs.length + '/4)</div>';
+      h += '<div class="bkm-titre bkm-petit">' + esc(T('bkiwi.multi.pilotes', 'Pilotes ({n}/4)', { n: s.joueurs.length })) + '</div>';
       for (const j of s.joueurs) {
         const estMoi = j.u === moi;
-        h += '<div class="bkm-ligne"><span>' + (j.u === s.hote ? '★ ' : '') + '<b>' + esc(j.n) + '</b>' + (estMoi ? ' (vous)' : '') +
+        h += '<div class="bkm-ligne"><span>' + (j.u === s.hote ? '★ ' : '') + '<b>' + esc(j.n) + '</b>' + (estMoi ? ' ' + esc(T('bkiwi.multi.vous', '(vous)')) : '') +
           ' <i>' + esc(J.nomVoiture(j.c)) + '</i></span><span class="bkm-pret' + (j.r || j.u === s.hote ? ' oui' : '') + '">' +
-          (j.u === s.hote ? 'hôte' : (j.r ? 'prêt' : 'pas prêt')) + '</span></div>';
+          esc(j.u === s.hote ? T('bkiwi.multi.hote', 'hôte') : (j.r ? T('bkiwi.multi.pret', 'prêt') : T('bkiwi.multi.pasPret', 'pas prêt'))) + '</span></div>';
       }
       h += '</div>';
       const moiJ = s.joueurs.find((j) => j.u === moi) || {};
       const tousPrets = s.joueurs.length >= 2 && s.joueurs.every((j) => j.u === s.hote || j.r);
       h += '<div class="bkm-actions">';
       if (s.etat === 'attente') {
-        if (hote) h += '<button class="bkm-btn bkm-grand" data-act="lancer"' + (tousPrets ? '' : ' disabled') + '>Lancer la course</button>';
-        else h += '<button class="bkm-btn bkm-grand' + (moiJ.r ? ' bkm-oui' : '') + '" data-act="pret">' + (moiJ.r ? 'Prêt ! (annuler)' : 'Je suis prêt') + '</button>';
-        h += '<button class="bkm-btn" data-act="voiture">Ma voiture : ' + esc(J.nomVoiture(M.vs.selectedCar)) + '</button>';
+        if (hote) h += '<button class="bkm-btn bkm-grand" data-act="lancer"' + (tousPrets ? '' : ' disabled') + '>' + esc(T('bkiwi.multi.lancer', 'Lancer la course')) + '</button>';
+        else h += '<button class="bkm-btn bkm-grand' + (moiJ.r ? ' bkm-oui' : '') + '" data-act="pret">' + esc(moiJ.r ? T('bkiwi.multi.pretAnnuler', 'Prêt ! (annuler)') : T('bkiwi.multi.jeSuisPret', 'Je suis prêt')) + '</button>';
+        h += '<button class="bkm-btn" data-act="voiture">' + esc(T('bkiwi.multi.maVoiture', 'Ma voiture : {nom}', { nom: J.nomVoiture(M.vs.selectedCar) })) + '</button>';
       } else {
-        h += '<div class="bkm-vide">La course est en cours…</div>';
+        h += '<div class="bkm-vide">' + esc(T('bkiwi.multi.enCours', 'La course est en cours…')) + '</div>';
       }
-      h += '<button class="bkm-btn bkm-sombre" data-act="quitter">Quitter le salon</button></div>';
-      if (hote && s.etat === 'attente') h += '<div class="bkm-note">Vous êtes l’hôte : choisissez le circuit, et lancez quand tout le monde est prêt.</div>';
+      h += '<button class="bkm-btn bkm-sombre" data-act="quitter">' + esc(T('bkiwi.multi.quitter', 'Quitter le salon')) + '</button></div>';
+      if (hote && s.etat === 'attente') h += '<div class="bkm-note">' + esc(T('bkiwi.multi.conseilHote', 'Vous êtes l’hôte : choisissez le circuit, et lancez quand tout le monde est prêt.')) + '</div>';
     }
-    h += '<div class="bkm-note">Les voitures des autres se traversent : pas de collision en ligne. Rien n’est classé, c’est pour le plaisir.</div>';
+    h += '<div class="bkm-note">' + esc(T('bkiwi.multi.note', 'Les voitures des autres se traversent : pas de collision en ligne. Rien n’est classé, c’est pour le plaisir.')) + '</div>';
     p.innerHTML = h;
   },
   // Les clics du panneau (une seule écoute, posée par index.html).
