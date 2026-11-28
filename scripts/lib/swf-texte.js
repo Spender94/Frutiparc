@@ -126,6 +126,15 @@ function lireTextes(swf) {
     }
     let p = base + finTable;
     for (let i = 0; i < nb; i++) { f.codes.push(codesLarges ? b.readUInt16LE(p) : b[p]); p += codesLarges ? 2 : 1; }
+    // Les CHASSES (FontAdvanceTable, en unités de l'em de 1024), quand la
+    // fonte porte ses métriques (HasLayout) : après l'ascendante, la
+    // descendante et l'interlignage. Elles disent où finit une ligne figée —
+    // textes-figes.js s'en sert pour poser l'anglais à la place du français.
+    if (drapeaux & 0x80) {
+      p += 6;
+      f.avances = [];
+      for (let i = 0; i < nb; i++) { f.avances.push(b.readInt16LE(p)); p += 2; }
+    }
   });
 
   const hex = (o) => '#' + [b[o], b[o + 1], b[o + 2]]

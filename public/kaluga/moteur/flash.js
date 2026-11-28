@@ -303,6 +303,9 @@ class Forme extends Affichable {
     if (!d) return;
     K.scene.dessinerObjet(ctx, this, alpha, (ctx2, a) => {
       ctx2.globalAlpha = a;
+      // Un texte figé traduit (hors du français, texte.js) s'écrit à la place
+      // de ses glyphes ; son cadre et sa zone de clic restent ceux du dessin.
+      if (d.fige && K.ecrireFige) { K.ecrireFige(ctx2, d, a); return; }
       K.dessinerDessin(ctx2, d, this.$biblio.images, a);
     });
   }
@@ -675,6 +678,12 @@ class Clip extends Affichable {
     // se dessinait ensuite (la barre de score après une grenouille, par
     // exemple) partait avec la transformation du clip masqué.
     let finMasque = null;
+    // Les phrases que ce clip écrit LETTRE À LETTRE (les titres du tutoriel
+    // de Kaluga…), quand elles sont traduites (texte.js, K.poserFiges) : la
+    // phrase anglaise s'écrit à la place de la première de ses lettres, et
+    // les autres se taisent.
+    const figes = this.$def && this.$def.figes ? this.$def.figes[this.$frame] : null;
+    let ecrites = null;
     for (const e of this.$enfants) {
       if (finMasque !== null && e.$prof > finMasque) { ctx.restore(); finMasque = null; }
       if (e.$masqueJusqua) {
@@ -686,6 +695,14 @@ class Clip extends Affichable {
         ctx.clip(chemin, 'nonzero');
         finMasque = e.$masqueJusqua;
         continue;
+      }
+      if (figes && e.$duScenario) {
+        const f = figes.find((x) => x.profs.has(e.$prof));
+        if (f) {
+          if (!ecrites) ecrites = new Set();
+          if (!ecrites.has(f) && e.$visible) { ecrites.add(f); ctx.save(); K.ecrirePhrase(ctx, f.phrase, a); ctx.restore(); }
+          continue;
+        }
       }
       e.dessinerDans(ctx, a);
     }
