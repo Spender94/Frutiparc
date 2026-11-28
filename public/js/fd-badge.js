@@ -23,9 +23,27 @@
  * le bandeau ne parle que quand il a quelque chose à dire.
  *
  * Il ne prend jamais le clic (`pointer-events: none`) : le jeu passe dessous.
+ *
+ * Ses textes passent par T() (/js/i18n.js ; l'anglais dans
+ * /i18n/en/widgets.js). Les pages des jeux ne chargent pas encore i18n.js :
+ * sans lui, le français.
  */
 (function () {
   'use strict';
+  function remplir(s, p) {
+    return String(s).replace(/\{(\w+)\}/g, function (m, k) { return p && p[k] != null ? String(p[k]) : m; });
+  }
+  function T(cle, fr, p) {
+    var I = window.FPI18n;
+    return I && I.T ? I.T(cle, fr, p) : remplir(fr, p);
+  }
+  T.n = function (cle, n, formes, p) {
+    var I = window.FPI18n;
+    if (I && I.T && I.T.n) return I.T.n(cle, n, formes, p);
+    var q = { n: n };
+    for (var k in (p || {})) if (Object.prototype.hasOwnProperty.call(p, k)) q[k] = p[k];
+    return remplir(Math.abs(n) < 2 ? formes.one : formes.other, q);
+  };
   var script = document.currentScript;
   var params;
   try { params = new URLSearchParams(window.location.search); } catch (e) { return; }
@@ -64,11 +82,11 @@
           return;
         }
         var reste = Number(j.remaining) || 0;
-        if (reste <= 0) { poser('Challenge · plus de partie classée', true); return; }
+        if (reste <= 0) { poser(T('widgets.fdPlusDePartie', 'Challenge · plus de partie classée'), true); return; }
         // Le cadeau du Frutisigne (semaine du signe, jour de l'ascendant) est
         // déjà dans le total : on dit seulement d'où vient la partie de plus.
-        poser('Challenge · ' + reste + ' partie' + (reste > 1 ? 's' : '')
-          + ' sur ' + j.allowance + (Number(j.frutisigne) > 0 ? ' · Frutisigne +1' : ''), false);
+        poser(T.n('widgets.fdParties', reste, { one: 'Challenge · {n} partie sur {total}', other: 'Challenge · {n} parties sur {total}' }, { total: j.allowance })
+          + (Number(j.frutisigne) > 0 ? ' · ' + T('widgets.fdFrutisigne', 'Frutisigne +1') : ''), false);
       })
       .catch(function () { /* le serveur répondra au prochain tour */ });
   }

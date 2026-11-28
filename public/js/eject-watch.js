@@ -25,9 +25,16 @@
  * `fd=0` : la même route porte le drapeau « plus de parties », qu'elle EFFACE
  * en le rendant. Ce guetteur-là n'en a que faire — et s'il le consommait, la
  * fenêtre à qui il était destiné ne le verrait jamais.
+ *
+ * Le voile d'éjection parle la langue du joueur (/js/i18n.js ; l'anglais dans
+ * /i18n/en/widgets.js) — en français quand la page ne charge pas i18n.js.
  */
 (function () {
   'use strict';
+  function T(cle, fr) {
+    var I = window.FPI18n;
+    return I && I.T ? I.T(cle, fr) : fr;
+  }
   var script = document.currentScript;
   var jeu = (script && script.getAttribute('data-jeu')) || '';
   var sid = '';
@@ -67,13 +74,13 @@
     setTimeout(function () {
       if (window.closed) return;
       try {
-        document.title = 'Disque éjecté';
+        document.title = T('widgets.ejecteTitre', 'Disque éjecté');
         var voile = document.createElement('div');
         voile.setAttribute('style', 'position:fixed;inset:0;z-index:2147483647;'
           + 'background:#1d2b12;color:#EAF3D8;display:flex;align-items:center;'
           + 'justify-content:center;text-align:center;padding:24px;'
           + 'font:16px/1.6 Verdana,Geneva,sans-serif');
-        voile.textContent = 'Disque éjecté de la Frusion — cette fenêtre peut être fermée.';
+        voile.textContent = T('widgets.ejecteVoile', 'Disque éjecté de la Frusion — cette fenêtre peut être fermée.');
         document.body.appendChild(voile);
       } catch (e) { /* rien de mieux à faire */ }
     }, 400);

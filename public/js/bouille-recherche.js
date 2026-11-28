@@ -52,6 +52,14 @@
   var Palette = global.FPBouille
     || (typeof require === 'function' ? require('./bouille-palette.js') : null);
 
+  // Les langues (/js/i18n.js ; l'anglais dans /i18n/en/widgets.js). Sans
+  // FPI18n — les tests, une page qui ne le charge pas —, le français.
+  function T(cle, fr, p) {
+    var I = global.FPI18n;
+    if (I && I.T) return I.T(cle, fr, p);
+    return String(fr).replace(/\{(\w+)\}/g, function (m, k) { return p && p[k] != null ? String(p[k]) : m; });
+  }
+
   // base62 : 0-9 → 0-9, a-z → 10-35, A-Z → 36-61. Le `decode62` des familles,
   // recopié par bouille-moteur.js et par l'éditeur du light.
   function dec1(c) {
@@ -94,16 +102,19 @@
    * comparent : `couleur` pose un échantillon de `generalPalette` et sait
    * mesurer un écart, `liste` nomme ses valeurs, `valeur` n'affiche que le
    * nom du champ — exactement comme l'éditeur d'époque, qui ne numérote rien.
+   *
+   * `libelle` s'AFFICHE : il se lit à chaque fois dans la langue du joueur.
+   * L'identifiant d'un champ, c'est `cle`.
    */
   var CHAMPS = [
-    { cle: 'yeux',     libelle: 'yeux',       pos: 2,  max: 8,  type: 'valeur' },
-    { cle: 'iris',     libelle: 'iris',       pos: 4,  max: 17, type: 'valeur' },
-    { cle: 'cheveux',  libelle: 'cheveux',    pos: 6,  max: 66, type: 'valeur' },
-    { cle: 'bouche',   libelle: 'bouche',     pos: 8,  max: 4,  type: 'valeur' },
-    { cle: 'peau',     libelle: 'couleur1',   pos: 10, max: 52, type: 'couleur' },
-    { cle: 'colch',    libelle: 'couleur2',   pos: 12, max: 52, type: 'couleur' },
-    { cle: 'acc',      libelle: 'accessoire', pos: 14, max: 16, type: 'liste' },
-    { cle: 'acccol',   libelle: 'coul. acc.', pos: 18, max: 52, type: 'couleur' },
+    { cle: 'yeux',     get libelle() { return T('widgets.rechercheYeux', 'yeux'); },              pos: 2,  max: 8,  type: 'valeur' },
+    { cle: 'iris',     get libelle() { return T('widgets.rechercheIris', 'iris'); },              pos: 4,  max: 17, type: 'valeur' },
+    { cle: 'cheveux',  get libelle() { return T('widgets.rechercheCheveux', 'cheveux'); },        pos: 6,  max: 66, type: 'valeur' },
+    { cle: 'bouche',   get libelle() { return T('widgets.rechercheBouche', 'bouche'); },          pos: 8,  max: 4,  type: 'valeur' },
+    { cle: 'peau',     get libelle() { return T('widgets.rechercheCouleur1', 'couleur1'); },      pos: 10, max: 52, type: 'couleur' },
+    { cle: 'colch',    get libelle() { return T('widgets.rechercheCouleur2', 'couleur2'); },      pos: 12, max: 52, type: 'couleur' },
+    { cle: 'acc',      get libelle() { return T('widgets.rechercheAccessoire', 'accessoire'); },  pos: 14, max: 16, type: 'liste' },
+    { cle: 'acccol',   get libelle() { return T('widgets.rechercheCouleurAcc', 'coul. acc.'); },  pos: 18, max: 52, type: 'couleur' },
   ];
   var PAR_CLE = {};
   CHAMPS.forEach(function (c) { PAR_CLE[c.cle] = c; });
