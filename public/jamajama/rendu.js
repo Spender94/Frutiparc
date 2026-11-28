@@ -332,5 +332,7 @@
   function tempsCourant() { return temps; }
 
   window.JamaRendu = { charger, dessiner, etatDe, longueur, etiquettes, zoneBouton,
-    symbole, ecrireChamp, manifeste: () => MANIFESTE, avancer, temps: tempsCourant };
+    symbole, ecrireChamp, manifeste: () => MANIFESTE, avancer, temps: tempsCourant,
+    // Le texte figé a-t-il son remplaçant anglais ? (les tests de la version anglaise)
+    remplace: (fichier) => remplacants.has(fichier) };
 })();

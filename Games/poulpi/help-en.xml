@@ -44,7 +44,7 @@
 			<li><b>D key:</b> Show or hide the debugging information (you can scroll through it with the mouse wheel).</li>
 			<li><b>Delete key:</b> Clear the debugging history (only while it is shown on screen).</li>
 		</ul>
-		<!-- Note : Si le mode de débogage est activé lors de l'édition d'un niveau, tous les éléments (fruits, caisses, etc.) sont rendus disponibles. Dans cette version du jeu, ils le sont de toute façon tous par défaut. -->
+		<!-- Note: If debug mode is on while editing a level, every element (fruits, crates, etc.) is made available. In this version of the game, they all are by default anyway. -->
 	</section>
 	<section name="index_adventure">
 		<p class="title">Adventure mode</p>
@@ -205,7 +205,7 @@
 		<p class="title">Appendix: The elements in detail</p>
 		<p>This page presents the 22 elements you can come across during a game.</p>
 		<p>These are the same descriptions as the ones found one by one in the contextual help of Editor mode.</p>
-		<!-- La suite du texte est complétée automatiquement avec les noeuds ci-dessous. -->
+		<!-- The rest of the text is filled in automatically with the nodes below. -->
 	</section>
 	<!-- Aide des différents éléments lors de l'édition d'un niveau. -->
 	<section name="Exit">
