@@ -3648,8 +3648,85 @@ const KIKOOZ_INSCRIPTION = 200;
  *   langueDe(pseudo)      la langue du compte (« fr » par défaut)
  *   langueDeRequete(req)  celle du compte si la requête porte un sid, sinon
  *                         ?lang= / lang du corps / Accept-Language
+ *   t(lang, cle, fr, params)          le texte (FPI18n.traduire)
+ *   tn(lang, cle, n, formes, params)  le pluriel (FPI18n.pluriel)
+ *   texteDe(lang, texte)              un TEXTE TRADUISIBLE (voir plus bas)
+ *
+ * LES DICTIONNAIRES DU SERVEUR vivent dans i18n-serveur/<langue>/<zone>.js —
+ * hors de public/ : ce sont les phrases que le serveur écrit (lignes système
+ * du chat, PNJ…), le navigateur n'a pas à les télécharger. Chaque fichier
+ * exporte un objet `{ 'zone.cle': 'texte' }`, chargé ici une fois pour toutes
+ * au démarrage. Comme dans le navigateur, il n'y a PAS de dictionnaire
+ * français : le français est l'argument de repli, écrit à l'endroit où la
+ * phrase part (docs/I18N.md, « Côté serveur »).
  */
 const FPI18n = require('./public/js/i18n.js');
+(function chargerDictionnairesServeur() {
+  const racine = path.join(__dirname, 'i18n-serveur');
+  for (const lang of FPI18n.LANGUES) {
+    if (lang === 'fr') continue;
+    let fichiers = [];
+    try { fichiers = fs.readdirSync(path.join(racine, lang)).filter((f) => f.endsWith('.js')).sort(); }
+    catch (e) { continue; }                     // pas encore de dictionnaire pour cette langue
+    for (const f of fichiers) FPI18n.ajouter(lang, require(path.join(racine, lang, f)));
+  }
+})();
+function t(lang, cle, fr, params) { return FPI18n.traduire(lang, cle, fr, params); }
+function tn(lang, cle, n, formes, params) { return FPI18n.pluriel(lang, cle, n, formes, params); }
+
+/*
+ * UN TEXTE TRADUISIBLE. Ce qu'un PNJ, une ligne système — et demain un
+ * historique ou une notification — passent AU LIEU d'une chaîne française,
+ * quand la phrase part vers des joueurs de langues différentes :
+ *
+ *   'texte'                le même pour tous (un pseudo, ce qu'un humain a
+ *                          tapé : on ne traduit jamais un joueur) ;
+ *   { k, fr, p }           une clé, son français, ses paramètres —
+ *                          { k: 'irma.bonjour', fr: "B'nj'ur {nom}", p: { nom } } ;
+ *   { k, n, formes, p }    un pluriel : formes = { one, other } en français,
+ *                          `{n}` vaut le nombre ;
+ *   (lang) => 'texte'      tout le reste.
+ *
+ * Un PARAMÈTRE peut être lui-même un texte à clé ({ k, fr }) : le nom d'un
+ * frutisigne se dit « pomme » ou « apple » selon qui lit. Les paramètres d'une
+ * ligne de salon sont rangés avec elle (l'attribut `kp`, cf. broadcastToChannel)
+ * pour la refaire plus tard dans une autre langue : on y met des VALEURS
+ * (chaînes, nombres, textes à clé), jamais de fonction.
+ */
+function estTexteCle(x) { return !!x && typeof x === 'object' && typeof x.k === 'string'; }
+function parametresRendus(lang, p) {
+  if (!p) return p;
+  const r = {};
+  for (const nom of Object.keys(p)) r[nom] = estTexteCle(p[nom]) ? texteDe(lang, p[nom]) : p[nom];
+  return r;
+}
+function texteDe(lang, texte) {
+  if (texte == null) return '';
+  if (typeof texte === 'function') return String(texte(lang));
+  if (!estTexteCle(texte)) return String(texte);
+  const p = parametresRendus(lang, texte.p);
+  return texte.formes !== undefined
+    ? tn(lang, texte.k, Number(texte.n), texte.formes, p)
+    : t(lang, texte.k, texte.fr, p);
+}
+// Ce qu'on range d'un texte à clé pour le refaire ailleurs : ses paramètres
+// (et son nombre, pour un pluriel).
+function parametresRanges(texte) {
+  if (!estTexteCle(texte)) return null;
+  const p = Object.assign({}, texte.p || {});
+  if (texte.formes !== undefined) p.n = Number(texte.n);
+  return p;
+}
+// Le texte d'une clé dans une langue, À PARTIR DE CE QUI A ÉTÉ RANGÉ — sans le
+// français, qu'on n'a plus : null si la langue n'a pas sa traduction (la ligne
+// reste alors en français). `pluriel` sait aussi rendre un gabarit simple ou
+// une fonction ; il lit `n` dans les paramètres quand il y en a un.
+function texteRange(lang, k, kp) {
+  if (!FPI18n.possede(lang, k)) return null;
+  const p = parametresRendus(lang, kp || {});
+  return FPI18n.pluriel(lang, k, p.n, null, p);
+}
+
 function langueDe(username) {
   const u = username && users[String(username).toLowerCase()];
   return (u && FPI18n.valide(u.lang)) || 'fr';
@@ -22539,6 +22616,18 @@ app.post('/api/admin/kiloute/run', adminScope('kiloute'), (req, res) => {
   res.json({ ok: true, channel: ch });
 });
 
+// Faire passer M'dam Irma MAINTENANT (hors de son rendez-vous de l'heure),
+// dans `salon` (sinon le plus fréquenté) — pour l'essayer, et pour les tests,
+// qui la font parler vite (`pas`, en millisecondes entre deux répliques).
+app.post('/api/admin/visiteurs/irma', adminAuth, (req, res) => {
+  const b = req.body || {};
+  const salon = String(b.salon || '').trim();
+  if (salon && !channels[salon]) return res.status(404).json({ ok: false, error: 'salon inconnu' });
+  const pas = b.pas !== undefined ? Math.max(100, Math.min(10000, Number(b.pas) || 0)) : undefined;
+  mdamirmaReveal(salon || null, pas);
+  res.json({ ok: true });
+});
+
 // ── Quizz (événements multi-questions animés en direct) ──
 // Démarre un quiz : body { quizId, channel?, reward?, windowSec? }.
 // channel vide = salon le plus fréquenté ; reward/window vides = valeurs du quiz.
@@ -28400,7 +28489,8 @@ app.post('/api/light/langue', (req, res) => {
   const lang = FPI18n.valide(req.body && req.body.lang);
   if (!lang) return res.status(400).json({ ok: false, error: 'lang' });
   users[username].lang = lang;
-  for (const [, cl] of xmlSocketClients) if (cl && cl.username === username) cl.lang = lang;
+  // Ses sockets light suivent (le bureau Flash reste en français, cf. l'ident).
+  for (const [, cl] of xmlSocketClients) if (cl && cl.username === username && cl.estLight) cl.lang = lang;
   if (users[username]._dbId) db.updateUser(username, { lang }).catch((e) => console.error('[DB] lang:', e.message));
   res.json({ ok: true, lang });
 });
@@ -33653,6 +33743,11 @@ function nomsPaysRegion(ud) {
 // heures, aux couleurs de Frutiparc. Modérateurs partout, animateurs sur
 // leur salon.
 app.get('/api/chat/histo', (req, res) => {
+  // LA LANGUE DE LA PAGE : `?lang=` s'il est donné, sinon celle du compte du
+  // sid (langueDeRequete) — celle que le sélecteur de langue du light range.
+  // Les lignes à clé se relisent dans cette langue (`retraduireTrame`) ; ce
+  // que les joueurs ont écrit reste tel quel.
+  const lang = FPI18n.valide(req.query.lang) || langueDeRequete(req);
   const demandeur = resolveUsernameFromSid(req.query.sid || '');
   if (!demandeur && !req.query.sid) {
     // Rechargée (F5) après que sid-discret.js a retiré le sid de l'adresse :
@@ -33661,17 +33756,17 @@ app.get('/api/chat/histo', (req, res) => {
       + 'try{var s=sessionStorage.getItem("fp_sid_page:"+location.pathname);'
       + 'if(s){var p=new URLSearchParams(location.search);p.set("sid",s);'
       + 'location.replace(location.pathname+"?"+p.toString()+location.hash);}}catch(e){}'
-      + '</script>Session inconnue.');
+      + '</script>' + escapeXml(t(lang, 'chat.logs.sessionInconnue', 'Session inconnue.')));
   }
-  if (!demandeur) return res.status(401).send('Session inconnue.');
+  if (!demandeur) return res.status(401).send(t(lang, 'chat.logs.sessionInconnue', 'Session inconnue.'));
   const g = String(req.query.g || '').trim();
-  if (!g || !channels[g]) return res.status(404).send('Salon inconnu.');
+  if (!g || !channels[g]) return res.status(404).send(t(lang, 'chat.logs.salonInconnu', 'Salon inconnu.'));
   // Les logs d'un salon public sont à TOUS les Frutiz — c'est la mémoire du
   // salon, pas un registre de modération. Une discussion privée, elle, ne se
   // relit qu'entre ses deux participants.
   const ch = channels[g];
   if (ch.private && !(Array.isArray(ch.participants) && ch.participants.includes(demandeur))) {
-    return res.status(403).send('Réservé aux participants de la discussion.');
+    return res.status(403).send(t(lang, 'chat.logs.reserve', 'Réservé aux participants de la discussion.'));
   }
 
   const lignes = [];
@@ -33679,11 +33774,11 @@ app.get('/api/chat/histo', (req, res) => {
   // modérateur : pour lui, les logs restent la pièce du dossier.
   const filtrer = !isModerator(demandeur);
   for (const e of getChannelHistoryComplete(g)) {
-    const x = e.xml;
+    const x = retraduireTrame(e.xml, lang);
     if (filtrer && trameIgnoreePar(demandeur, g, x)) continue;
     const attr = (n) => { const m = x.match(new RegExp('\\b' + n + '="([^"]*)"')); return m ? m[1] : ''; };
     const u = unescapeXml(attr('u'));
-    const t = attr('t') || 'm';
+    const type = attr('t') || 'm';
     const st = attr('st');
     // L'heure du chat ([hh:mm:ss] dans h, débarrassée du <font> des cris) —
     // sinon l'horloge du serveur au moment de l'enregistrement.
@@ -33698,15 +33793,15 @@ app.get('/api/chat/histo', (req, res) => {
     let corps = x.replace(/^<t[^>]*>/, '').replace(/<\/t>\s*$/, '');
     const cd = corps.match(/^<!\[CDATA\[([\s\S]*)\]\]>$/);
     if (cd) corps = cd[1];
-    if (t === 'i') {
+    if (type === 'i') {
       const iu = corps.match(/\bu="([^"]*)"/);
       const it = corps.match(/>([^<]*)</);
-      corps = '[image] ' + (it ? unescapeXml(it[1]) : '')
+      corps = t(lang, 'chat.logs.image', '[image]') + ' ' + (it ? unescapeXml(it[1]) : '')
         + (iu ? ' — ' + unescapeXml(iu[1]) : '');
-    } else if (t === 'g') {
+    } else if (type === 'g') {
       const gk = corps.match(/\bk="([^"]*)"/);
       const gu = corps.match(/\bu="([^"]*)"/);
-      corps = '[don] ' + (gk ? gk[1] : '?') + ' kikooz à ' + (gu ? unescapeXml(gu[1]) : '?');
+      corps = t(lang, 'chat.logs.don', '[don] {n} kikooz à {nom}', { n: gk ? gk[1] : '?', nom: gu ? unescapeXml(gu[1]) : '?' });
     } else {
       // Le htmlText du bureau (font, b, i…) redevient du texte nu. Dans un
       // CDATA, c'est du HTML tel quel : ses entités se décodent comme celles
@@ -33715,7 +33810,7 @@ app.get('/api/chat/histo', (req, res) => {
       corps = (cd ? texteMailLight(corps) : unescapeXml(corps.replace(/<[^>]*>/g, ''))).trim();
     }
     if (!corps) continue;
-    lignes.push({ h, u, corps, rouge: st === 'r', anim: t === 'c', mc: st === 'mc', systeme: u === 'admin' });
+    lignes.push({ h, u, corps, rouge: st === 'r', anim: type === 'c', mc: st === 'mc', systeme: u === 'admin' });
   }
 
   const esc = escapeXml;
@@ -33725,7 +33820,7 @@ app.get('/api/chat/histo', (req, res) => {
     if (l.anim) classes.push('anim');
     if (l.mc) classes.push('mc');
     if (l.systeme && !l.rouge) classes.push('systeme');
-    const qui = (l.systeme || l.rouge) ? '' : '<b>' + esc(l.u) + ' :</b> ';
+    const qui = (l.systeme || l.rouge) ? '' : '<b>' + esc(t(lang, 'chat.logs.auteur', '{nom} :', { nom: l.u })) + '</b> ';
     const dedans = '<span class="h">' + esc(l.h) + '</span> ' + qui + esc(l.corps);
     // Le multicolore se peint dans un <span class="arc"> intérieur, pas sur la
     // ligne : une ligne paire a son propre fond (le zébrage), et le raccourci
@@ -33737,12 +33832,12 @@ app.get('/api/chat/histo', (req, res) => {
   }).join('\n');
 
   const page = `<!DOCTYPE html>
-<html lang="fr">
+<html lang="${lang}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <script src="/js/sid-discret.js"></script>
-<title>Salon ${esc(g)} — messages précédents</title>
+<title>${esc(t(lang, 'chat.logs.titre', 'Salon {salon} — messages précédents', { salon: g }))}</title>
 <style>
   body { margin: 0; background: #8A9F60; font: 12px Verdana, Arial, sans-serif; color: #2c3a10; }
   .fenetre {
@@ -33834,11 +33929,11 @@ app.get('/api/chat/histo', (req, res) => {
 </script>
 </head>
 <body>
-<button type="button" class="fermer" id="fermer" aria-label="Fermer les logs" title="Fermer (Échap)">✕ Fermer</button>
+<button type="button" class="fermer" id="fermer" aria-label="${esc(t(lang, 'chat.logs.fermerLogs', 'Fermer les logs'))}" title="${esc(t(lang, 'chat.logs.fermerEchap', 'Fermer (Échap)'))}">✕ ${esc(t(lang, 'chat.logs.fermer', 'Fermer'))}</button>
 <div class="fenetre">
-  <div class="bandeau">Salon <span class="salon">${esc(g)}</span> — les messages des 24 dernières heures</div>
-  <div class="sous">${lignes.length} message${lignes.length > 1 ? 's' : ''} — la mémoire du salon, ouverte à tous les Frutiz. Les heures sont celles du chat.</div>
-  <div class="corps">${rendu || '<div class="vide">Aucun message sur ce salon depuis 24 heures.</div>'}</div>
+  <div class="bandeau">${t(lang, 'chat.logs.bandeau', 'Salon {salon} — les messages des 24 dernières heures', { salon: `<span class="salon">${esc(g)}</span>` })}</div>
+  <div class="sous">${esc(tn(lang, 'chat.logs.compte', lignes.length, { one: '{n} message — la mémoire du salon, ouverte à tous les Frutiz. Les heures sont celles du chat.', other: '{n} messages — la mémoire du salon, ouverte à tous les Frutiz. Les heures sont celles du chat.' }))}</div>
+  <div class="corps">${rendu || `<div class="vide">${esc(t(lang, 'chat.logs.vide', 'Aucun message sur ce salon depuis 24 heures.'))}</div>`}</div>
 </div>
 <script>
   document.querySelector('.corps').scrollTop = 1e9;
@@ -35847,6 +35942,12 @@ users.gaspard = {
 
 // ── mdamirma — FrutiSigne bot ──
 const FRUTI_SIGN_NAMES = ['pomme','abricot','poire','fraise','citron','kiwi','raisin','orange','cerise','banane'];
+// Le nom d'un frutisigne en TEXTE TRADUISIBLE (« pomme » / "apple") : à passer
+// en paramètre d'une phrase à clé (zone « frutisigne », i18n-serveur/en/).
+function nomDeFrutisigne(i) {
+  const fr = FRUTI_SIGN_NAMES[i];
+  return fr ? { k: 'frutisigne.' + fr, fr } : String(i);
+}
 
 users.mdamirma = {
   pass: '',
@@ -35956,25 +36057,40 @@ function npcLeave(npc) {
 
 // `mentionnes` : les pseudos (clés) à qui la ligne s'adresse — la trame porte
 // mn="…", et leur onglet clignote comme pour une @mention.
+//
+// LA RÉPLIQUE D'UN PNJ, DANS LA LANGUE DE CHAQUE LECTEUR. `text` est un TEXTE
+// TRADUISIBLE (cf. texteDe) :
+//   npcSay('mdamirma', g, "B'nj'ur !")                       le même pour tous ;
+//   npcSay('mdamirma', g, { k: 'irma.bonjour', fr: "B'nj'ur mes gentils petits frutiz." })
+//                                                            chacun le sien, et
+//                                                            le rejeu le refait ;
+//   npcSay('gaspard', g, (lang) => …)                        à la main (le rejeu
+//                                                            reste en français).
+// La phrase va dans le moule de `ligneTraduite` : le corps de la trame est la
+// phrase échappée, rien d'autre — une réplique de PNJ s'y prête toujours.
 function npcSay(npc, channelName, text, type, mentionnes) {
   const timeAttrs = buildChatTimeAttrs();
   const mn = mentionnes && mentionnes.length ? ` mn="${escapeXml(mentionnes.map((u) => getDisplayName(u)).join(','))}"` : '';
+  const habiller = (html) =>
+    `<${CMD.send} u="${escapeXml(getDisplayName(npc))}" t="${type || 'm'}" p="" g="${escapeXml(channelName)}" h="${timeAttrs.h}" d="${timeAttrs.d}"${mn}>${html}</${CMD.send}>`;
   broadcastToChannel(channelName,
-    `<${CMD.send} u="${escapeXml(getDisplayName(npc))}" t="${type || 'm'}" p="" g="${escapeXml(channelName)}" h="${timeAttrs.h}" d="${timeAttrs.d}"${mn}>${escapeXml(text)}</${CMD.send}>`
-  );
+    typeof text === 'string' || text == null ? habiller(escapeXml(String(text == null ? '' : text))) : ligneTraduite(text, habiller));
 }
 
 // Deliver `lines` one at a time (~2.5-5 s apart, after a short initial pause),
 // then call onDone. Bails if the NPC has meanwhile left or moved channel. The
 // optional `type` sets the chat sub-type ('c' = animator/blue styling).
 // `mentionnes` : les lignes qui nomment l'un d'eux (son pseudo affiché) s'adressent à lui.
+// Chaque ligne est un texte traduisible, comme pour npcSay (on peut mêler
+// chaînes et clés) ; la mention se cherche dans sa version française.
 function npcSaySequence(npc, channelName, lines, onDone, type, gapMs, mentionnes) {
   let i = 0;
   function step() {
     if (npcChannel[npc] !== channelName) return; // moved/left → stop talking
     if (i >= lines.length) { if (onDone) onDone(); return; }
     const line = lines[i++];
-    const a = mentionnes ? mentionnes.filter((u) => line && line.includes(getDisplayName(u))) : null;
+    const fr = line ? texteDe('fr', line) : '';
+    const a = mentionnes ? mentionnes.filter((u) => fr && fr.includes(getDisplayName(u))) : null;
     if (line) npcSay(npc, channelName, line, type, a);
     setTimeout(step, gapMs ? (gapMs + Math.random() * gapMs * 0.5) : (2500 + Math.random() * 2500));
   }
@@ -36094,21 +36210,36 @@ function mdamirmaPickTarget(channelName) {
   return candidates[Math.floor(Math.random() * candidates.length)];
 }
 
-async function mdamirmaReveal() {
-  const channelName = mostPopulatedChannel();
+// `salon` et `pasMs` : pour la faire passer à la demande (l'admin, les tests —
+// cf. /api/admin/visiteurs/irma) ; d'ordinaire, le salon le plus fréquenté et
+// le pas d'une voyante qui prend son temps.
+async function mdamirmaReveal(salon, pasMs) {
+  const channelName = (salon && channels[salon]) ? salon : mostPopulatedChannel();
   if (!channelName) return;
   npcJoin('mdamirma', channelName);
 
   const target = mdamirmaPickTarget(channelName);
+  /*
+   * M'DAM IRMA PARLE LA LANGUE DE CHACUN — l'exemple complet d'un PNJ traduit.
+   * Chaque réplique est un texte à clé (zone « irma », i18n-serveur/en/irma.js) :
+   * le français reste écrit ici, avec son accent ; l'anglais a le sien
+   * (« 'Ello my leetle frutiz »). Le frutisigne révélé est un PARAMÈTRE qui se
+   * traduit lui-même (`nomDeFrutisigne`) : « pomme » pour l'un, « apple » pour
+   * l'autre. Les lignes rangées dans l'historique se refont au rejeu.
+   */
+  const bonjour = { k: 'irma.bonjour', fr: "B'nj'ur mes gentils petits frutiz." };
+  const presentation = { k: 'irma.presentation', fr: "Je souis m'dam Irma et je vais pé être rév'ler le FRUTISIGNE de l'un d'entre vous !" };
+  const boule = { k: 'irma.boule', fr: 'Véyons voir ce qué mé dit la Boule de Cristal...' };
+  const aBientot = { k: 'irma.aBientot', fr: "A b'entot lé' frutiz..." };
   if (!target) {
     // Personne à éclairer : version courte, puis elle s'en va.
     npcSaySequence('mdamirma', channelName, [
-      "B'nj'ur mes gentils petits frutiz.",
-      "Je souis m'dam Irma et je vais pé être rév'ler le FRUTISIGNE de l'un d'entre vous !",
-      "Véyons voir ce qué mé dit la Boule de Cristal...",
-      "Hmm... je ne vois personne à éclairer ici...",
-      "A b'entot lé' frutiz...",
-    ], () => setTimeout(() => npcLeave('mdamirma'), 3000 + Math.random() * 3000));
+      bonjour,
+      presentation,
+      boule,
+      { k: 'irma.personne', fr: 'Hmm... je ne vois personne à éclairer ici...' },
+      aBientot,
+    ], () => setTimeout(() => npcLeave('mdamirma'), 3000 + Math.random() * 3000), undefined, pasMs);
     return;
   }
 
@@ -36134,17 +36265,18 @@ async function mdamirmaReveal() {
 
   // Révélation complète, ligne par ligne avec quelques secondes entre chaque.
   npcSaySequence('mdamirma', channelName, [
-    "B'nj'ur mes gentils petits frutiz.",
-    "Je souis m'dam Irma et je vais pé être rév'ler le FRUTISIGNE de l'un d'entre vous !",
-    "Véyons voir ce qué mé dit la Boule de Cristal...",
-    "Hum oué ...",
-    "Ho ho",
-    "Ha",
-    "P'ué possible",
-    `Mé petit ${displayTarget} est ${signName} ascendant ${signBName} !`,
-    "Une b'nne configuration Frutale ça augure plein dé surprises sur lé site.",
-    "A b'entot lé' frutiz...",
-  ], () => setTimeout(() => npcLeave('mdamirma'), 4000 + Math.random() * 4000));
+    bonjour,
+    presentation,
+    boule,
+    { k: 'irma.humOue', fr: 'Hum oué ...' },
+    { k: 'irma.hoHo', fr: 'Ho ho' },
+    { k: 'irma.ha', fr: 'Ha' },
+    { k: 'irma.pasPossible', fr: "P'ué possible" },
+    { k: 'irma.revelation', fr: 'Mé petit {nom} est {signe} ascendant {ascendant} !',
+      p: { nom: displayTarget, signe: nomDeFrutisigne(sign), ascendant: nomDeFrutisigne(signB) } },
+    { k: 'irma.configuration', fr: "Une b'nne configuration Frutale ça augure plein dé surprises sur lé site." },
+    aBientot,
+  ], () => setTimeout(() => npcLeave('mdamirma'), 4000 + Math.random() * 4000), undefined, pasMs);
 }
 
 /*
@@ -37144,15 +37276,19 @@ if (process.env.DATABASE_URL) {
     db.pruneChatHistory(Date.now() - CHAT_HISTORY_MAX_AGE_MS).catch(dbErr('pruneChatHistory'));
   }, 30 * 60 * 1000).unref();
 }
-// Recent (≤5 min) chat frames for a channel, oldest first.
-function getChannelHistory(channelName) {
+// Recent (≤5 min) chat frames for a channel, oldest first — rendues dans la
+// langue de qui les relit (`retraduireTrame` : le français est rangé, une ligne
+// à clé se refait dans l'autre langue).
+function getChannelHistory(channelName, lang) {
   const channel = channels[channelName];
   if (!channel || !channel.history) return [];
   const cutoff = Date.now() - CHAT_REPLAY_MAX_AGE_MS;
-  return channel.history.filter((e) => e.at >= cutoff).map((e) => e.xml);
+  return channel.history.filter((e) => e.at >= cutoff).map((e) => retraduireTrame(e.xml, lang));
 }
 
 // La fenêtre des logs : tout ce que la rétention porte (vingt-quatre heures).
+// Les trames telles que RANGÉES (en français, avec leurs `k`/`kp`) : qui les
+// montre les passe par `retraduireTrame(e.xml, langue)`.
 function getChannelHistoryComplete(channelName) {
   const channel = channels[channelName];
   if (!channel || !channel.history) return [];
@@ -37169,15 +37305,217 @@ function getChannelHistoryComplete(channelName) {
 // unique d'un démarrage à l'autre (l'historique survit en base).
 const CHAT_MI_PREFIXE = Date.now().toString(36) + '-';
 let chatMiSeq = 0;
-function numeroterMessage(xmlStr) {
+// `mi` : le numéro d'un message déjà numéroté dans une autre langue — les
+// versions d'une même ligne portent le MÊME numéro (c'est un seul message).
+function numeroterMessage(xmlStr, mi) {
   if (!/^<t[\s>]/.test(xmlStr) || / mi="/.test(xmlStr)) return xmlStr;
-  return xmlStr.replace(/^<t(?=[\s>])/, `<t mi="${CHAT_MI_PREFIXE}${++chatMiSeq}"`);
+  return xmlStr.replace(/^<t(?=[\s>])/, `<t mi="${mi || (CHAT_MI_PREFIXE + (++chatMiSeq))}"`);
 }
-function broadcastToChannel(channelName, xmlStr, excludeSocket = null) {
+
+/*
+ * ══ UNE TRAME PAR LANGUE ═══════════════════════════════════════════════════
+ *
+ * Les salons sont PARTAGÉS : un francophone et un anglophone lisent le même
+ * salon, et chacun doit lire dans SA langue ce que le SERVEUR écrit — lignes
+ * système, réponses aux commandes, émotes, PNJ. Ce que tape un joueur, lui,
+ * part tel quel à tous (on ne traduit jamais un joueur), comme le cri rouge ou
+ * l'annonce de l'équipe : ce sont des textes d'humains.
+ *
+ * LA LANGUE D'UNE SOCKET : `client.lang`, posée à l'ident (le `la` que la page
+ * annonce, cf. `case 'ident'`). Le bureau Flash n'annonce rien et reste en
+ * FRANÇAIS — c'est un SWF compilé, tout son habillage est français.
+ *
+ * Partout où une trame part vers des sockets (broadcastToChannel,
+ * annonceModeration, chuchoter, les fils du loup-garou…), on peut donc passer :
+ *
+ *   'xml'                           la même trame pour tous (comme avant) ;
+ *   (lang) => 'xml'                 une trame par langue ;
+ *   { build: (lang) => 'xml', k, kp }
+ *                                   la même, avec ce qu'il faut pour la REFAIRE
+ *                                   dans une autre langue une fois rangée dans
+ *                                   l'historique : la clé `k` et ses paramètres
+ *                                   `kp`. On ne l'écrit presque jamais à la
+ *                                   main : `ligneTraduite` et `ligneRendue`
+ *                                   (plus bas) la fabriquent.
+ *
+ * Chaque langue n'est rendue qu'UNE fois par envoi, et seulement si une socket
+ * de cette langue la lit. Le français sort OCTET POUR OCTET comme avant.
+ *
+ * L'HISTORIQUE (le rejeu du light, la fenêtre des logs, la table chat_history)
+ * range la version FRANÇAISE — le SWF, les tests et tout ce qui lit les trames
+ * rangées par leur contenu continuent de lire ce qu'ils lisaient —, augmentée,
+ * quand la ligne a une clé, de ` k="clé" kp="{…json…}"` juste après `mi`. Au
+ * rejeu, `retraduireTrame(xml, langue)` ôte ces deux attributs et, hors du
+ * français, refait la ligne dans la langue de qui la relit.
+ */
+function langueClient(client) { return (client && FPI18n.valide(client.lang)) || 'fr'; }
+
+// Une trame pour tous ou par langue → { fixe, pour(lang), k, kp }.
+function trameMultilingue(trame) {
+  if (typeof trame !== 'function' && (trame == null || typeof trame !== 'object')) {
+    const xml = trame == null ? '' : String(trame);
+    return { fixe: true, pour: () => xml, k: null, kp: null };
+  }
+  const build = typeof trame === 'function' ? trame : trame.build;
+  // (un texte traduisible n'est pas une trame : il faut l'habiller,
+  // cf. ligneTraduite)
+  if (typeof build !== 'function') throw new Error('trame sans build : ' + JSON.stringify(trame).slice(0, 80));
+  const versions = {};
+  return {
+    fixe: false,
+    k: (typeof trame === 'object' && trame.k) || null,
+    kp: (typeof trame === 'object' && trame.kp) || null,
+    pour(lang) {
+      lang = FPI18n.valide(lang) || 'fr';
+      if (versions[lang] === undefined) versions[lang] = String(build(lang));
+      return versions[lang];
+    },
+  };
+}
+// La trame telle qu'une socket doit la lire, et l'envoi à une socket seule.
+function trameEn(trame, lang) { return trameMultilingue(trame).pour(lang); }
+function envoyerTrame(sock, trame) {
+  sendToClient(sock, trameEn(trame, langueClient(xmlSocketClients.get(sock))));
+}
+
+/*
+ * LES DEUX FABRIQUES DE LIGNES À CLÉ.
+ *
+ * ligneTraduite(texte, habiller) — LE CAS COURANT : une phrase dans son habit.
+ *   texte     un texte traduisible (cf. texteDe) — { k, fr, p } pour qu'elle
+ *             se refasse au rejeu ;
+ *   habiller  (html, lang) => la trame, où `html` est la phrase rendue dans la
+ *             langue et échappée (escapeXml). L'habit, c'est tout ce qui
+ *             l'entoure : la balise <t …>, un CDATA, des balises (<i>, <b>,
+ *             <font>) AVANT et APRÈS la phrase.
+ *   Au rejeu, la phrase est retrouvée entre ces balises et remplacée par sa
+ *   traduction — d'où la seule règle du moule : la phrase ne commence ni ne
+ *   finit par une balise, et une ligne n'a qu'une clé.
+ *
+ * ligneRendue(k, kp, habiller) — pour ce qui ne tient pas dans ce moule (une
+ *   ligne de plusieurs phrases, du HTML DANS la phrase, un attribut traduit) :
+ *   la famille de clés déclare son rendu, `rendreLigne(k, (lang, kp, k) =>
+ *   ({ corps, attrs }))` — le corps de la trame, et les attributs à réécrire
+ *   (l'`el` d'une émote) —, qui sert au direct comme au rejeu.
+ *   `habiller({ corps, attrs }, lang)` compose la trame. Une clé terminée par
+ *   « . » déclare toute une famille (« chat.emote. »).
+ *
+ * Garde-fou : au moment de ranger une ligne à clé, on vérifie que le rejeu la
+ * referait EXACTEMENT comme le direct, dans chaque langue. Sinon (une phrase
+ * hors du moule), elle est rangée sans clé — elle se relira en français — et
+ * le journal le signale une fois : « [i18n] ligne non rejouable ».
+ */
+const RENDUS_LIGNES = new Map();
+function rendreLigne(cle, rendu) { RENDUS_LIGNES.set(cle, rendu); }
+function renduDe(k) {
+  if (RENDUS_LIGNES.has(k)) return RENDUS_LIGNES.get(k);
+  let famille = '';
+  for (const cle of RENDUS_LIGNES.keys()) {
+    if (cle.endsWith('.') && k.startsWith(cle) && cle.length > famille.length) famille = cle;
+  }
+  return famille ? RENDUS_LIGNES.get(famille) : null;
+}
+function ligneTraduite(texte, habiller) {
+  return {
+    k: estTexteCle(texte) ? texte.k : null,
+    kp: parametresRanges(texte),
+    build: (lang) => habiller(escapeXml(texteDe(lang, texte)), lang),
+  };
+}
+function ligneRendue(k, kp, habiller) {
+  const rendu = renduDe(k);
+  if (!rendu) throw new Error('ligneRendue : pas de rendu déclaré pour ' + k);
+  return { k, kp: kp || {}, build: (lang) => habiller(rendu(lang, kp || {}, k), lang) };
+}
+
+// Un attribut de la balise ouvrante d'une trame (décodé), ou null.
+function attributDeTete(xml, nom) {
+  const fin = xml.indexOf('>');
+  const m = new RegExp(' ' + nom + '="([^"]*)"').exec(fin > 0 ? xml.slice(0, fin) : xml);
+  return m ? unescapeXml(m[1]) : null;
+}
+// La trame rangée sans ses attributs de rejeu : celle qu'on avait envoyée.
+function sansCleDeRejeu(xml) {
+  if (!/^<t[\s>]/.test(xml)) return xml;
+  const fin = xml.indexOf('>');
+  if (fin < 0 || xml.lastIndexOf(' k="', fin) < 0) return xml;
+  return xml.slice(0, fin).replace(/ kp?="[^"]*"/g, '') + xml.slice(fin);
+}
+// LE REJEU : une trame rangée, rendue pour qui la relit dans `lang`.
+function retraduireTrame(xml, lang) {
+  const nu = sansCleDeRejeu(xml);
+  lang = FPI18n.valide(lang) || 'fr';
+  if (lang === 'fr' || nu === xml) return nu;
+  const k = attributDeTete(xml, 'k');
+  if (!k) return nu;
+  let kp;
+  try { kp = JSON.parse(attributDeTete(xml, 'kp') || '{}') || {}; } catch (e) { return nu; }
+  const m = /^(<t\b[^>]*>)([\s\S]*)(<\/t>)$/.exec(nu);
+  if (!m) return nu;
+  let tete = m[1], corps;
+  const rendu = renduDe(k);
+  if (rendu) {
+    const r = rendu(lang, kp, k) || {};
+    if (typeof r.corps !== 'string') return nu;
+    corps = r.corps;
+    for (const nom of Object.keys(r.attrs || {})) {
+      const val = escapeXml(String(r.attrs[nom]));
+      const re = new RegExp('( ' + nom + '=")[^"]*"');
+      tete = re.test(tete) ? tete.replace(re, (x, a) => a + val + '"') : tete.replace(/>$/, ` ${nom}="${val}">`);
+    }
+  } else {
+    const texte = texteRange(lang, k, kp);
+    if (texte == null) return nu;                // pas de traduction : le français
+    let dedans = m[2];
+    const cd = /^<!\[CDATA\[([\s\S]*)\]\]>$/.exec(dedans);
+    if (cd) dedans = cd[1];
+    const habit = /^((?:<[^>]+>)*)([\s\S]*?)((?:<\/[^>]+>)*)$/.exec(dedans);
+    const neuf = habit[1] + escapeXml(texte) + habit[3];
+    corps = cd ? `<![CDATA[${neuf}]]>` : neuf;
+  }
+  return tete + corps + m[3];
+}
+// La trame À RANGER : le français, plus `k`/`kp` quand le rejeu sait la
+// refaire à l'identique dans chaque langue (`version(lang)` : la trame du
+// direct, numérotée).
+const lignesNonRejouables = new Set();
+function trameARanger(fr, tr, version) {
+  if (!tr || tr.fixe || !tr.k || !/^<t[\s>]/.test(fr)) return fr;
+  const kp = tr.kp && Object.keys(tr.kp).length ? tr.kp : null;
+  const rangee = fr.replace(/^<t( mi="[^"]*")?/, (x) => x + ` k="${escapeXml(tr.k)}"`
+    + (kp ? ` kp="${escapeXml(JSON.stringify(kp))}"` : ''));
+  for (const lang of FPI18n.LANGUES) {
+    if (lang === 'fr') continue;
+    if (retraduireTrame(rangee, lang) !== version(lang)) {
+      if (!lignesNonRejouables.has(tr.k)) {
+        lignesNonRejouables.add(tr.k);
+        console.warn(`[i18n] ligne non rejouable dans le moule : ${tr.k} (rangée en français seul)`);
+      }
+      return fr;
+    }
+  }
+  return rangee;
+}
+
+function broadcastToChannel(channelName, trame, excludeSocket = null) {
   const channel = channels[channelName];
   if (!channel) return;
-  xmlStr = numeroterMessage(xmlStr);
-  recordChannelHistory(channelName, xmlStr);
+  const tr = trameMultilingue(trame);
+  const xmlStr = numeroterMessage(tr.pour('fr'));
+  // Les autres langues : rendues à la demande, une fois, sous le même numéro.
+  let version = () => xmlStr;
+  if (!tr.fixe) {
+    const mi = (/^<t mi="([^"]*)"/.exec(xmlStr) || [])[1];
+    const versions = { fr: xmlStr };
+    version = (lang) => {
+      if (versions[lang] === undefined) {
+        const x = tr.pour(lang);
+        versions[lang] = mi ? numeroterMessage(x, mi) : x;
+      }
+      return versions[lang];
+    };
+  }
+  recordChannelHistory(channelName, tr.fixe ? xmlStr : trameARanger(xmlStr, tr, version));
   // L'auteur d'une ligne qu'on peut ignorer (cf. `auteurIgnorable`) : relevé
   // une fois, puis chaque spectateur qui l'a en liste noire est sauté.
   const auteur = isPrivateChannel(channelName) ? null : auteurIgnorable(xmlStr);
@@ -37185,7 +37523,7 @@ function broadcastToChannel(channelName, xmlStr, excludeSocket = null) {
     if (sock === excludeSocket) continue;
     if (client.channels.has(channelName)) {
       if (auteur && ignoreSurLesSalons(client.username, auteur)) continue;
-      sendToClient(sock, xmlStr);
+      sendToClient(sock, tr.fixe ? xmlStr : version(langueClient(client)));
     }
   }
 }
@@ -37219,16 +37557,18 @@ const CHUCHO_MAX_PAR_FENETRE = 5;
 const chuchoCadence = new Map();               // username → instants récents
 function chuchoter(client, socket, g, reste, depuisSwf) {
   const ta = buildChatTimeAttrs();
+  // Les réponses vont à celui qui tape la commande : dans SA langue.
+  const L = langueClient(client);
   const dire = (txt) => sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${ta.h}" d="${ta.d}"><![CDATA[<i>${escapeXml(txt)}</i>]]></${CMD.send}>`);
   const channel = channels[g];
   if (!channel || !channel.users) return;
   if (isPrivateChannel(g)) {
-    dire('/! sert dans un salon : ici, la discussion est déjà privée.');
+    dire(t(L, 'chat.chucho.dejaPrive', '/! sert dans un salon : ici, la discussion est déjà privée.'));
     return;
   }
   const mm = String(reste || '').trim().match(/^(\S+)\s+([\s\S]+)$/);
   if (!mm) {
-    dire('Syntaxe : /! pseudo message — seul ce frutiz, présent dans le salon, le verra.');
+    dire(t(L, 'chat.chucho.syntaxe', 'Syntaxe : /! pseudo message — seul ce frutiz, présent dans le salon, le verra.'));
     return;
   }
   const nomCible = mm[1].replace(/^@/, '');
@@ -37240,44 +37580,47 @@ function chuchoter(client, socket, g, reste, depuisSwf) {
     // Le SWF résout le pseudo dans SA liste des présents : un absent y donne
     // « undefined ».
     dire(!nomCible || nomCible === 'undefined'
-      ? 'Ce frutiz n\'est pas dans ce salon.'
-      : `${nomCible} n'est pas dans ce salon : /! ne parle qu'à quelqu'un qui est là.`);
+      ? t(L, 'chat.chucho.absent', 'Ce frutiz n\'est pas dans ce salon.')
+      : t(L, 'chat.chucho.absentNom', '{nom} n\'est pas dans ce salon : /! ne parle qu\'à quelqu\'un qui est là.', { nom: nomCible }));
     return;
   }
   if (cible === client.username) {
-    dire('Tu ne peux pas t\'envoyer un message privé à toi-même.');
+    dire(t(L, 'chat.chucho.soiMeme', 'Tu ne peux pas t\'envoyer un message privé à toi-même.'));
     return;
   }
   const modo = isModerator(client.username);
   if (lgParties.has(g) && !isChannelStaff(client.username, g)) {
-    dire('Pas de messages privés pendant une partie de loup-garou : chacun doit entendre la même chose.');
+    dire(t(L, 'chat.chucho.loupGarou', 'Pas de messages privés pendant une partie de loup-garou : chacun doit entendre la même chose.'));
     return;
   }
   const maintenant = Date.now();
   const recents = (chuchoCadence.get(client.username) || []).filter((t) => maintenant - t < CHUCHO_FENETRE_MS);
   if (!modo && recents.length >= CHUCHO_MAX_PAR_FENETRE) {
     chuchoCadence.set(client.username, recents);
-    dire('Doucement : trop de messages privés d\'affilée, attends quelques secondes.');
+    dire(t(L, 'chat.chucho.cadence', 'Doucement : trop de messages privés d\'affilée, attends quelques secondes.'));
     return;
   }
   recents.push(maintenant);
   chuchoCadence.set(client.username, recents);
   if (!modo && estEnListeNoire(users[cible], client.username)) {
-    dire(`${getDisplayName(cible)} ne reçoit pas les messages privés pour le moment.`);
+    dire(t(L, 'chat.prive.ferme', '{nom} ne reçoit pas les messages privés pour le moment.', { nom: getDisplayName(cible) }));
     return;
   }
   const qui = getDisplayName(client.username);
   const aQui = getDisplayName(cible);
   const trame = (prefixe) => `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${ta.h}" d="${ta.d}" st="pv" au="${escapeXml(qui)}" ad="${escapeXml(aQui)}">`
     + `<![CDATA[<font color="${CHUCHO_COULEUR}">${prefixe} ${escapeXml(message)}</font>]]></${CMD.send}>`;
-  const versLui = trame(`(de <b>${escapeXml(qui)}</b>)`);
-  const versMoi = trame(`(à <b>${escapeXml(aQui)}</b>)`);
+  // « (de X) » / « (à X) » : la seule part du serveur, dans la langue de
+  // chaque fenêtre ; le message, lui, est celui du joueur. (Le gabarit est du
+  // HTML : le pseudo y arrive déjà en gras et échappé.)
+  const versLui = trameMultilingue((lang) => trame(t(lang, 'chat.chucho.de', '(de {nom})', { nom: `<b>${escapeXml(qui)}</b>` })));
+  const versMoi = trameMultilingue((lang) => trame(t(lang, 'chat.chucho.a', '(à {nom})', { nom: `<b>${escapeXml(aQui)}</b>` })));
   for (const [s, cl] of xmlSocketClients) {
     if (!cl || !cl.channels || !cl.channels.has(g)) continue;
-    if (cl.username === cible) sendToClient(s, versLui);
+    if (cl.username === cible) sendToClient(s, versLui.pour(langueClient(cl)));
     // Le SWF a déjà écrit « Envoyé à X : … » chez lui : pas de doublon sur
     // la socket d'où part la commande. Ses autres fenêtres, elles, le voient.
-    else if (cl.username === client.username && !(depuisSwf && s === socket)) sendToClient(s, versMoi);
+    else if (cl.username === client.username && !(depuisSwf && s === socket)) sendToClient(s, versMoi.pour(langueClient(cl)));
   }
   // Le journal du serveur garde la trace de l'envoi, pas son contenu.
   console.log(`[CHAT] /! ${client.username} → ${cible} (${g})`);
@@ -37298,13 +37641,23 @@ function chuchoter(client, socket, g, reste, depuisSwf) {
  * chaque retour, comme si la sanction venait d'être reprononcée. Le bureau
  * d'époque, lui, n'a pas de rejeu du tout : l'annonce se dit une fois.
  */
+//
+// `corps` : le corps de la trame, le même pour tous — ou `(lang) => corps`,
+// la phrase dans la langue de chacun (« X a été totoché » / "X got a totoche").
 function annonceModeration(channelName, corps) {
   const channel = channels[channelName];
   if (!channel) return;
-  const xmlStr = `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(channelName)}" h="" d="">${corps}</${CMD.send}>`;
+  const tr = trameMultilingue((lang) => `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(channelName)}" h="" d="">${typeof corps === 'function' ? corps(lang) : corps}</${CMD.send}>`);
   for (const [sock, client] of xmlSocketClients) {
-    if (client.channels.has(channelName)) sendToClient(sock, xmlStr);
+    if (!client.channels.has(channelName)) continue;
+    const xmlStr = tr.pour(langueClient(client));
+    sendToClient(sock, xmlStr);
   }
+}
+// L'annonce d'une totoche, dans la langue de chacun.
+function annonceTotoche(username) {
+  const nom = getDisplayName(username);
+  return (lang) => `<![CDATA[${escapeXml(t(lang, 'chat.totoche', '{nom} a été totoché', { nom }))}]]>`;
 }
 
 /*
@@ -37406,25 +37759,41 @@ const lgMinuteurs = new Map();    // salon → setTimeout du chrono
 const lgFermetures = new Map();   // salon → setTimeout du rangement d'une partie finie
 const LG_GARDER_FINIE_MS = 15 * 60 * 1000;
 
-function lgTexte(t) {
-  return escapeXml(String(t == null ? '' : t)).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br/>');
+// Les phrases du meneur. `t` est un TEXTE TRADUISIBLE (cf. texteDe) : les
+// événements de LoupGarou sont aujourd'hui des chaînes françaises — passés en
+// { k, fr, p }, ils se diront dans la langue de chaque joueur sans rien
+// changer ici. `**gras**` et les retours à la ligne s'appliquent après
+// l'échappement (lgBalises).
+function lgBalises(html) {
+  return html.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br/>');
+}
+function lgTexte(t, lang) {
+  return lgBalises(escapeXml(texteDe(lang || 'fr', t)));
+}
+// Une ligne pour le salon : une chaîne, la même pour tous ; un texte à clé,
+// une trame par langue (qui se refait au rejeu si elle tient dans le moule
+// d'une phrase — sans gras ni retour à la ligne ; sinon, rangée en français).
+function lgLigne(t, habiller) {
+  if (typeof t === 'string' || t == null) return habiller(lgTexte(t));
+  return ligneTraduite(t, (html) => habiller(lgBalises(html)));
 }
 function lgPublic(salon, t) {
   const ta = buildChatTimeAttrs();
-  broadcastToChannel(salon, `<${CMD.send} u="admin" t="c" p="" g="${escapeXml(salon)}" h="${ta.h}" d="${ta.d}"><![CDATA[${lgTexte(t)}]]></${CMD.send}>`);
+  broadcastToChannel(salon, lgLigne(t, (html) => `<${CMD.send} u="admin" t="c" p="" g="${escapeXml(salon)}" h="${ta.h}" d="${ta.d}"><![CDATA[${html}]]></${CMD.send}>`));
 }
 function lgInfo(salon, t) {
   const ta = buildChatTimeAttrs();
-  broadcastToChannel(salon, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(salon)}" h="${ta.h}" d="${ta.d}"><![CDATA[<i>${lgTexte(t)}</i>]]></${CMD.send}>`);
+  broadcastToChannel(salon, lgLigne(t, (html) => `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(salon)}" h="${ta.h}" d="${ta.d}"><![CDATA[<i>${html}</i>]]></${CMD.send}>`));
 }
 // Une ligne pour un seul joueur — à ses fenêtres ouvertes sur le salon (à
-// toutes, s'il n'y est plus : il ne doit pas manquer son rôle).
+// toutes, s'il n'y est plus : il ne doit pas manquer son rôle). Chaque
+// fenêtre la lit dans sa langue.
 function lgSecret(salon, u, t) {
   const ta = buildChatTimeAttrs();
-  const xml = `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(salon)}" h="${ta.h}" d="${ta.d}" st="lg"><![CDATA[<font color="#5B2A86"><i>${lgTexte(t)}</i></font>]]></${CMD.send}>`;
+  const tr = trameMultilingue((lang) => `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(salon)}" h="${ta.h}" d="${ta.d}" st="lg"><![CDATA[<font color="#5B2A86"><i>${lgTexte(t, lang)}</i></font>]]></${CMD.send}>`);
   const socks = getSocketsForUsername(u);
   const dedans = socks.filter((s) => { const cl = xmlSocketClients.get(s); return cl && cl.channels && cl.channels.has(salon); });
-  for (const s of (dedans.length ? dedans : socks)) sendToClient(s, xml);
+  for (const s of (dedans.length ? dedans : socks)) sendToClient(s, tr.pour(langueClient(xmlSocketClients.get(s))));
 }
 function lgVueA(sock, cl, p) {
   const v = p ? LoupGarou.vue(p, cl.username, isChannelStaff(cl.username, p.salon), Date.now()) : { ferme: true };
@@ -38764,6 +39133,15 @@ function texteDePoints(n) {
   const a = Math.abs(n);
   return `${n < 0 ? '-' : '+'}${a} point${a > 1 ? 's' : ''}`;
 }
+// L'annonce d'un /point au salon, en texte traduisible : « +3 points pour
+// Toto (total : 5) ». Le pluriel suit la valeur absolue, dans chaque langue.
+function textePointsPour(n, nom, total) {
+  return {
+    k: 'chat.quiz.points', n: Math.abs(n),
+    formes: { one: '{signe}{n} point pour {nom} (total : {total})', other: '{signe}{n} points pour {nom} (total : {total})' },
+    p: { signe: n < 0 ? '-' : '+', nom, total },
+  };
+}
 
 /**
  * Le classement d'un quiz, mis au propre.
@@ -38782,18 +39160,59 @@ function texteDePoints(n) {
  * @param {string} titre  la ligne d'en-tête
  * @returns {string} du htmlText, <br/> compris
  */
-function formaterClassement(points, titre) {
+function formaterClassement(points, titre, lang) {
+  return [titre, ...rangsDuClassement(points).map((r) => ligneDeClassement(lang || 'fr', r))]
+    .map(escapeXml).join('<br/>');
+}
+// [rang, nom affiché, points], dans l'ordre du classement.
+function rangsDuClassement(points) {
   const classes = [...points.entries()].sort((a, b) => b[1] - a[1]);
-  const lignes = [];
+  const rangs = [];
   let rang = 0, precedent = null;
   for (let i = 0; i < classes.length; i++) {
     const [u, pts] = classes[i];
     if (pts !== precedent) { rang = i + 1; precedent = pts; }
-    // (« -3 pts » comme « 3 pts » : le pluriel suit la valeur absolue)
-    lignes.push(`${rang}. ${getDisplayName(u)} — ${pts} pt${Math.abs(pts) > 1 ? 's' : ''}`);
+    rangs.push([rang, getDisplayName(u), pts]);
   }
-  return [titre, ...lignes].map(escapeXml).join('<br/>');
+  return rangs;
 }
+// (« -3 pts » comme « 3 pts » : le pluriel suit la valeur absolue)
+function ligneDeClassement(lang, [rang, nom, pts]) {
+  return tn(lang, 'chat.quiz.ligneClassement', Math.abs(pts),
+    { one: '{rang}. {nom} — {pts} pt', other: '{rang}. {nom} — {pts} pts' }, { rang, nom, pts });
+}
+/*
+ * LE CLASSEMENT AU SALON, dans la langue de chacun : plusieurs phrases sur
+ * plusieurs lignes, hors du moule d'une phrase — il a donc son rendu, qui
+ * refait au rejeu le titre et chaque ligne à partir des rangs rangés (`kp`).
+ * `mode` : 'simple' (« Classement »), 'question' (« Classement — la question »,
+ * celle que l'animateur a tapée, telle quelle) ou 'fin' (« Fin du quiz ! »).
+ */
+rendreLigne('chat.quiz.classement', (lang, p) => {
+  const titre = p.mode === 'fin' ? t(lang, 'chat.quiz.classementFinal', 'Fin du quiz ! Classement final :')
+    : p.mode === 'question' ? t(lang, 'chat.quiz.classementQuestion', 'Classement — {question}', { question: p.question })
+      : t(lang, 'chat.quiz.classementTitre', 'Classement');
+  const lignes = (p.rangs || []).map((r) => ligneDeClassement(lang, r));
+  return { corps: `<![CDATA[${[titre, ...lignes].map(escapeXml).join('<br/>')}]]>` };
+});
+function trameClassement(g, timeAttrs, points, mode, question) {
+  const kp = { mode, rangs: rangsDuClassement(points) };
+  if (mode === 'question') kp.question = question;
+  return ligneRendue('chat.quiz.classement', kp, (r) =>
+    `<${CMD.send} u="admin" t="c" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${r.corps}</${CMD.send}>`);
+}
+
+/*
+ * LE DÉ (`/d6`) : le pseudo et le tirage en rouge gras AU MILIEU de la phrase.
+ * Le gabarit est donc du HTML ({qui} et {tire} y arrivent déjà habillés) — et
+ * la ligne a son rendu, puisque le moule d'une phrase veut un texte sans
+ * balise dedans.
+ */
+function rougeGras(html) { return `<b><font color="#C10000">${html}</font></b>`; }
+rendreLigne('chat.de', (lang, p) => ({
+  corps: `<![CDATA[${t(lang, 'chat.de', '{qui} lance un dé (1–{faces}) : {tire}',
+    { qui: rougeGras(escapeXml(String(p.nom))), faces: p.faces, tire: rougeGras(escapeXml(String(p.tire))) })}]]>`,
+}));
 
 // Per-client blue-bold toggle for animators.
 // Set<socketKey> — we store the username to look up.
@@ -38947,6 +39366,30 @@ const CHAT_EMOTES = {};
   add('bisou', 'envoie un bisou', [':*', ':-*', 'bisou', 'smack']);
   add('sixsept', 'fait six-seveeen', ['67', '6 7', '6-7', 'sixseven']);
   add('assomme', 'est confus', ['confus', 'confuse', 'assommé', 'assomme', 'ouille', 'aïe']);
+  // LES MOTS ANGLAIS (« haha », « wink », « gross »…) déclenchent les mêmes
+  // animations que leurs cousins français — un anglophone tape « cry », pas
+  // « ouin ». Même règle que les mots d'époque : ils ne jouent que TAPÉS
+  // SEULS (« I cry every time » reste une phrase), ce qui les garde des mots
+  // ordinaires. La PHRASE de l'émote, elle, ne dépend pas du mot tapé : elle
+  // se dit dans la langue de chaque lecteur (la ligne à rendu « chat.emote. »,
+  // plus bas). Même liste dans le light (test/emoteBleu.test.js compare).
+  add('rire', 'rigole', ['haha', 'hehe', 'giggle']);
+  add('mdr', 'éclate de rire', ['lmao', 'rofl']);
+  add('langue', 'tire la langue', ['tongue']);
+  add('rougir', 'rougit', ['blush', 'blushes']);
+  add('regard', 'regarde ailleurs', ['lookaway', 'look away']);
+  add('sifflote', 'sifflote', ['whistle', 'whistles']);
+  add('gum', 'fait une bulle de chewing-gum', ['bubblegum']);
+  add('question', 'se pose des questions', ['hmm', 'curious', 'wonder']);
+  add('miam', 'se régale', ['yum', 'yummy', 'drool']);
+  add('pleurer', 'pleure', ['cry', 'sob']);
+  add('larme', 'laisse couler une larme', ['tear', 'sniff']);
+  add('beurk', 'a la nausée', ['gross', 'yuck', 'eww']);
+  add('tousse', 'tousse', ['ahem']);
+  add('clin', 'fait un clin d’œil', ['wink']);
+  add('bisou', 'envoie un bisou', ['kiss', 'mwah']);
+  add('sixsept', 'fait six-seveeen', ['six seven']);
+  add('assomme', 'est confus', ['confused', 'dazed', 'ouch', 'dizzy']);
 })();
 // LA MAJUSCULE DU TÉLÉPHONE. Le clavier met une capitale en tête de message :
 // « Tousse » ne jouait rien. Les MOTS (déclencheurs tout en minuscules) se
@@ -38962,6 +39405,21 @@ function detectChatEmote(text) {
   if (!key) return null;
   return CHAT_EMOTES[key] || CHAT_EMOTES_MOTS[key.toLowerCase()] || null;
 }
+/*
+ * LA PHRASE D'UNE ÉMOTE, DANS LA LANGUE DE CHACUN. Une émote part avec deux
+ * textes : `el`, la phrase seule (« éclate de rire », que le light écrit sous
+ * la bouille), et le corps, « Kiwi éclate de rire » (que le SWF affiche). La
+ * clé est celle de l'animation, « chat.emote.mdr » ; le français, la phrase de
+ * la table ci-dessus. La famille a son rendu : il refait les deux textes, en
+ * direct comme au rejeu, à partir du seul pseudo (`kp.nom`).
+ */
+const CHAT_EMOTE_PHRASES = {};
+for (const e of Object.values(CHAT_EMOTES)) CHAT_EMOTE_PHRASES[e.anim] = e.label;
+rendreLigne('chat.emote.', (lang, p, k) => {
+  const anim = k.slice('chat.emote.'.length);
+  const phrase = t(lang, k, CHAT_EMOTE_PHRASES[anim] || anim);
+  return { corps: `<![CDATA[<i>${escapeXml(String(p.nom || '') + ' ' + phrase)}</i>]]>`, attrs: { el: phrase } };
+});
 
 function kickUserFromChannel(channelName, targetUser, byUser, reason = 'kick') {
   const channel = channels[channelName];
@@ -39509,7 +39967,8 @@ async function handleCBeeMessage(socket, rawXml) {
   sendToClient(socket, `<${CMD.invite} u="${escapeXml(inv.cible)}" r="${escapeXml(invReqId)}" />`);
   if (inv.refuse) {
     const ta = buildChatTimeAttrs();
-    sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(msg.attrs.g || '')}" h="${ta.h}" d="${ta.d}"><![CDATA[<i>${escapeXml(getDisplayName(inv.cible))} a refusé l'invitation à rejoindre ce salon</i>]]></${CMD.send}>`);
+    const refus = t(langueClient(client), 'chat.invite.refusee', '{nom} a refusé l\'invitation à rejoindre ce salon', { nom: getDisplayName(inv.cible) });
+    sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(msg.attrs.g || '')}" h="${ta.h}" d="${ta.d}"><![CDATA[<i>${escapeXml(refus)}</i>]]></${CMD.send}>`);
   }
   break;
 }
@@ -39680,10 +40139,15 @@ async function handleCBeeMessage(socket, rawXml) {
       client.username = effectiveLogin;
       client.sid = sid;
       client.logged = true;
-      // La langue des messages que le serveur lui écrira (PNJ, système) : celle
-      // que la page annonce (`la`), sinon celle du compte. Le bureau Flash
-      // d'époque, tout en français, n'annonce rien : il suit le compte.
-      client.lang = FPI18n.valide(msg.attrs.la) || langueDe(effectiveLogin);
+      // La langue des messages que le serveur lui écrira (PNJ, lignes système,
+      // émotes — cf. « UNE TRAME PAR LANGUE ») : celle que la page annonce
+      // (`la`). Un light d'avant `la` suit le compte. Le bureau Flash, lui,
+      // n'annonce ni `la` ni `lc` : c'est un SWF compilé, français de la
+      // première à la dernière ligne — une phrase anglaise au milieu de son
+      // chat serait la seule. Il reste donc en FRANÇAIS, quelle que soit la
+      // langue du compte (et /api/light/langue ne le change pas).
+      const langueAnnoncee = FPI18n.valide(msg.attrs.la);
+      client.lang = langueAnnoncee || (client.estLight ? langueDe(effectiveLogin) : 'fr');
 
       // Once-per-day connection bonus, granted immediately (now that the socket
       // is registered, any level-up notification reaches the client).
@@ -40019,7 +40483,7 @@ case 'join': {
     // clignotement entre deux visages que les joueurs voyaient. Le SWF, lui,
     // ne reçoit jamais ce rejeu (lc="1"), et un attribut inconnu ne le
     // gênerait pas davantage.
-    for (const frame of getChannelHistory(g)) {
+    for (const frame of getChannelHistory(g, langueClient(client))) {
       // Les lignes d'un frutiz qu'il ignore ne reviennent pas par le rejeu.
       if (trameIgnoreePar(client.username, g, frame)) continue;
       sendToClient(socket, frame.replace(/^<t(?=[\s>])/, '<t rj="1"'));
@@ -40371,6 +40835,10 @@ case 'send': {
   const g = msg.attrs.g;
   const text = msg.content || '';
   const type = msg.attrs.t || 'm';
+  // La langue de celui qui écrit : celle des réponses que le serveur ne
+  // renvoie qu'à lui (syntaxes, refus, /aide…). Ce qui part au salon entier
+  // se rend, lui, dans la langue de chaque lecteur (« UNE TRAME PAR LANGUE »).
+  const L = langueClient(client);
   const pen = (msg.attrs.p !== undefined) ? msg.attrs.p : '';
   const timeAttrs = buildChatTimeAttrs();
   const senderData = users[client.username] || {};
@@ -40440,7 +40908,7 @@ case 'send': {
     const iu = xmlUnescape(imgChild.attrs.u).trim();
     const ititle = xmlUnescape(imgChild.content || '');
     if (!iw || !ih || !/^https?:\/\//i.test(iu)) {
-      sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml('Syntaxe : /image largeur hauteur url titre')}</${CMD.send}>`);
+      sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml(t(L, 'chat.image.syntaxe', 'Syntaxe : /image largeur hauteur url titre'))}</${CMD.send}>`);
       break;
     }
     const cw = Math.min(Math.max(iw, 10), 600);
@@ -40469,7 +40937,7 @@ case 'send': {
     }
     addAndNotifyUserLog(client.username, { type: USER_LOG_TYPE.TOTOCHE, content: 'Tu as été totoché 10 minutes pour propos interdits (auto-modération).' });
     if (process.env.DATABASE_URL) db.addModerationLog(client.username, 'auto', 'totoche', 'mots interdits').catch(e => console.error('[DB] modlog error:', e.message));
-    const announce = `<![CDATA[${escapeXml(getDisplayName(client.username))} a été totoché]]>`;
+    const announce = annonceTotoche(client.username);
     if (channels[g] && channels[g].users && channels[g].users.has(client.username)) {
       annonceModeration(g, announce);
     }
@@ -40490,7 +40958,7 @@ case 'send': {
     if (channel.private && isPrivateChannel(g) && !isModerator(client.username)) {
       const ferme = [...channel.users].find((u) => u !== client.username && estEnListeNoire(users[u], client.username));
       if (ferme) {
-        sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[<i>${escapeXml(getDisplayName(ferme))} ne reçoit pas les messages privés pour le moment.</i>]]></${CMD.send}>`);
+        sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[<i>${escapeXml(t(L, 'chat.prive.ferme', '{nom} ne reçoit pas les messages privés pour le moment.', { nom: getDisplayName(ferme) }))}</i>]]></${CMD.send}>`);
         break;
       }
     }
@@ -40526,40 +40994,42 @@ case 'send': {
         const retirer = !/^ignorer?$/i.test(mi[1]);
         const args = String(mi[2] || '').trim().split(/\s+/).filter(Boolean);
         if (args.length > 1 || (retirer && !args.length)) {
-          dire(escapeXml(retirer ? 'Syntaxe : /unignore pseudo' : 'Syntaxe : /ignore pseudo — ou /ignore seul pour la liste.'));
+          dire(escapeXml(retirer
+            ? t(L, 'chat.ignore.syntaxeRelire', 'Syntaxe : /unignore pseudo')
+            : t(L, 'chat.ignore.syntaxe', 'Syntaxe : /ignore pseudo — ou /ignore seul pour la liste.')));
           break;
         }
         if (!args.length) {
           const noms = moi.blacklist.map((a) => getDisplayName(String(a).split('@')[0].trim())).filter(Boolean);
           dire(noms.length
-            ? escapeXml(`Tu ignores sur les salons : ${noms.join(', ')} (ta liste noire). /unignore pseudo pour relire quelqu'un.`)
-            : escapeXml('Tu n\'ignores personne. /ignore pseudo pour ne plus voir les messages de quelqu\'un sur les salons.'));
+            ? escapeXml(t(L, 'chat.ignore.liste', 'Tu ignores sur les salons : {noms} (ta liste noire). /unignore pseudo pour relire quelqu\'un.', { noms: noms.join(', ') }))
+            : escapeXml(t(L, 'chat.ignore.personne', 'Tu n\'ignores personne. /ignore pseudo pour ne plus voir les messages de quelqu\'un sur les salons.')));
           break;
         }
         const cle = await addressToUsername(args[0].replace(/^@/, ''));
-        if (!cle) { dire(escapeXml(`Aucun frutiz ne s'appelle « ${args[0]} ».`)); break; }
+        if (!cle) { dire(escapeXml(t(L, 'chat.frutizInconnu', 'Aucun frutiz ne s\'appelle « {nom} ».', { nom: args[0] }))); break; }
         const nom = getDisplayName(cle);
-        if (cle === client.username) { dire(escapeXml('Tu ne peux pas t\'ignorer toi-même.')); break; }
+        if (cle === client.username) { dire(escapeXml(t(L, 'chat.ignore.soiMeme', 'Tu ne peux pas t\'ignorer toi-même.'))); break; }
         if (retirer) {
           const ote = retirerDuCarnet(moi, 'blacklist', cle);
           dire(escapeXml(ote
-            ? `Tu n'ignores plus ${nom} : ses messages sur les salons te parviennent de nouveau, et ${nom} quitte ta liste noire.`
-            : `Tu n'ignorais pas ${nom}.`));
+            ? t(L, 'chat.ignore.relu', 'Tu n\'ignores plus {nom} : ses messages sur les salons te parviennent de nouveau, et {nom} quitte ta liste noire.', { nom })
+            : t(L, 'chat.ignore.pasIgnore', 'Tu n\'ignorais pas {nom}.', { nom })));
           break;
         }
         // Un modérateur passe toujours : l'ignorer ne cacherait rien, mieux
         // vaut le dire que laisser croire le contraire.
-        if (isModerator(cle)) { dire(escapeXml(`${nom} est modérateur : ses messages passent toujours.`)); break; }
-        if (estEnListeNoire(moi, cle)) { dire(escapeXml(`Tu ignores déjà ${nom}. /unignore ${nom} pour le relire.`)); break; }
+        if (isModerator(cle)) { dire(escapeXml(t(L, 'chat.ignore.moderateur', '{nom} est modérateur : ses messages passent toujours.', { nom }))); break; }
+        if (estEnListeNoire(moi, cle)) { dire(escapeXml(t(L, 'chat.ignore.deja', 'Tu ignores déjà {nom}. /unignore {nom} pour le relire.', { nom }))); break; }
         // Même arithmétique que la fiche (`/ff/mk`) : entrer en liste noire,
         // c'est sortir du carnet.
         const adresse = normalizeContactAddress(nom);
         retirerDuCarnet(moi, 'mycontact', adresse);
         moi.blacklist.push(adresse);
         if (moi._dbId) db.addBlacklist(moi._dbId, adresse).catch((e) => console.error('[DB] blacklist add error:', e.message));
-        dire(escapeXml(`Tu ignores désormais ${nom} : tu ne verras plus ses messages sur les salons. `
-          + `${nom} rejoint aussi ta liste noire (invitations et discussions privées refusées, courrier dans la Boîte noire). `
-          + `/unignore ${nom} pour annuler.`));
+        dire(escapeXml(t(L, 'chat.ignore.ignore', 'Tu ignores désormais {nom} : tu ne verras plus ses messages sur les salons. '
+          + '{nom} rejoint aussi ta liste noire (invitations et discussions privées refusées, courrier dans la Boîte noire). '
+          + '/unignore {nom} pour annuler.', { nom })));
         break;
       }
     }
@@ -40581,7 +41051,7 @@ case 'send': {
       const adresse = String(morceaux[3] || '').trim();
       const titre = morceaux.slice(4).join(' ');
       if (!largeur || !hauteur || !/^https?:\/\//i.test(adresse)) {
-        sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml('Syntaxe : /image largeur hauteur url titre')}</${CMD.send}>`);
+        sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml(t(L, 'chat.image.syntaxe', 'Syntaxe : /image largeur hauteur url titre'))}</${CMD.send}>`);
         break;
       }
       const lBornee = Math.min(Math.max(largeur, 10), 600);
@@ -40617,7 +41087,7 @@ case 'send': {
         // no timestamp, default color.  chat.msg_admin = "$h<i>$m</i>" so we
         // pass empty h/d and a plain body — the SWF wraps it in <i>…</i>.
         // Et c'est un ÉVÉNEMENT : il ne part pas dans l'historique du salon.
-        const announceTotoche = `<![CDATA[${escapeXml(getDisplayName(targetUser))} a été totoché]]>`;
+        const announceTotoche = annonceTotoche(targetUser);
         for (const [chanName, channel] of Object.entries(channels)) {
           if (channel && channel.users && channel.users.has(targetUser)) {
             annonceModeration(chanName, announceTotoche);
@@ -40632,24 +41102,28 @@ case 'send': {
     if (/^\/blueon\s*$/i.test(text)) {
       if (canAnimate) {
         blueModeUsers.add(client.username);
-        sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[<i>Mode bleu activé.</i>]]></${CMD.send}>`);
+        sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[<i>${escapeXml(t(L, 'chat.bleu.active', 'Mode bleu activé.'))}</i>]]></${CMD.send}>`);
       }
       break;
     }
     if (/^\/blueoff\s*$/i.test(text)) {
       blueModeUsers.delete(client.username);
-      sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[<i>Mode bleu désactivé.</i>]]></${CMD.send}>`);
+      sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[<i>${escapeXml(t(L, 'chat.bleu.desactive', 'Mode bleu désactivé.'))}</i>]]></${CMD.send}>`);
       break;
     }
 
     // ── Quiz commands (animators + moderators, any salon) ──
+    // L'annonce part à tout le salon, dans la langue de chacun ; la question
+    // est celle que l'animateur a tapée, elle ne se traduit pas.
     if (canAnimate && /^\/initpoint/i.test(text)) {
       const question = text.replace(/^\/initpoint\s*/i, '').trim();
       quizState[g] = { question: question || '', points: new Map(), active: true };
-      const announce = question
-        ? `<![CDATA[<b><font color="#0066CC">Quiz lancé par ${getDisplayName(client.username)} : ${question}</font></b>]]>`
-        : `<![CDATA[<b><font color="#0066CC">Quiz lancé par ${getDisplayName(client.username)} !</font></b>]]>`;
-      broadcastToChannel(g, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${announce}</${CMD.send}>`);
+      const nom = getDisplayName(client.username);
+      const annonce = question
+        ? { k: 'chat.quiz.lanceQuestion', fr: 'Quiz lancé par {nom} : {question}', p: { nom, question: unescapeXml(question) } }
+        : { k: 'chat.quiz.lance', fr: 'Quiz lancé par {nom} !', p: { nom } };
+      broadcastToChannel(g, ligneTraduite(annonce, (html) =>
+        `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[<b><font color="#0066CC">${html}</font></b>]]></${CMD.send}>`));
       break;
     }
 
@@ -40679,13 +41153,13 @@ case 'send': {
       const args = String(mPoint[2] || '').trim().split(/\s+/).filter(Boolean);
       const amount = args.length ? pointsDeQuiz(args[1], retrait) : null;
       if (amount === null) {
-        const aide = `Syntaxe : /point pseudo [points] — par exemple /point Toto 3, ou /point Toto -2 pour en retirer (${QUIZ_POINTS_MAX} au plus par commande).`;
+        const aide = t(L, 'chat.quiz.syntaxePoint', 'Syntaxe : /point pseudo [points] — par exemple /point Toto 3, ou /point Toto -2 pour en retirer ({max} au plus par commande).', { max: QUIZ_POINTS_MAX });
         sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml(aide)}</${CMD.send}>`);
         break;
       }
       const target = resolveKnownUsername(args[0]);
       if (!target) {
-        sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">Utilisateur introuvable.</${CMD.send}>`);
+        sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml(t(L, 'chat.utilisateurIntrouvable', 'Utilisateur introuvable.'))}</${CMD.send}>`);
         break;
       }
       if (!quizState[g]) quizState[g] = { question: '', points: new Map(), active: true };
@@ -40695,27 +41169,24 @@ case 'send': {
       console.log(`[QUIZ] ${client.username} : ${texteDePoints(amount)} pour ${target} dans ${g} (total ${total})`);
       // Style animateur (t="c") : le client le rend dans le MÊME bleu gras que
       // /blueon (.msg.blue = penBlueAnimator #000046), au lieu du bleu vif inline.
-      const msg2 = `<![CDATA[${texteDePoints(amount)} pour ${getDisplayName(target)} (total : ${total})]]>`;
-      broadcastToChannel(g, `<${CMD.send} u="admin" t="c" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${msg2}</${CMD.send}>`);
+      broadcastToChannel(g, ligneTraduite(textePointsPour(amount, getDisplayName(target), total), (html) =>
+        `<${CMD.send} u="admin" t="c" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[${html}]]></${CMD.send}>`));
       break;
     }
 
     if (canAnimate && /^\/(showpoint|classement)\s*$/i.test(text)) {
       const qs = quizState[g];
       if (!qs || qs.points.size === 0) {
-        sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">Aucun point distribué.</${CMD.send}>`);
+        sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml(t(L, 'chat.quiz.aucunPoint', 'Aucun point distribué.'))}</${CMD.send}>`);
         break;
       }
-      const header = qs.question ? `Classement — ${qs.question}` : 'Classement';
-      const body = `<![CDATA[${formaterClassement(qs.points, header)}]]>`;
-      broadcastToChannel(g, `<${CMD.send} u="admin" t="c" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${body}</${CMD.send}>`);
+      broadcastToChannel(g, trameClassement(g, timeAttrs, qs.points, qs.question ? 'question' : 'simple', qs.question));
       break;
     }
 
     if (canAnimate && /^\/(resetpoint|stoppoint|endpoint)\s*$/i.test(text)) {
       if (quizState[g] && quizState[g].points.size > 0) {
-        const body = `<![CDATA[${formaterClassement(quizState[g].points, 'Fin du quiz ! Classement final :')}]]>`;
-        broadcastToChannel(g, `<${CMD.send} u="admin" t="c" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${body}</${CMD.send}>`);
+        broadcastToChannel(g, trameClassement(g, timeAttrs, quizState[g].points, 'fin'));
       }
       delete quizState[g];
       break;
@@ -40731,14 +41202,14 @@ case 'send': {
     if (canAnimate && /^\/poll\b/i.test(text)) {
       const brut = unescapeXml(text).replace(/^\/poll\s*/i, '').trim();
       if (!brut) {
-        sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml('Syntaxe : /poll Question ? | Option A | Option B | …   (2 à 6 réponses). /pollend pour clore.')}</${CMD.send}>`);
+        sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml(t(L, 'chat.sondage.syntaxe', 'Syntaxe : /poll Question ? | Option A | Option B | …   (2 à 6 réponses). /pollend pour clore.'))}</${CMD.send}>`);
         break;
       }
       const morceaux = brut.split('|').map((s) => s.trim()).filter((s) => s.length);
       const question = morceaux.shift() || '';
       const options = morceaux.slice(0, 6);
       if (!question || options.length < 2) {
-        sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml('Il faut une question et au moins deux réponses : /poll Question ? | Réponse A | Réponse B')}</${CMD.send}>`);
+        sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml(t(L, 'chat.sondage.deuxReponses', 'Il faut une question et au moins deux réponses : /poll Question ? | Réponse A | Réponse B'))}</${CMD.send}>`);
         break;
       }
       // Bornes de sécurité : question et réponses assez courtes pour la bulle,
@@ -40798,17 +41269,16 @@ case 'send': {
       const args = unescapeXml(text).trim().split(/\s+/).slice(1);
       if (!args.length) {
         sendToClient(socket, `<${CMD.send} u="admin" t="c" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[${
-          ['Blindtest — /blind &lt;lien YouTube&gt; [début] [durée]',
-            'Exemple : /blind https://youtu.be/dQw4w9WgXcQ 1:02 20',
-            'Le début se lit dans le lien si vous ne le donnez pas ; la durée vaut '
-              + BLIND_DUREE_DEFAUT + ' s par défaut.',
-            '/blindstop arrête l\'extrait.'].join('<br/>')
+          [t(L, 'chat.blind.aide1', 'Blindtest — /blind <lien YouTube> [début] [durée]'),
+            t(L, 'chat.blind.aide2', 'Exemple : /blind https://youtu.be/dQw4w9WgXcQ 1:02 20'),
+            t(L, 'chat.blind.aide3', 'Le début se lit dans le lien si vous ne le donnez pas ; la durée vaut {n} s par défaut.', { n: BLIND_DUREE_DEFAUT }),
+            t(L, 'chat.blind.aide4', '/blindstop arrête l\'extrait.')].map(escapeXml).join('<br/>')
         }]]></${CMD.send}>`);
         break;
       }
       const yt = analyserYoutube(args[0]);
       if (!yt) {
-        sendToClient(socket, `<${CMD.send} u="admin" t="c" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[${escapeXml('Lien YouTube non reconnu. Collez l\'adresse de la vidéo, ou son identifiant.')}]]></${CMD.send}>`);
+        sendToClient(socket, `<${CMD.send} u="admin" t="c" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[${escapeXml(t(L, 'chat.blind.lienInconnu', 'Lien YouTube non reconnu. Collez l\'adresse de la vidéo, ou son identifiant.'))}]]></${CMD.send}>`);
         break;
       }
       const debut = args.length > 1 ? lireDuree(args[1]) : yt.debut;
@@ -40822,16 +41292,17 @@ case 'send': {
       blindtestParJeton.set(jeton, g);
 
       // L'annonce, visible de tous — et muette sur le contenu.
-      broadcastToChannel(g, `<${CMD.send} u="admin" t="c" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[${
-        escapeXml(`Blindtest ! ${getDisplayName(client.username)} lance un extrait de ${duree} secondes.`)
-      }]]></${CMD.send}>`);
+      broadcastToChannel(g, ligneTraduite(
+        { k: 'chat.blind.lance', fr: 'Blindtest ! {nom} lance un extrait de {duree} secondes.', p: { nom: getDisplayName(client.username), duree } },
+        (html) => `<${CMD.send} u="admin" t="c" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[${html}]]></${CMD.send}>`));
       // Et la trame que les clients Light savent jouer.
       envoyerBlindtestAuxLight(g, `<${CMD.send} u="admin" t="bt" g="${escapeXml(g)}" bk="${jeton}" bd="${duree}" ba="${Date.now()}" h="" d="" />`);
       break;
     }
     if (canAnimate && /^\/blind(test)?stop\s*$/i.test(text)) {
       if (arreterBlindtest(g)) {
-        broadcastToChannel(g, `<${CMD.send} u="admin" t="c" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[${escapeXml('Blindtest : extrait arrêté.')}]]></${CMD.send}>`);
+        broadcastToChannel(g, ligneTraduite({ k: 'chat.blind.arrete', fr: 'Blindtest : extrait arrêté.' },
+          (html) => `<${CMD.send} u="admin" t="c" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[${html}]]></${CMD.send}>`));
         envoyerBlindtestAuxLight(g, `<${CMD.send} u="admin" t="bt" g="${escapeXml(g)}" bk="" bd="0" ba="0" h="" d="" />`);
       }
       break;
@@ -40852,14 +41323,17 @@ case 'send': {
           lignes = l.map((x) => {
             const quand = String(x.created_at ? new Date(x.created_at).toISOString() : '')
               .replace('T', ' ').substring(0, 16);
-            return `${quand} — ${getDisplayName(x.recipient)} : ${x.amount} kikooz`
-              + (x.reason ? ` (${x.reason})` : '');
+            const ligne = { quand, nom: getDisplayName(x.recipient), n: x.amount };
+            // (le motif est celui que l'animateur a tapé : tel quel)
+            return x.reason
+              ? t(L, 'chat.dons.ligneMotif', '{quand} — {nom} : {n} kikooz ({motif})', Object.assign({ motif: x.reason }, ligne))
+              : t(L, 'chat.dons.ligne', '{quand} — {nom} : {n} kikooz', ligne);
           });
         } catch (e) { console.error('[DB] mesdons error:', e.message); }
       }
-      const entete = `Mes dons — il me reste ${restant} kikooz sur ${ANIMATOR_WEEKLY_KIKOOZ} cette semaine`;
+      const entete = t(L, 'chat.dons.entete', 'Mes dons — il me reste {reste} kikooz sur {total} cette semaine', { reste: restant, total: ANIMATOR_WEEKLY_KIKOOZ });
       const corps = lignes.length
-        ? [entete, ...lignes] : [entete, 'Aucun don enregistré pour l\'instant.'];
+        ? [entete, ...lignes] : [entete, t(L, 'chat.dons.aucun', 'Aucun don enregistré pour l\'instant.')];
       sendToClient(socket, `<${CMD.send} u="admin" t="c" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[${corps.map(escapeXml).join('<br/>')}]]></${CMD.send}>`);
       break;
     }
@@ -40881,12 +41355,12 @@ case 'send': {
       // Et elle n'avait AUCUN contrôle de droits : n'importe qui pouvait
       // renommer le salon des autres. Modérateurs partout, animateurs chez eux.
       if (!canModHere) {
-        sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[<i>Le sujet du salon est réservé à son équipe.</i>]]></${CMD.send}>`);
+        sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[<i>${escapeXml(t(L, 'chat.sujet.reserve', 'Le sujet du salon est réservé à son équipe.'))}</i>]]></${CMD.send}>`);
         break;
       }
       const newTopic = text.replace(/^\/(topic|sujet)\s+/, '').trim();
       if (newTopic.length > 200) {
-        sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">Le sujet est trop long (200 caractères max).</${CMD.send}>`);
+        sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml(t(L, 'chat.sujet.tropLong', 'Le sujet est trop long ({max} caractères max).', { max: 200 }))}</${CMD.send}>`);
         break;
       }
       if (newTopic) {
@@ -40920,13 +41394,14 @@ case 'send': {
       if (m) {
         const faces = parseInt(m[1], 10);
         if (!(faces >= 1 && faces <= 1000)) {
-          sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[<i>Syntaxe : /d6, /d20… (de 1 à 1000).</i>]]></${CMD.send}>`);
+          sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[<i>${escapeXml(t(L, 'chat.de.syntaxe', 'Syntaxe : /d6, /d20… (de 1 à 1000).'))}</i>]]></${CMD.send}>`);
           break;
         }
         const tire = 1 + Math.floor(Math.random() * faces);
-        const qui = escapeXml(getDisplayName(client.username));
-        const corps = `<![CDATA[<b><font color="#C10000">${qui}</font></b> lance un dé (1–${faces}) : <b><font color="#C10000">${tire}</font></b>]]>`;
-        broadcastToChannel(g, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${corps}</${CMD.send}>`);
+        // Le pseudo et le résultat en rouge gras DANS la phrase : hors du
+        // moule, la ligne a son rendu (rendreLigne('chat.de', …)).
+        broadcastToChannel(g, ligneRendue('chat.de', { nom: getDisplayName(client.username), faces, tire }, (r) =>
+          `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${r.corps}</${CMD.send}>`));
         break;
       }
     }
@@ -40943,13 +41418,13 @@ case 'send': {
       if (m) {
         const r = statusExternalIndex(m[1]);
         if (r === null) {
-          sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[<i>Statut inconnu. Valeurs : away, phone, zzz, work, eat — ou off pour effacer.</i>]]></${CMD.send}>`);
+          sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[<i>${escapeXml(t(L, 'chat.statut.inconnu', 'Statut inconnu. Valeurs : away, phone, zzz, work, eat — ou off pour effacer.'))}</i>]]></${CMD.send}>`);
           break;
         }
         setUserExternalStatus(client.username, r.idx);
         const msg2 = r.canon
-          ? `<i>Statut « ${r.canon} » activé.</i>`
-          : `<i>Statut effacé — de retour en ligne.</i>`;
+          ? `<i>${escapeXml(t(L, 'chat.statut.active', 'Statut « {statut} » activé.', { statut: r.canon }))}</i>`
+          : `<i>${escapeXml(t(L, 'chat.statut.efface', 'Statut effacé — de retour en ligne.'))}</i>`;
         sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[${msg2}]]></${CMD.send}>`);
         break;
       }
@@ -40965,7 +41440,7 @@ case 'send': {
       const m = text.match(/^\/(?:multipen|feutremulti|multicolore)(?:\s+(on|off|oui|non|1|0))?\s*$/i);
       if (m) {
         if (!userOwnsFeutre(senderData, 'mc')) {
-          sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[<i>Tu ne possèdes pas encore le Feutre multicolore. Il s'achète à la Boutique, rubrique Feutres !</i>]]></${CMD.send}>`);
+          sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[<i>${escapeXml(t(L, 'chat.multicolore.pasPossede', 'Tu ne possèdes pas encore le Feutre multicolore. Il s\'achète à la Boutique, rubrique Feutres !'))}</i>]]></${CMD.send}>`);
           break;
         }
         const arg = (m[1] || '').toLowerCase();
@@ -40973,8 +41448,8 @@ case 'send': {
         const turnOn = arg === 'on' || arg === 'oui' || arg === '1';
         senderData.penMcActive = turnOff ? false : (turnOn ? true : !senderData.penMcActive);
         const msgMc = senderData.penMcActive
-          ? '<i>Feutre multicolore activé — tes messages s’affichent en couleurs ! (tape /multipen off pour arrêter)</i>'
-          : '<i>Feutre multicolore désactivé.</i>';
+          ? `<i>${escapeXml(t(L, 'chat.multicolore.active', 'Feutre multicolore activé — tes messages s’affichent en couleurs ! (tape /multipen off pour arrêter)'))}</i>`
+          : `<i>${escapeXml(t(L, 'chat.multicolore.desactive', 'Feutre multicolore désactivé.'))}</i>`;
         sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[${msgMc}]]></${CMD.send}>`);
         break;
       }
@@ -40984,12 +41459,13 @@ case 'send': {
     if (/^\/(stat|stats|statut|status|statistiques|statistics)\s*$/i.test(text)) {
       const userCount = channel.users.size;
       const userList = [...channel.users].map(u => getDisplayName(u)).join(', ');
-      const topicStr = channel.topic || '(aucun sujet)';
+      // (le sujet est celui que l'équipe du salon a écrit : tel quel)
+      const topicStr = channel.topic || t(L, 'chat.stats.sansSujet', '(aucun sujet)');
       const lines = [
-        `--- Statistiques du salon ${g} ---`,
-        `Utilisateurs connectés : ${userCount}`,
-        `Liste : ${userList}`,
-        `Sujet : ${topicStr}`,
+        t(L, 'chat.stats.titre', '--- Statistiques du salon {salon} ---', { salon: g }),
+        t(L, 'chat.stats.connectes', 'Utilisateurs connectés : {n}', { n: userCount }),
+        t(L, 'chat.stats.liste', 'Liste : {noms}', { noms: userList }),
+        t(L, 'chat.stats.sujet', 'Sujet : {sujet}', { sujet: topicStr }),
       ];
       for (const line of lines) {
         sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}">${escapeXml(line)}</${CMD.send}>`);
@@ -41005,19 +41481,19 @@ case 'send': {
       const reject = (m) => sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[<i>${escapeXml(m)}</i>]]></${CMD.send}>`);
       const mm = text.match(/^\/don\s+(\S+)\s+(\d{1,6})\s*$/i);
       if (!mm) {
-        reject(`Usage : /don <pseudo> <montant> — il te reste ${animatorKikoozLeft(client.username)} kikooz à distribuer cette semaine.`);
+        reject(t(L, 'chat.don.usage', 'Usage : /don <pseudo> <montant> — il te reste {reste} kikooz à distribuer cette semaine.', { reste: animatorKikoozLeft(client.username) }));
         break;
       }
       const targetName = resolveKnownUsername(mm[1]);
       const amount = parseInt(mm[2], 10);
       const target = targetName && users[targetName];
-      if (!target) { reject('Joueur introuvable (doit être connecté).'); break; }
-      if (!(amount > 0)) { reject('Montant invalide.'); break; }
-      if (targetName === client.username) { reject('Tu ne peux pas te donner des kikooz à toi-même.'); break; }
+      if (!target) { reject(t(L, 'chat.don.introuvable', 'Joueur introuvable (doit être connecté).')); break; }
+      if (!(amount > 0)) { reject(t(L, 'chat.don.montantInvalide', 'Montant invalide.')); break; }
+      if (targetName === client.username) { reject(t(L, 'chat.don.soiMeme', 'Tu ne peux pas te donner des kikooz à toi-même.')); break; }
       {
         const rec = getAnimatorWeekRecord(client.username);
         if (rec.given + amount > ANIMATOR_WEEKLY_KIKOOZ) {
-          reject(`Quota hebdo dépassé : il te reste ${ANIMATOR_WEEKLY_KIKOOZ - rec.given} kikooz à distribuer cette semaine.`);
+          reject(t(L, 'chat.don.quota', 'Quota hebdo dépassé : il te reste {reste} kikooz à distribuer cette semaine.', { reste: ANIMATOR_WEEKLY_KIKOOZ - rec.given }));
           break;
         }
         rec.given += amount;
@@ -41031,7 +41507,7 @@ case 'send': {
       journalKikooz(target, { type: 'a', k: amount, f: getDisplayName(client.username) });
       notifyKikoozUpdate(targetName, target.kikooz);
       addAndNotifyUserLog(targetName, { type: USER_LOG_TYPE.CHAT, content: `${getDisplayName(client.username)} t'a offert ${amount} kikooz !` });
-      npcSay(client.username, g, `offre ${amount} kikooz à ${getDisplayName(targetName)} !`, 'c');
+      npcSay(client.username, g, { k: 'chat.don.annonce', fr: 'offre {n} kikooz à {nom} !', p: { n: amount, nom: getDisplayName(targetName) } }, 'c');
       // C'EST CE DON-LÀ que l'équipe voulait relire : celui qui puise dans
       // l'enveloppe. Il n'était nulle part — seul /donne, l'argent personnel,
       // remontait à l'admin, ce qui donnait un registre exactement à l'envers.
@@ -41063,24 +41539,25 @@ case 'send': {
     if (/^\/(log|logs|chatlog|chatlogs|histo)\s*$/i.test(text)) {
       // Rien qui sorte de la chaîne JavaScript, de l'attribut ou du CDATA.
       const propre = (v) => String(v || '').replace(/['"\\<>&\s]/g, '');
-      const lien = `<a href="javascript:fp_openHisto('${propre(client.sid)}','${propre(g)}')">... voir les messages précédents ...</a>`;
-      sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[Les logs du salon : ${lien}]]></${CMD.send}>`);
+      const lien = `<a href="javascript:fp_openHisto('${propre(client.sid)}','${propre(g)}')">${escapeXml(t(L, 'chat.logs.lien', '... voir les messages précédents ...'))}</a>`;
+      // (le gabarit est du HTML : le lien y arrive tout fait)
+      sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[${t(L, 'chat.logs.duSalon', 'Les logs du salon : {lien}', { lien })}]]></${CMD.send}>`);
       break;
     }
 
     // ── /invite pseudo : le faire entrer dans ce salon (cf. inviterAuSalon) ──
     if (/^\/invite(\s|$)/i.test(text)) {
-      const dire = (html) => sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[<i>${html}</i>]]></${CMD.send}>`);
+      const dire = (txt) => sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[<i>${escapeXml(txt)}</i>]]></${CMD.send}>`);
       const qui = unescapeXml(text).replace(/^\/invite/i, '').trim().replace(/^@/, '');
-      if (!qui) { dire(escapeXml('Syntaxe : /invite pseudo — il reçoit une invitation à rejoindre ce salon.')); break; }
+      if (!qui) { dire(t(L, 'chat.invite.syntaxe', 'Syntaxe : /invite pseudo — il reçoit une invitation à rejoindre ce salon.')); break; }
       const inv = inviterAuSalon(client.username, qui, g);
-      const nom = escapeXml(inv.cible ? getDisplayName(inv.cible) : qui);
-      if (inv.k === 201) dire(`Aucun frutiz ne s'appelle ${nom}.`);
-      else if (inv.k === 205) dire(`${nom} est déjà dans ce salon.`);
-      else if (inv.k) dire('Invitation impossible.');
-      else if (inv.refuse) dire(`${nom} a refusé l'invitation à rejoindre ce salon`);
-      else if (!inv.enLigne) dire(`${nom} n'est pas connecté(e) : l'invitation ne lui parviendra pas.`);
-      else dire(`Invitation envoyée à ${nom}.`);
+      const nom = inv.cible ? getDisplayName(inv.cible) : qui;
+      if (inv.k === 201) dire(t(L, 'chat.invite.inconnu', 'Aucun frutiz ne s\'appelle {nom}.', { nom }));
+      else if (inv.k === 205) dire(t(L, 'chat.invite.dejaLa', '{nom} est déjà dans ce salon.', { nom }));
+      else if (inv.k) dire(t(L, 'chat.invite.impossible', 'Invitation impossible.'));
+      else if (inv.refuse) dire(t(L, 'chat.invite.refusee', '{nom} a refusé l\'invitation à rejoindre ce salon', { nom }));
+      else if (!inv.enLigne) dire(t(L, 'chat.invite.horsLigne', '{nom} n\'est pas connecté(e) : l\'invitation ne lui parviendra pas.', { nom }));
+      else dire(t(L, 'chat.invite.envoyee', 'Invitation envoyée à {nom}.', { nom }));
       break;
     }
 
@@ -41090,20 +41567,20 @@ case 'send': {
     // Réponse privée, en bleu d'animation (t="c" garde les retours à la ligne).
     if (/^\/(aide|help|\?|commandes)\s*$/i.test(text)) {
       const aide = [
-        'Commandes du chat :',
-        '/log, /logs, /chatlog ou /chatlogs — les logs du salon (ses messages des dernières 24 heures)',
-        '/! pseudo message — un message que seul ce frutiz (présent dans le salon) verra ; rien dans les logs',
-        '/invite pseudo — l\'inviter à rejoindre ce salon (pour un salon privé : créez-le, puis invitez)',
-        '/ignore pseudo — ne plus voir ses messages sur les salons (il rejoint ta liste noire) ; /ignore seul : la liste',
-        '/unignore pseudo — le relire',
-        '/donne kikooz pseudo [message] — offrir des kikooz',
-        '/image largeur hauteur adresse titre — montrer une image au salon',
-        '/d6, /d20… — lancer un dé devant tout le salon',
-        '/status away, phone, zzz, work, eat ou off — ta pastille',
-        '/stats — les statistiques du salon',
-        '/lg aide — le loup-garou, quand une partie se joue',
+        t(L, 'chat.aide.titre', 'Commandes du chat :'),
+        t(L, 'chat.aide.logs', '/log, /logs, /chatlog ou /chatlogs — les logs du salon (ses messages des dernières 24 heures)'),
+        t(L, 'chat.aide.chucho', '/! pseudo message — un message que seul ce frutiz (présent dans le salon) verra ; rien dans les logs'),
+        t(L, 'chat.aide.invite', '/invite pseudo — l\'inviter à rejoindre ce salon (pour un salon privé : créez-le, puis invitez)'),
+        t(L, 'chat.aide.ignore', '/ignore pseudo — ne plus voir ses messages sur les salons (il rejoint ta liste noire) ; /ignore seul : la liste'),
+        t(L, 'chat.aide.unignore', '/unignore pseudo — le relire'),
+        t(L, 'chat.aide.donne', '/donne kikooz pseudo [message] — offrir des kikooz'),
+        t(L, 'chat.aide.image', '/image largeur hauteur adresse titre — montrer une image au salon'),
+        t(L, 'chat.aide.de', '/d6, /d20… — lancer un dé devant tout le salon'),
+        t(L, 'chat.aide.statut', '/status away, phone, zzz, work, eat ou off — ta pastille'),
+        t(L, 'chat.aide.stats', '/stats — les statistiques du salon'),
+        t(L, 'chat.aide.loupGarou', '/lg aide — le loup-garou, quand une partie se joue'),
       ];
-      if (canModHere) aide.push('Équipe du salon : !message (cri rouge), /kick pseudo, /sujet texte, @all');
+      if (canModHere) aide.push(t(L, 'chat.aide.equipe', 'Équipe du salon : !message (cri rouge), /kick pseudo, /sujet texte, @all'));
       sendToClient(socket, `<${CMD.send} u="admin" t="c" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[${aide.map(escapeXml).join('<br/>')}]]></${CMD.send}>`);
       break;
     }
@@ -41117,7 +41594,7 @@ case 'send': {
     // command: reject it (mirroring the old client behaviour) rather than
     // broadcasting it to the salon as a chat line.
     if (text.startsWith('/')) {
-      sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[<i>Commande inconnue.</i>]]></${CMD.send}>`);
+      sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[<i>${escapeXml(t(L, 'chat.commandeInconnue', 'Commande inconnue.'))}</i>]]></${CMD.send}>`);
       break;
     }
 
@@ -41153,7 +41630,7 @@ case 'send': {
         mentionTousDernier.set(g, maintenant);
         aTous = true;
       } else {
-        sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[<i>Un seul @all par minute et par salon : celui-ci part comme un message ordinaire.</i>]]></${CMD.send}>`);
+        sendToClient(socket, `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}"><![CDATA[<i>${escapeXml(t(L, 'chat.tous.cadence', 'Un seul @all par minute et par salon : celui-ci part comme un message ordinaire.'))}</i>]]></${CMD.send}>`);
       }
     }
     const mn = (mentionnes.length
@@ -41239,13 +41716,14 @@ case 'send': {
     // (`emo` est relevée plus haut, avant le mode bleu.)
     if (emo) {
       const who = getDisplayName(client.username);
-      const emBody = `<![CDATA[<i>${escapeXml(who + ' ' + emo.label)}</i>]]>`;
       // Le FEUTRE de l'auteur voyage avec l'émote (`p`, comme sur une ligne
       // ordinaire) : « kasparov fait une bulle de chewing-gum » s'écrit dans
       // sa couleur, en italique — pas dans le vert par défaut.
-      broadcastToChannel(g,
-        `<${CMD.send} u="admin" t="m" p="${escapeXml(pen)}" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}" e="${escapeXml(emo.anim)}" el="${escapeXml(emo.label)}" eu="${escapeXml(who)}">${emBody}</${CMD.send}>`
-      );
+      // La phrase (`el` et le corps) se dit dans la langue de chaque lecteur :
+      // « Kiwi éclate de rire » / "Kiwi bursts out laughing" (rendreLigne
+      // 'chat.emote.'). Le mot tapé, lui, ne voyage pas.
+      broadcastToChannel(g, ligneRendue('chat.emote.' + emo.anim, { nom: who }, (r) =>
+        `<${CMD.send} u="admin" t="m" p="${escapeXml(pen)}" g="${escapeXml(g)}" h="${timeAttrs.h}" d="${timeAttrs.d}" e="${escapeXml(emo.anim)}" el="${escapeXml(r.attrs.el)}" eu="${escapeXml(who)}">${r.corps}</${CMD.send}>`));
       trackXpAction(client.username, 'chatMsg');
       break;
     }
@@ -41355,7 +41833,7 @@ case 'send': {
       addAndNotifyUserLog(targetUser, { type: USER_LOG_TYPE.TOTOCHE, content: `Tu as été réduit au silence pendant 10 minutes par ${getDisplayName(client.username)}.` });
       if (process.env.DATABASE_URL) db.addModerationLog(targetUser, client.username, 'totoche', `10 min`).catch(e => console.error('[DB] modlog error:', e.message));
 
-      const announceTotoche = `<![CDATA[${escapeXml(getDisplayName(targetUser))} a été totoché]]>`;
+      const announceTotoche = annonceTotoche(targetUser);
       for (const [chanName, channel] of Object.entries(channels)) {
         if (channel && channel.users && channel.users.has(targetUser)) {
           annonceModeration(chanName, announceTotoche);
@@ -41463,10 +41941,11 @@ case 'trace': {
      */
     case 'callmoderator': {
       const g = String(msg.attrs.g || client.channel || '');
+      const L = langueClient(client);
       const refus = (txt) => sendToClient(socket,
         `<${CMD.callmoderator} k="1" g="${escapeXml(g)}">${escapeXml(txt)}</${CMD.callmoderator}>`);
       if (!g || !channels[g] || channels[g].private || /^pm2?_/.test(g)) {
-        refus("Cette action n'est disponible que sur les salons publics.");
+        refus(t(L, 'chat.modo.salonsPublics', 'Cette action n\'est disponible que sur les salons publics.'));
         break;
       }
       // « Un ou plusieurs modérateurs sont déjà présents » — le même `flMode`
@@ -41477,21 +41956,22 @@ case 'trace': {
         if (isChannelStaff(cl.username, g)) { modeLa = true; break; }
       }
       if (modeLa) {
-        refus('Un ou plusieurs modérateurs sont déjà présents sur ce salon.');
+        refus(t(L, 'chat.modo.dejaPresents', 'Un ou plusieurs modérateurs sont déjà présents sur ce salon.'));
         break;
       }
-      const t = Date.now();
-      if (client.dernierAppelModo && t - client.dernierAppelModo < 60000) {
-        refus('Vous venez de prévenir les modérateurs !');
+      const instant = Date.now();
+      if (client.dernierAppelModo && instant - client.dernierAppelModo < 60000) {
+        refus(t(L, 'chat.modo.dejaPrevenus', 'Vous venez de prévenir les modérateurs !'));
         break;
       }
-      client.dernierAppelModo = t;
+      client.dernierAppelModo = instant;
       const qui = getDisplayName(client.username);
       const nomSalon = (channels[g] && channels[g].desc) || g;
-      // Dans le salon : la phrase d'époque, en rouge gras comme un cri.
-      const corps = `<![CDATA[<font color="#C10000"><b>${escapeXml(qui)} indique qu'il y a des problèmes sur ce salon !</b></font>]]>`;
-      broadcastToChannel(g,
-        `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="" d="" st="r">${corps}</${CMD.send}>`);
+      // Dans le salon : la phrase d'époque, en rouge gras comme un cri — dans
+      // la langue de chaque lecteur.
+      broadcastToChannel(g, ligneTraduite(
+        { k: 'chat.modo.appel', fr: "{nom} indique qu'il y a des problèmes sur ce salon !", p: { nom: qui } },
+        (html) => `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="" d="" st="r"><![CDATA[<font color="#C10000"><b>${html}</b></font>]]></${CMD.send}>`));
       // Et à chaque modérateur en ligne, où qu'il soit.
       let prevenus = 0;
       for (const [sock2, cl] of xmlSocketClients) {

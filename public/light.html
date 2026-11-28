@@ -13237,6 +13237,27 @@
     /* « explose » (id 21) est prête dans le moteur, mais gardée pour plus
        tard : aucun mot ne la déclenche encore.
        add("explose", "explose", ["boum", "explose", "kaboom"]); */
+    /* LES MOTS ANGLAIS jouent les mêmes animations — tapés seuls, comme les
+       autres (« I cry every time » reste une phrase). La phrase de l'émote
+       ne dépend pas du mot tapé : c'est celle de l'animation, dans la langue
+       de qui la lit. Même liste côté serveur (CHAT_EMOTES). */
+    add("rire", "rigole", ["haha", "hehe", "giggle"]);
+    add("mdr", "éclate de rire", ["lmao", "rofl"]);
+    add("langue", "tire la langue", ["tongue"]);
+    add("rougir", "rougit", ["blush", "blushes"]);
+    add("regard", "regarde ailleurs", ["lookaway", "look away"]);
+    add("sifflote", "sifflote", ["whistle", "whistles"]);
+    add("gum", "fait une bulle de chewing-gum", ["bubblegum"]);
+    add("question", "se pose des questions", ["hmm", "curious", "wonder"]);
+    add("miam", "se régale", ["yum", "yummy", "drool"]);
+    add("pleurer", "pleure", ["cry", "sob"]);
+    add("larme", "laisse couler une larme", ["tear", "sniff"]);
+    add("beurk", "a la nausée", ["gross", "yuck", "eww"]);
+    add("tousse", "tousse", ["ahem"]);
+    add("clin", "fait un clin d’œil", ["wink"]);
+    add("bisou", "envoie un bisou", ["kiss", "mwah"]);
+    add("sixsept", "fait six-seveeen", ["six seven"]);
+    add("assomme", "est confus", ["confused", "dazed", "ouch", "dizzy"]);
   })();
   // LA MAJUSCULE DU TÉLÉPHONE : le clavier écrit « Tousse ». Les MOTS
   // (déclencheurs tout en minuscules) se comparent aussi sans la casse ; les

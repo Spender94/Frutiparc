@@ -175,7 +175,8 @@ test('serveur : /log… répond au seul demandeur par le lien des logs, avant «
   assert.match(bloc, /sendToClient\(socket,/, 'réponse privée');
   assert.doesNotMatch(bloc, /broadcastToChannel/, 'rien n\'est diffusé au salon');
   assert.match(bloc, /javascript:fp_openHisto\('\$\{propre\(client\.sid\)\}','\$\{propre\(g\)\}'\)/, 'le lien d\'époque (box.Chat.onIamMode)');
-  const inconnue = SRV.indexOf('<i>Commande inconnue.</i>');
+  // (la ligne se dit dans la langue de qui tape : sa clé, et son français)
+  const inconnue = SRV.indexOf("'chat.commandeInconnue', 'Commande inconnue.'");
   assert.ok(inconnue > i, 'traité avant le rejet des commandes inconnues');
   // /aide les cite.
   const aide = SRV.slice(SRV.indexOf("if (/^\\/(aide|help|\\?|commandes)\\s*$/i.test(text)) {"));
