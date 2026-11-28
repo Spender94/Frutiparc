@@ -35140,8 +35140,11 @@ async function boot() {
           await db.setAppState('kiloute_defauts_semes', new Date().toISOString());
         }
         // Les questions livrées, semées avant leur version anglaise : elles la
-        // reçoivent (une fois — celles qui en ont une ne bougent pas).
-        for (const q of KILOUTE_QUESTIONS) {
+        // reçoivent, UNE fois (app_state `kiloute_anglais`, posé avec le quiz
+        // par défaut plus bas) — celles qui en ont une ne bougent pas, et une
+        // version anglaise que l'admin efface ne repousse pas.
+        const kilouteAnglaisFait = !!(await db.getAppState('kiloute_anglais'));
+        for (const q of kilouteAnglaisFait ? [] : KILOUTE_QUESTIONS) {
           if (q.qEn || !KILOUTE_EN[q.q]) continue;
           Object.assign(q, kilouteAvecAnglais(q));
           await db.updateKilouteQuestion(q.id, q.q, q.a, q.r, q.image || null, { q: q.qEn, a: q.aEn, r: q.rEn });
@@ -35155,11 +35158,13 @@ async function boot() {
       try {
         QUIZZES = await db.loadQuizzes();
         // Sème les quiz "prêts à l'emploi" absents (repérés par nom) — idempotent.
+        const kilouteAnglaisFait = !!(await db.getAppState('kiloute_anglais'));
         for (const dq of DEFAULT_QUIZZES) {
           const existant = QUIZZES.find((q) => q.name === dq.name);
           if (existant) {
             // Semé avant sa version anglaise : il la reçoit, question par
-            // question (celles que l'admin a traduites ou changées restent).
+            // question, une fois (celles que l'admin a traduites ou changées restent).
+            if (kilouteAnglaisFait) continue;
             const neuves = existant.questions.map((x) => kilouteAvecAnglais(x));
             const nomEn = existant.nameEn || KILOUTE_QUIZ_NOM_EN[dq.name] || '';
             if (neuves.some((x, i) => x.qEn !== existant.questions[i].qEn) || nomEn !== (existant.nameEn || '')) {
@@ -35177,6 +35182,7 @@ async function boot() {
             console.log(`[DB] Seeded default quiz "${dq.name}" (${dq.questions.length} questions)`);
           } catch (e) { console.error('[DB] seed quiz error:', e.message); }
         }
+        if (!kilouteAnglaisFait) await db.setAppState('kiloute_anglais', new Date().toISOString());
         if (QUIZZES.length) console.log(`[DB] Loaded ${QUIZZES.length} quiz(zes)`);
       } catch (e) { console.error('[DB] Quizzes load error:', e.message); }
       try {
@@ -35403,16 +35409,21 @@ async function boot() {
         } else {
           console.log(`[GASPARD] ${existingTopics.length} help topic(s) already in DB`);
           // Une base semée AVANT la version anglaise : les rubriques d'origine
-          // (même titre français) la reçoivent, une fois — celles que l'admin
-          // a déjà traduites, renommées ou ajoutées ne bougent pas.
-          let traduites = 0;
-          for (const t of existingTopics) {
-            const en = GASPARD_AIDE_EN[t.title];
-            if (!en || String(t.title_en || '').trim()) continue;
-            await db.updateGaspardHelpTopic(t.id, Object.assign({ parent_id: t.parent_id }, en));
-            traduites++;
+          // (même titre français) la reçoivent, UNE fois (app_state
+          // `gaspard_aide_anglais`) — celles que l'admin a déjà traduites,
+          // renommées ou ajoutées ne bougent pas, et une version anglaise qu'il
+          // efface ensuite ne repousse pas au redémarrage.
+          if (!await db.getAppState('gaspard_aide_anglais')) {
+            let traduites = 0;
+            for (const t of existingTopics) {
+              const en = GASPARD_AIDE_EN[t.title];
+              if (!en || String(t.title_en || '').trim()) continue;
+              await db.updateGaspardHelpTopic(t.id, Object.assign({ parent_id: t.parent_id }, en));
+              traduites++;
+            }
+            await db.setAppState('gaspard_aide_anglais', new Date().toISOString());
+            if (traduites) console.log(`[GASPARD] ${traduites} help topic(s) given their English version`);
           }
-          if (traduites) console.log(`[GASPARD] ${traduites} help topic(s) given their English version`);
         }
       } catch (e) { console.error('[GASPARD] Seed error:', e.message); }
       try {
