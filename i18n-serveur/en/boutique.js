@@ -36,6 +36,7 @@ const d = {
   'boutique.rayon.incarnations': 'Incarnations',
 
   // ── Les accessoires de base (DEFAULT_ACCESSORIES, par leur identifiant) ──
+  'boutique.base.normal': 'Normal',
   'boutique.base.beaute': 'Beauty',
   'boutique.base.chauve': 'Bald',
 
