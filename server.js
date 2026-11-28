@@ -37357,6 +37357,9 @@ function trameMultilingue(trame) {
     return { fixe: true, pour: () => xml, k: null, kp: null };
   }
   const build = typeof trame === 'function' ? trame : trame.build;
+  // (un texte traduisible n'est pas une trame : il faut l'habiller,
+  // cf. ligneTraduite)
+  if (typeof build !== 'function') throw new Error('trame sans build : ' + JSON.stringify(trame).slice(0, 80));
   const versions = {};
   return {
     fixe: false,
@@ -39334,43 +39337,59 @@ function envoyerBlindtestAuxLight(salon, xml) {
 // le client Light lit pour rejouer l'émote ; le SWF ignore ces attributs).
 // Table calquée sur public/light.html : mêmes tokens, mêmes phrases, même
 // correspondance exacte, SENSIBLE À LA CASSE pour distinguer :D (mdr) de :d (langue).
-//
-// LES MOTS ANGLAIS (« haha », « wink », « gross »…) déclenchent les mêmes
-// animations que leurs cousins français — un anglophone tape « cry », pas
-// « ouin ». Même règle que les mots d'époque : ils ne jouent que TAPÉS SEULS
-// (« I cry every time » reste une phrase), ce qui les garde des mots
-// ordinaires. La PHRASE de l'émote, elle, ne dépend pas du mot tapé : elle se
-// dit dans la langue de chaque lecteur (la ligne à rendu « chat.emote. »,
-// plus bas). Les deux tables restent identiques (test/emoteBleu.test.js).
 const CHAT_EMOTES = {};
 (function () {
   function add(anim, label, toks) { for (const t of toks) CHAT_EMOTES[t] = { anim, label }; }
-  add('rire', 'rigole', [':))', 'rigole', 'haha', 'hehe', 'giggle']);
-  add('mdr', 'éclate de rire', [':D', 'mdr', 'lol', 'ptdr', 'lmao', 'rofl']);
-  add('langue', 'tire la langue', [':p', ':P', ':d', 'tongue']);
-  add('rougir', 'rougit', [':">', ':#)', 'rougit', 'blush', 'blushes']);
-  add('regard', 'regarde ailleurs', ['regard', 'regarde', 'lookaway', 'look away']);
-  add('sifflote', 'sifflote', [':-"', 'siffle', 'sifflote', 'whistle', 'whistles']);
-  add('gum', 'fait une bulle de chewing-gum', ['gum', 'bubblegum']);
-  add('question', 'se pose des questions', [':?', 'question', 'curieux', 'oO', 'hmm', 'curious', 'wonder']);
-  add('miam', 'se régale', ['miam', 'slurp', 'bave', 'regale', 'yum', 'yummy', 'drool']);
-  add('pleurer', 'pleure', [':-"(', ';((', 'pleure', 'ouin', 'cry', 'sob']);
+  add('rire', 'rigole', [':))', 'rigole']);
+  add('mdr', 'éclate de rire', [':D', 'mdr', 'lol', 'ptdr']);
+  add('langue', 'tire la langue', [':p', ':P', ':d']);
+  add('rougir', 'rougit', [':">', ':#)', 'rougit']);
+  add('regard', 'regarde ailleurs', ['regard', 'regarde']);
+  add('sifflote', 'sifflote', [':-"', 'siffle', 'sifflote']);
+  add('gum', 'fait une bulle de chewing-gum', ['gum']);
+  add('question', 'se pose des questions', [':?', 'question', 'curieux', 'oO']);
+  add('miam', 'se régale', ['miam', 'slurp', 'bave', 'regale']);
+  add('pleurer', 'pleure', [':-"(', ';((', 'pleure', 'ouin']);
   // « larme » (12) n'est pas « pleurer » (11) : une seule larme, l'œil
   // triste, jouée une fois — et sa phrase à elle. Les deux partaient sur la
   // 11 : « larme » donnait un sanglot, légendé « pleure ».
-  add('larme', 'laisse couler une larme', [":'(", ';(', 'larme', 'snif', 'tear', 'sniff']);
+  add('larme', 'laisse couler une larme', [":'(", ';(', 'larme', 'snif']);
   // Les émotes ajoutées au light depuis (ids 13 à 20, cf. public/light.html).
   // Elles manquaient ici : hors mode bleu, le light les reconnaît lui-même dans
   // le texte reçu, mais en /blueon c'est CETTE table qui décide — « tousse »
   // partait alors en ligne bleue. test/emoteBleu.test.js compare les deux.
-  add('beurk', 'a la nausée', ['beurk', 'berk', 'bwark', 'gross', 'yuck', 'eww']);
+  add('beurk', 'a la nausée', ['beurk', 'berk', 'bwark']);
   add('jutsu', 'chocapic no jutsu', ['jutsu', 'chocapic']);
-  add('tousse', 'tousse', ['tousse', 'cough', 'keuf', 'ahem']);
+  add('tousse', 'tousse', ['tousse', 'cough', 'keuf']);
   add('gumm', 's’en met plein la figure', ['gumm', 'gum2']);
-  add('clin', 'fait un clin d’œil', [';)', ';-)', 'clin', 'wink']);
-  add('bisou', 'envoie un bisou', [':*', ':-*', 'bisou', 'smack', 'kiss', 'mwah']);
-  add('sixsept', 'fait six-seveeen', ['67', '6 7', '6-7', 'sixseven', 'six seven']);
-  add('assomme', 'est confus', ['confus', 'confuse', 'assommé', 'assomme', 'ouille', 'aïe', 'confused', 'dazed', 'ouch', 'dizzy']);
+  add('clin', 'fait un clin d’œil', [';)', ';-)', 'clin']);
+  add('bisou', 'envoie un bisou', [':*', ':-*', 'bisou', 'smack']);
+  add('sixsept', 'fait six-seveeen', ['67', '6 7', '6-7', 'sixseven']);
+  add('assomme', 'est confus', ['confus', 'confuse', 'assommé', 'assomme', 'ouille', 'aïe']);
+  // LES MOTS ANGLAIS (« haha », « wink », « gross »…) déclenchent les mêmes
+  // animations que leurs cousins français — un anglophone tape « cry », pas
+  // « ouin ». Même règle que les mots d'époque : ils ne jouent que TAPÉS
+  // SEULS (« I cry every time » reste une phrase), ce qui les garde des mots
+  // ordinaires. La PHRASE de l'émote, elle, ne dépend pas du mot tapé : elle
+  // se dit dans la langue de chaque lecteur (la ligne à rendu « chat.emote. »,
+  // plus bas). Même liste dans le light (test/emoteBleu.test.js compare).
+  add('rire', 'rigole', ['haha', 'hehe', 'giggle']);
+  add('mdr', 'éclate de rire', ['lmao', 'rofl']);
+  add('langue', 'tire la langue', ['tongue']);
+  add('rougir', 'rougit', ['blush', 'blushes']);
+  add('regard', 'regarde ailleurs', ['lookaway', 'look away']);
+  add('sifflote', 'sifflote', ['whistle', 'whistles']);
+  add('gum', 'fait une bulle de chewing-gum', ['bubblegum']);
+  add('question', 'se pose des questions', ['hmm', 'curious', 'wonder']);
+  add('miam', 'se régale', ['yum', 'yummy', 'drool']);
+  add('pleurer', 'pleure', ['cry', 'sob']);
+  add('larme', 'laisse couler une larme', ['tear', 'sniff']);
+  add('beurk', 'a la nausée', ['gross', 'yuck', 'eww']);
+  add('tousse', 'tousse', ['ahem']);
+  add('clin', 'fait un clin d’œil', ['wink']);
+  add('bisou', 'envoie un bisou', ['kiss', 'mwah']);
+  add('sixsept', 'fait six-seveeen', ['six seven']);
+  add('assomme', 'est confus', ['confused', 'dazed', 'ouch', 'dizzy']);
 })();
 // LA MAJUSCULE DU TÉLÉPHONE. Le clavier met une capitale en tête de message :
 // « Tousse » ne jouait rien. Les MOTS (déclencheurs tout en minuscules) se
@@ -41951,7 +41970,7 @@ case 'trace': {
       // Dans le salon : la phrase d'époque, en rouge gras comme un cri — dans
       // la langue de chaque lecteur.
       broadcastToChannel(g, ligneTraduite(
-        { k: 'chat.modo.appel', fr: '{nom} indique qu\'il y a des problèmes sur ce salon !', p: { nom: qui } },
+        { k: 'chat.modo.appel', fr: "{nom} indique qu'il y a des problèmes sur ce salon !", p: { nom: qui } },
         (html) => `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(g)}" h="" d="" st="r"><![CDATA[<font color="#C10000"><b>${html}</b></font>]]></${CMD.send}>`));
       // Et à chaque modérateur en ligne, où qu'il soit.
       let prevenus = 0;

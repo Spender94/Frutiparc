@@ -102,8 +102,9 @@ test('les fenêtres Flash gardent leur sid (scores reconnus par l\'adresse)', ()
 
 test('historique d\'un salon : le script, et la reprise après F5', () => {
   const S = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
-  assert.match(S, /<title>Salon \$\{esc\(g\)\} — messages précédents<\/title>/);
-  assert.match(S, /<script src="\/js\/sid-discret\.js"><\/script>\n<title>Salon/);
+  // (le titre se dit dans la langue de la page : sa clé, et son français)
+  assert.match(S, /<title>\$\{esc\(t\(lang, 'chat\.logs\.titre', 'Salon \{salon\} — messages précédents', \{ salon: g \}\)\)\}<\/title>/);
+  assert.match(S, /<script src="\/js\/sid-discret\.js"><\/script>\n<title>\$\{esc\(t\(lang, 'chat\.logs\.titre'/);
   assert.match(S, /if \(!demandeur && !req\.query\.sid\) \{[\s\S]{0,400}sessionStorage\.getItem\("fp_sid_page:"\+location\.pathname\)/);
 });
 

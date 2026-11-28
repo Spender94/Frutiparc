@@ -123,6 +123,7 @@ async function client(pseudo, sid, { la, light = true } = {}) {
   const c = {
     trames,
     dire: (texte) => ws.send(`<t g="pomme" t="m" p="">${texte}</t>\0`),
+    envoyer: (xml) => ws.send(xml + '\0'),
     attendre: async (pred, quoi, ms = 6000) => {
       for (let i = 0; i < ms / 50; i++) {
         const t = trames.find(pred);
@@ -278,6 +279,99 @@ test('le quiz d\'un animateur : l\'annonce et les points, dans la langue de chac
     assert.match(corps(de), new RegExp(`^<!\\[CDATA\\[<b><font color="#C10000">${ANIM}</font></b> rolls a die \\(1–6\\): <b><font color="#C10000">[1-6]</font></b>\\]\\]>$`));
     assert.strictEqual(attr(de, 'mi'), attr(df, 'mi'));
   } finally { anim.fermer(); }
+});
+
+// Une commande tapée par `c`, et la réponse qu'il doit lire.
+async function repond(c, commande, attendu, quoi) {
+  c.trames.length = 0;
+  c.dire(commande);
+  return c.attendre((x) => x.includes(attendu), quoi || commande);
+}
+
+test('chaque commande répond en anglais à l\'anglophone (et rien de français ne lui échappe)', async () => {
+  // Un joueur ordinaire.
+  await repond(en, '/ignore', 'You\'re not ignoring anyone.');
+  await repond(en, '/ignore personneXYZ', 'No frutiz is called “personneXYZ”.');
+  await repond(en, `/ignore ${EN}`, 'You can\'t ignore yourself.');
+  await repond(en, '/unignore', 'Syntax: /unignore username');
+  await repond(en, '/invite', 'Syntax: /invite username');
+  await repond(en, '/invite personneXYZ', 'No frutiz is called personneXYZ.');
+  await repond(en, `/invite ${FR}`, `${FR} is already in this chat room.`);
+  const stats = await repond(en, '/stats', 'Users online:');
+  assert.ok(!/Utilisateurs/.test(stats));
+  await repond(en, '/d0', 'Syntax: /d6, /d20… (from 1 to 1000).');
+  await repond(en, '/status bidule', 'Unknown status.');
+  await repond(en, '/status away', 'Status “away” on.');
+  await repond(en, '/status off', 'Status cleared — back online.');
+  await repond(en, '/multipen', 'You don\'t own the Rainbow felt pen yet.');
+  await repond(en, '/topic un sujet', 'Only the chat room\'s team can change its topic.');
+  await repond(en, '/!', 'Syntax: /! username message');
+  await repond(en, '/! personneXYZ coucou', 'personneXYZ isn\'t in this chat room');
+  await repond(en, `/! ${EN} coucou`, 'You can\'t send a private message to yourself.');
+  await repond(en, '/image 1', 'Syntax: /image width height url title');
+  await repond(en, '/blueoff', 'Blue mode off.');
+  await repond(en, '/chatlogs', '... see previous messages ...');
+  // Le mot doux : « (de X) » chez le francophone, « (to X) » chez l'auteur.
+  fr.trames.length = 0;
+  const moi = await repond(en, `/! ${FR} psst`, 'psst');
+  assert.match(moi, new RegExp(`\\(to <b>${FR}</b>\\) psst`));
+  const lui = await fr.attendre((x) => x.includes('psst'), 'le mot doux (fr)');
+  assert.match(lui, new RegExp(`\\(de <b>${EN}</b>\\) psst`));
+  // Rien, dans tout ça, n'est passé par le francophone.
+  assert.ok(!fr.trames.some((x) => /Syntax|Unknown|You can't/.test(x)));
+});
+
+test('les commandes d\'animation répondent en anglais ; leurs annonces partent dans chaque langue', async (t) => {
+  const ANIM = 'anima' + RUN;
+  const sidAnim = await inscrire(ANIM);
+  let r;
+  for (let i = 0; i < 40; i++) {
+    r = await fetch(`${BASE}/api/admin/users/${ANIM}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json', 'x-admin-key': CLE },
+      body: JSON.stringify({ is_animator: true }),
+    });
+    if (r.status === 200) break;
+    await wait(250);
+  }
+  if (r.status !== 200) return t.skip('pas de rôle d\'animateur sans base');
+  const anim = await client(ANIM, sidAnim, { la: 'en' });
+  try {
+    await repond(anim, '/point', 'Syntax: /point username [points]');
+    // (le quiz d'avant se clôt : le classement final, puis plus rien)
+    await repond(anim, '/endpoint', 'Quiz over! Final rankings:');
+    await repond(anim, '/showpoint', 'No points handed out.');
+    await repond(anim, '/poll', 'Syntax: /poll Question?');
+    await repond(anim, '/poll Une question | une seule réponse', 'You need a question and at least two answers');
+    const aide = await repond(anim, '/blind', 'Blindtest — /blind &lt;YouTube link&gt; [start] [duration]');
+    assert.match(aide, /<br\/>Example: \/blind/);
+    await repond(anim, '/blind http://exemple.fr/', 'YouTube link not recognised.');
+    await repond(anim, '/mesdons', 'My gifts — I have');
+    await repond(anim, '/don', 'Usage: /don &lt;username&gt; &lt;amount&gt;');
+    await repond(anim, '/blueon', 'Blue mode on.');
+    await repond(anim, '/blueoff', 'Blue mode off.');
+    for (const c of [fr, en]) c.trames.length = 0;
+    anim.dire(`/don ${FR} 5`);
+    await fr.attendre((x) => x.includes(`offre 5 kikooz à ${FR} !`), 'le don (fr)');
+    await en.attendre((x) => x.includes(`gives 5 kikooz to ${FR}!`), 'le don (en)');
+    anim.dire('/blind dQw4w9WgXcQ 0 10');
+    await fr.attendre((x) => x.includes(`Blindtest ! ${ANIM} lance un extrait de 10 secondes.`), 'le blindtest (fr)');
+    await en.attendre((x) => x.includes(`Blindtest! ${ANIM} plays a 10-second clip.`), 'le blindtest (en)');
+    anim.dire('/blindstop');
+    await fr.attendre((x) => x.includes('Blindtest : extrait arrêté.'), 'l\'arrêt (fr)');
+    await en.attendre((x) => x.includes('Blindtest: clip stopped.'), 'l\'arrêt (en)');
+    // L'appel au modérateur : l'animateur est l'équipe du salon Pomme…
+    en.trames.length = 0;
+    en.envoyer('<bo g="pomme" />');
+    await en.attendre((x) => x.startsWith('<bo') && x.includes('One or more moderators are already in this chat room.'), 'appel refusé');
+  } finally { anim.fermer(); }
+  await wait(300);
+  // …parti, l'appel passe : la ligne rouge dans la langue de chacun.
+  for (const c of [fr, en]) c.trames.length = 0;
+  en.envoyer('<bo g="pomme" />');
+  await fr.attendre((x) => x.includes(`${EN} indique qu'il y a des problèmes sur ce salon !`), 'l\'appel (fr)');
+  await en.attendre((x) => x.includes(`${EN} says there's trouble in this chat room!`), 'l\'appel (en)');
+  en.envoyer('<bo g="pomme" />');
+  await en.attendre((x) => x.includes('You\'ve just alerted the moderators!'), 'un seul appel par minute');
 });
 
 // Le rejeu (cinq minutes) d'un client qui revient — dans SA langue.

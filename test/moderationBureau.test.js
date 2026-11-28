@@ -144,7 +144,7 @@ test('le serveur repose les mêmes questions, et prévient les deux côtés', ()
   // Un client ne se vérifie pas lui-même : les trois gardes sont ici aussi.
   assert.match(c, /channels\[g\]\.private \|\| \/\^pm2\?_\/\.test\(g\)/);
   assert.match(c, /if \(isChannelStaff\(cl\.username, g\)\) \{ modeLa = true; break; \}/);
-  assert.match(c, /t - client\.dernierAppelModo < 60000/);
+  assert.match(c, /instant - client\.dernierAppelModo < 60000/);
   // `chat.moderator_called_channel` : le salon voit qui a appelé, en rouge.
   assert.match(c, /indique qu'il y a des problèmes sur ce salon !/);
   assert.match(c, /st="r"/);
