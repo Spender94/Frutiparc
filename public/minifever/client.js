@@ -21,6 +21,23 @@ const Garde = (!sousNode && racine.GardeEntrees) || { vraie() { return true; } }
 const { LARGEUR, HAUTEUR, IPS, TMOD_LISSAGE, TMOD_SAUT, CADENCE_FLASH } = E;
 const IMAGE_FLASH = 1 / CADENCE_FLASH;
 
+/*
+ * LES LANGUES. Dans la page, /js/i18n.js est chargé (FPI18n) et l'anglais vit
+ * dans /minifever/lang/en.js ; sous Node (les tests), il n'y a que le
+ * français, gabarit rempli. Les noms des épreuves et des paliers se
+ * traduisent à l'AFFICHAGE : jeux.js et engine.js gardent les leurs, que le
+ * serveur relit.
+ */
+const I18N = (!sousNode && racine.FPI18n) || null;
+function tr(cle, fr, p) {
+  if (I18N) return I18N.T(cle, fr, p);
+  return String(fr).replace(/\{(\w+)\}/g, (m, k) => (p && p[k] != null ? String(p[k]) : m));
+}
+const nomEpreuve = (jeu) => tr('minifever.jeu.' + jeu.cle, jeu.nom);
+// Les cases du menu : 10 à 14 sont les paliers de l'arcade ; arcade, fever,
+// time, train et secret se lisent pareil dans les deux langues.
+const nomCase = (c) => (c.id >= 10 && c.id <= 14 ? tr('minifever.palier' + (c.id - 10), c.nom) : c.nom);
+
 const images = new Map();          // fichier SVG → Image
 let manifeste = null;
 let baseDessins = '/minifever/sprites/';
@@ -511,7 +528,7 @@ class Client {
     ctx.fillText('PAUSE', LARGEUR / 2, HAUTEUR / 2);
     ctx.font = 'bold 12px "Trebuchet MS", sans-serif';
     ctx.fillStyle = '#ffffff';
-    ctx.fillText('cliquer pour reprendre', LARGEUR / 2, HAUTEUR / 2 + 24);
+    ctx.fillText(tr('minifever.reprendre', 'cliquer pour reprendre'), LARGEUR / 2, HAUTEUR / 2 + 24);
     ctx.textAlign = 'left';
   }
 
@@ -661,7 +678,7 @@ class Client {
       ctx.fillStyle = c.verrou ? '#8a713f' : '#6b4a1f';
       ctx.textAlign = 'center';
       ctx.font = 'bold 13px "Trebuchet MS", sans-serif';
-      ctx.fillText(String(c.nom).toUpperCase(), 0, 5);
+      ctx.fillText(String(nomCase(c)).toUpperCase(), 0, 5);
       ctx.restore();
       ctx.globalAlpha = 1;
     };
@@ -771,10 +788,10 @@ class Client {
       // débriefing lancé (comme flWin dans initStep(1) des sources) — le lire
       // ici affichait « raté ! » même sur une victoire.
       ctx.fillStyle = s.verdict ? '#7ce04a' : '#ff5a5a';
-      ctx.fillText(s.verdict ? 'gagné !' : 'raté !', LARGEUR / 2, 24);
+      ctx.fillText(s.verdict ? tr('minifever.gagne', 'gagné !') : tr('minifever.rate', 'raté !'), LARGEUR / 2, 24);
     } else if (vue) {
       ctx.fillStyle = '#f0e0a0';
-      ctx.fillText(vue.nom, LARGEUR / 2, 24);
+      ctx.fillText(nomEpreuve(vue), LARGEUR / 2, 24);
     }
 
     // Le niveau atteint, au centre.
@@ -784,7 +801,9 @@ class Client {
     ctx.font = '10px "Trebuchet MS", sans-serif';
     ctx.fillStyle = '#8fa0c8';
     // Sans plafond, l'objectif passé : on le rappelle, la partie continue.
-    ctx.fillText(s.gagnee && s.sansPlafond ? 'objectif ' + s.info.lvl + ' passé !' : 'sur ' + (s.info ? s.info.lvl : '?'), LARGEUR / 2, 172);
+    ctx.fillText(s.gagnee && s.sansPlafond
+      ? tr('minifever.objectifPasse', 'objectif {lvl} passé !', { lvl: s.info.lvl })
+      : tr('minifever.sur', 'sur {lvl}', { lvl: s.info ? s.info.lvl : '?' }), LARGEUR / 2, 172);
 
     // Les vies, en bulles.
     const n = Math.max(0, s.vies || 0);

@@ -176,6 +176,12 @@
   #message.on { opacity: 1; }
 </style>
 <script src="/js/sid-discret.js"></script>
+<!-- Les langues du parc (voir /js/i18n.js) : en anglais, le vocabulaire
+     commun, les widgets partagés et le dictionnaire du jeu
+     (/miniwave/lang/en.js) arrivent pendant l'analyse de la page ; en
+     français, rien n'est chargé — le français est écrit dans le code. -->
+<script src="/js/i18n.js"></script>
+<script>FPI18n.charger(['commun', 'widgets', '/miniwave/lang/{lang}.js']);</script>
 <!-- Le mode invité (?invite=1, lancé depuis l'accueil) : voir le fichier. -->
 <script src="/js/invite.js"></script>
 </head>
@@ -183,15 +189,15 @@
 
 <div id="tout">
   <div id="aire"><canvas id="stage" width="240" height="240"></canvas></div>
-  <div id="manette" aria-label="Zone de pilotage tactile">
+  <div id="manette" aria-label="Zone de pilotage tactile" data-i18n-attr="aria-label:miniwave.zoneTactile">
     <div id="pave-tactile">
-      <span class="mode-emploi">glisse ton pouce — le vaisseau le suit et tire<br>double-tap : l'attaque spéciale</span>
+      <span class="mode-emploi" data-i18n-html="miniwave.modeEmploi">glisse ton pouce — le vaisseau le suit et tire<br>double-tap : l'attaque spéciale</span>
     </div>
   </div>
   <div id="clavier"></div>
-  <button type="button" id="muet" aria-label="Couper le son">🔊</button>
-  <button type="button" id="pause" aria-label="Mettre en pause">⏸</button>
-  <div id="aide">← → pour se déplacer · espace pour tirer · majuscule pour la bombe · P pour la pause</div>
+  <button type="button" id="muet" aria-label="Couper le son" data-i18n-attr="aria-label:miniwave.couperSon">🔊</button>
+  <button type="button" id="pause" aria-label="Mettre en pause" data-i18n-attr="aria-label:miniwave.mettrePause">⏸</button>
+  <div id="aide" data-i18n="miniwave.aide">← → pour se déplacer · espace pour tirer · majuscule pour la bombe · P pour la pause</div>
 </div>
 
 <div id="message"></div>
@@ -206,7 +212,7 @@
   <div class="s" id="fin-pictos"></div>
   <div class="bas" style="max-width:300px">
     <button type="button" class="secondaire" id="fin-menu">Menu</button>
-    <button type="button" id="rejouer">Rejouer</button>
+    <button type="button" id="rejouer" data-i18n="miniwave.rejouer">Rejouer</button>
   </div>
 </div>
 
@@ -220,6 +226,11 @@
 <script>
 (function () {
   var $ = function (s) { return document.querySelector(s); };
+  // LES LANGUES (/js/i18n.js, chargé dans le <head>) : le français reste écrit
+  // ici, argument de repli de T() ; l'anglais vit dans /miniwave/lang/en.js.
+  // Les textes du HTML marqués data-i18n passent d'un coup ; en français,
+  // appliquer() ne touche à rien.
+  FPI18n.appliquer(document);
   // LE MODE INVITÉ (/js/invite.js) : un visiteur sans compte, lancé depuis
   // l'accueil. Pas de sid, jamais — et donc ni fiche lue ou écrite, ni score,
   // ni voyant « en partie » —, mais tout le stand ouvert (P.carteInvite).
@@ -316,7 +327,7 @@
       ctx.fillText(erreur || (Math.round(prc * 100) + '%'), 400, 470);
       if (erreur) {
         ctx.font = '10px VerdanaPix, Verdana, sans-serif';
-        ctx.fillText('chargement impossible — recharge la page', 400, 492);
+        ctx.fillText(T('miniwave.chargementImpossible', 'chargement impossible — recharge la page'), 400, 492);
       }
       ctx.textAlign = 'left';
     }
@@ -352,18 +363,24 @@
     // L'invité n'a pas de compte à qui le dire : c'est le panneau de
     // l'inscription (finDePartie, plus bas) qui en parle.
     if (!r.enregistre && invite) return '';
-    if (!r.enregistre) return sid ? 'Progression non enregistrée.' : 'Partie hors compte.';
-    if (!r.gagnes.length) return 'Progression enregistrée.';
+    if (!r.enregistre) return sid ? T('miniwave.nonEnregistree', 'Progression non enregistrée.') : T('miniwave.horsCompte', 'Partie hors compte.');
+    if (!r.gagnes.length) return T('miniwave.enregistree', 'Progression enregistrée.');
+    // Les noms des vaisseaux et des ennemis (des jeux de mots) restent tels
+    // quels ; un article du stand se nomme par son identifiant.
+    var article = function (nom) {
+      for (var i = 0; i < P.BOUTIQUE.length; i++) if (P.BOUTIQUE[i].nom === nom) return T('miniwave.article' + P.BOUTIQUE[i].id, nom);
+      return nom;
+    };
     var noms = r.gagnes.map(function (p) {
       if (p.genre === 'arcade') return 'picto Arcade';
-      if (p.genre === 'letter') return 'picto Lettres';
+      if (p.genre === 'letter') return T('miniwave.pictoLettres', 'picto Lettres');
       if (p.genre === 'mission') return 'picto Mission ' + (p.num + 1);
-      if (p.genre === 'article') return 'picto ' + p.nom;
+      if (p.genre === 'article') return 'picto ' + article(p.nom);
       if (p.genre === 'vaisseau') return 'picto ' + P.VAISSEAUX[p.num];
       var e = window.MiniwaveEngine.ENNEMIS[p.type];
-      return 'picto ' + (e ? e.name : 'espèce ' + p.type);
+      return 'picto ' + (e ? e.name : T('miniwave.espece', 'espèce {n}', { n: p.type }));
     });
-    return 'Débloqué : ' + noms.join(', ') + ' !';
+    return T('miniwave.debloque', 'Débloqué : {noms} !', { noms: noms.join(', ') });
   }
 
   // Les sons du menu, ceux du jeu d'origine.
@@ -540,9 +557,10 @@
         if (nom !== 'finPartie') return;
         direEnPartie(false);
         var l = enCours ? enCours.lancement : {};
-        $('#fin-titre').textContent = (info.raison === 'fin') ? 'BRAVO !' : 'GAME OVER';
-        $('#fin-score').textContent = info.score + ' points · '
-          + (l.mode === 'survival' ? ('palier ' + (info.level + 1)) : ('niveau ' + (info.level + 1)));
+        $('#fin-titre').textContent = (info.raison === 'fin') ? T('miniwave.bravo', 'BRAVO !') : 'GAME OVER';
+        $('#fin-score').textContent = (l.mode === 'survival')
+          ? T('miniwave.finPalier', '{score} points · palier {n}', { score: info.score, n: info.level + 1 })
+          : T('miniwave.finNiveau', '{score} points · niveau {n}', { score: info.score, n: info.level + 1 });
         $('#fin-pictos').textContent = '';
         $('#fin').classList.add('on');
         // LE MODE INVITÉ : le panneau « Inscris-toi ! » vient se poser sur
@@ -553,7 +571,7 @@
         if (invite) {
           setTimeout(function () {
             if ($('#fin').classList.contains('on')) {
-              FPInvite.finDePartie({ score: info.score + ' points', libelle: 'Ton score' });
+              FPInvite.finDePartie({ score: info.score + ' points', libelle: 'Ton score', libelleEn: 'Your score' });
             }
           }, 700);
         }
@@ -598,7 +616,7 @@
         chargerDefi().then(function () {
           var l = lancementDefi();
           if (l) ui.preparer(l);
-          else { sonMenu('refus'); ui.dire('La map du jour est injoignable — réessayez.'); }
+          else { sonMenu('refus'); ui.dire(T('miniwave.mapInjoignable', 'La map du jour est injoignable — réessayez.')); }
         });
       },
     });

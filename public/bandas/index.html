@@ -304,9 +304,15 @@
   }
 </style>
 <script src="/js/sid-discret.js"></script>
+<!-- Les langues du parc (voir /js/i18n.js) : en anglais, le vocabulaire
+     commun, les widgets partagés (le panneau des parties en différé) et le
+     dictionnaire du jeu (/bandas/lang/en.js) arrivent pendant l'analyse de la
+     page ; en français, rien n'est chargé — le français est écrit ici même. -->
+<script src="/js/i18n.js"></script>
+<script>FPI18n.charger(['commun', 'widgets', '/bandas/lang/{lang}.js']);</script>
 </head>
 <body>
-  <div id="status">Connexion…</div>
+  <div id="status" data-i18n="bandas.connexion">Connexion…</div>
 
   <div id="screen-connect" class="screen on"></div>
 
@@ -319,9 +325,9 @@
       <div class="bandas-v">FRUTIBANDAS</div>
     </div>
     <div class="mode-list">
-      <div class="mode active" id="mode-champ" data-salle="champ"><div class="mname">CHAMPIONNAT</div><div class="mstats"><div class="j"><span>JOUEURS</span><span data-cpt="champ-j">0</span></div><div class="p"><span>PARTIES</span><span data-cpt="champ-p">0</span></div></div><div class="mnote" id="ma-note"></div><div class="mdif" id="dif-champ"></div></div>
-      <div class="mode active" id="mode-amical" data-salle="amical"><div class="mname">MATCHES AMICAUX</div><div class="mstats"><div class="j"><span>JOUEURS</span><span data-cpt="amical-j">0</span></div><div class="p"><span>PARTIES</span><span data-cpt="amical-p">0</span></div></div><div class="mdif" id="dif-amical"></div></div>
-      <div class="mode active" id="mode-chall" data-salle="chall"><div class="mname">CHALLENGE</div><div class="mstats"><div class="j"><span>JOUEURS</span><span data-cpt="chall-j" id="ch-j">0</span></div><div class="p"><span>PARTIES</span><span data-cpt="chall-p" id="ch-p">0</span></div></div></div>
+      <div class="mode active" id="mode-champ" data-salle="champ"><div class="mname" data-i18n="bandas.salle.champ">CHAMPIONNAT</div><div class="mstats"><div class="j"><span data-i18n="bandas.joueursMaj">JOUEURS</span><span data-cpt="champ-j">0</span></div><div class="p"><span data-i18n="bandas.parties">PARTIES</span><span data-cpt="champ-p">0</span></div></div><div class="mnote" id="ma-note"></div><div class="mdif" id="dif-champ"></div></div>
+      <div class="mode active" id="mode-amical" data-salle="amical"><div class="mname" data-i18n="bandas.salle.amical">MATCHES AMICAUX</div><div class="mstats"><div class="j"><span data-i18n="bandas.joueursMaj">JOUEURS</span><span data-cpt="amical-j">0</span></div><div class="p"><span data-i18n="bandas.parties">PARTIES</span><span data-cpt="amical-p">0</span></div></div><div class="mdif" id="dif-amical"></div></div>
+      <div class="mode active" id="mode-chall" data-salle="chall"><div class="mname">CHALLENGE</div><div class="mstats"><div class="j"><span data-i18n="bandas.joueursMaj">JOUEURS</span><span data-cpt="chall-j" id="ch-j">0</span></div><div class="p"><span data-i18n="bandas.parties">PARTIES</span><span data-cpt="chall-p" id="ch-p">0</span></div></div></div>
     </div>
   </div>
 
@@ -331,42 +337,42 @@
       <div class="lobby-bar">
         <span class="title" id="lobby-title">CHALLENGE</span>
         <span class="sp"></span>
-        <button id="btn-tournoi" style="display:none">Tournoi</button>
-        <button id="btn-differe" style="display:none">En différé</button>
-        <button id="btn-create">Créer une partie</button>
-        <span class="x" id="lobby-back" title="Retour">✕</span>
+        <button id="btn-tournoi" style="display:none" data-i18n="bandas.tournoi">Tournoi</button>
+        <button id="btn-differe" style="display:none" data-i18n="bandas.enDiffere">En différé</button>
+        <button id="btn-create" data-i18n="bandas.creerPartie">Créer une partie</button>
+        <span class="x" id="lobby-back" title="Retour" data-i18n-attr="title:bandas.retour">✕</span>
       </div>
       <!-- Le bandeau du tournoi : qui je dois jouer, et où il en est. Il
            n'apparaît qu'au Championnat, et seulement s'il y a un tournoi. -->
       <div id="tournoi-bandeau" style="display:none"></div>
       <div class="lobby-tabs">
-        <button data-tab="players" class="on">Joueurs</button>
+        <button data-tab="players" class="on" data-i18n="bandas.ongletJoueurs">Joueurs</button>
         <button data-tab="chat">Chat</button>
-        <button data-tab="defis">Défis</button>
+        <button data-tab="defis" data-i18n="bandas.ongletDefis">Défis</button>
       </div>
       <div class="lobby-main">
         <div class="lpanel green collapsed" id="panel-defis">
-          <div class="lp-strip" data-exp="defis" title="Déplier">»</div>
+          <div class="lp-strip" data-exp="defis" title="Déplier" data-i18n-attr="title:bandas.deplier">»</div>
           <div class="lp-full">
-            <div class="lp-head"><span class="lp-title" id="defis-title">Liste des défis</span><span class="lp-x" data-col="defis" title="Replier">✕</span></div>
+            <div class="lp-head"><span class="lp-title" id="defis-title" data-i18n="bandas.listeDefis">Liste des défis</span><span class="lp-x" data-col="defis" title="Replier" data-i18n-attr="title:bandas.replier">✕</span></div>
             <div class="lp-body" id="defis-body"></div>
             <div class="lp-foot" id="defis-foot"></div>
           </div>
         </div>
         <div class="lpanel yellow" id="panel-chat">
-          <div class="lp-strip" data-exp="chat" title="Déplier">»</div>
+          <div class="lp-strip" data-exp="chat" title="Déplier" data-i18n-attr="title:bandas.deplier">»</div>
           <div class="lp-full">
-            <div class="lp-head"><span class="lp-title">Chat</span><span class="lp-x" data-col="chat" title="Replier">✕</span></div>
+            <div class="lp-head"><span class="lp-title">Chat</span><span class="lp-x" data-col="chat" title="Replier" data-i18n-attr="title:bandas.replier">✕</span></div>
             <div class="lp-body chat-log" id="lobby-chat"></div>
-            <div class="lp-foot chat-input"><input id="lobby-say" placeholder="Écris un message…" maxlength="200"><button id="lobby-send">»</button></div>
+            <div class="lp-foot chat-input"><input id="lobby-say" placeholder="Écris un message…" maxlength="200" data-i18n-attr="placeholder:bandas.ecrisMessage"><button id="lobby-send">»</button></div>
           </div>
         </div>
         <div class="lpanel pink" id="panel-players">
-          <div class="lp-strip" data-exp="players" title="Déplier">»</div>
+          <div class="lp-strip" data-exp="players" title="Déplier" data-i18n-attr="title:bandas.deplier">»</div>
           <div class="lp-full">
-            <div class="lp-head"><span class="lp-title">liste des joueurs</span><span class="lp-x" data-col="players" title="Replier">✕</span></div>
+            <div class="lp-head"><span class="lp-title" data-i18n="bandas.listeJoueurs">liste des joueurs</span><span class="lp-x" data-col="players" title="Replier" data-i18n-attr="title:bandas.replier">✕</span></div>
             <div class="lp-body players-list" id="players"></div>
-            <div class="lp-foot"><span class="arrow" data-col="players" title="Replier">»</span></div>
+            <div class="lp-foot"><span class="arrow" data-col="players" title="Replier" data-i18n-attr="title:bandas.replier">»</span></div>
           </div>
         </div>
       </div>
@@ -376,7 +382,7 @@
   <!-- Les parties en différé : invitations, parties en cours, terminées. -->
   <div id="differe-vue">
     <div class="boite">
-      <div class="tete"><span id="differe-titre">Parties en différé</span><span class="x" id="differe-fermer" title="Fermer">✕</span></div>
+      <div class="tete"><span id="differe-titre" data-i18n="bandas.partiesDiffere">Parties en différé</span><span class="x" id="differe-fermer" title="Fermer" data-i18n-attr="title:bandas.fermer">✕</span></div>
       <div id="differe-box"></div>
     </div>
   </div>
@@ -406,7 +412,7 @@
           <span class="mav" id="m-av0"></span>
           <span class="minfo">
             <span class="mname" id="m-name0"></span>
-            <span class="mmeta"><img class="m-fruit" src="assets/page/orange.png" alt="oranges"><span id="m-count0"></span> · <span id="m-clock0">00:00</span> · <span class="mserie" id="m-serie0">★0</span></span>
+            <span class="mmeta"><img class="m-fruit" src="assets/page/orange.png" alt="oranges" data-i18n-attr="alt:bandas.oranges"><span id="m-count0"></span> · <span id="m-clock0">00:00</span> · <span class="mserie" id="m-serie0">★0</span></span>
           </span>
         </div>
         <div class="mchip" id="mchip1">
@@ -414,7 +420,7 @@
           <span class="mav" id="m-av1"></span>
           <span class="minfo">
             <span class="mname" id="m-name1"></span>
-            <span class="mmeta"><img class="m-fruit" src="assets/page/banana.png" alt="bananes"><span id="m-count1"></span> · <span id="m-clock1">00:00</span> · <span class="mserie" id="m-serie1">★0</span></span>
+            <span class="mmeta"><img class="m-fruit" src="assets/page/banana.png" alt="bananes" data-i18n-attr="alt:bandas.bananes"><span id="m-count1"></span> · <span id="m-clock1">00:00</span> · <span class="mserie" id="m-serie1">★0</span></span>
           </span>
         </div>
       </div>
@@ -422,16 +428,16 @@
       <canvas class="abs" id="bd-canvas" width="587" height="560" style="left:231px;top:0"></canvas>
 
       <!-- Bandeau d'aide mobile (visée d'une carte) -->
-      <div id="m-hint"><span id="m-hint-txt"></span><button id="m-hint-cancel">Annuler</button></div>
+      <div id="m-hint"><span id="m-hint-txt"></span><button id="m-hint-cancel" data-i18n="bandas.annuler">Annuler</button></div>
 
       <!-- Croix directionnelle mobile + boutons -->
       <div id="m-dpad">
-        <button class="pgbtn-css" id="m-sound">Son</button>
+        <button class="pgbtn-css" id="m-sound" data-i18n="bandas.son">Son</button>
         <button class="mdir" data-d="3">◀</button>
         <button class="mdir" data-d="0">▲</button>
         <button class="mdir" data-d="2">▼</button>
         <button class="mdir" data-d="1">▶</button>
-        <button class="pgbtn-css" id="m-giveup">Abandon</button>
+        <button class="pgbtn-css" id="m-giveup" data-i18n="bandas.abandon">Abandon</button>
       </div>
 
       <img class="abs barrow" id="arrow-up" src="assets/page/arrow_up.png" alt="">
@@ -442,17 +448,17 @@
       <div class="abs" id="slots1"></div>
       <div id="chatwrap">
         <div class="abs" id="bd-chatbox"></div>
-        <input class="abs" id="bd-input" placeholder="Discuter… (Entrée pour envoyer)" maxlength="200">
+        <input class="abs" id="bd-input" placeholder="Discuter… (Entrée pour envoyer)" maxlength="200" data-i18n-attr="placeholder:bandas.discuter">
       </div>
       <button id="m-chatbtn" title="Chat">💬</button>
-      <button class="abs pgbtn-css" id="btn-sound" style="left:14px;top:692px">Son</button>
-      <button class="abs pgbtn-css" id="btn-giveup" style="left:947px;top:692px">Abandon</button>
+      <button class="abs pgbtn-css" id="btn-sound" style="left:14px;top:692px" data-i18n="bandas.son">Son</button>
+      <button class="abs pgbtn-css" id="btn-giveup" style="left:947px;top:692px" data-i18n="bandas.abandon">Abandon</button>
       <!-- bannière d'annonce de carte : bande inclinée + nom français -->
       <div class="abs" id="bd-banner"><span id="bd-banner-txt"></span></div>
       <div class="abs" id="bd-info"></div>
       <!-- panneau de fin (style du jeu, textes d'origine en français) -->
       <div class="abs" id="bd-end">
-        <div class="endtitle" id="bd-endtitle">Quitter la partie</div>
+        <div class="endtitle" id="bd-endtitle" data-i18n="bandas.quitterPartie">Quitter la partie</div>
         <div class="endtext" id="bd-endtext"></div>
         <div class="endsub" id="bd-endsub"></div>
         <img class="okbtn" id="bd-ok" src="assets/common/ok.png" alt="OK">
@@ -466,8 +472,8 @@
           <div class="ms-name" id="m-sheet-name"></div>
           <div class="ms-desc" id="m-sheet-desc"></div>
           <div class="ms-actions">
-            <button class="ms-play" id="m-sheet-play">Jouer</button>
-            <button class="ms-close" id="m-sheet-close">Fermer</button>
+            <button class="ms-play" id="m-sheet-play" data-i18n="bandas.jouer">Jouer</button>
+            <button class="ms-close" id="m-sheet-close" data-i18n="bandas.fermer">Fermer</button>
           </div>
         </div>
       </div>
@@ -475,7 +481,7 @@
   </div>
 
   <div id="tournoi-vue"><div class="boite">
-    <div class="tete"><span id="tournoi-titre">Tournoi</span><span class="x" id="tournoi-fermer" title="Fermer">✕</span></div>
+    <div class="tete"><span id="tournoi-titre" data-i18n="bandas.tournoi">Tournoi</span><span class="x" id="tournoi-fermer" title="Fermer" data-i18n-attr="title:bandas.fermer">✕</span></div>
     <div class="corps" id="tournoi-corps"></div>
   </div></div>
 

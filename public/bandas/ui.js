@@ -12,6 +12,12 @@
   function each(l, f) { Array.prototype.forEach.call(l, f); }
   function xml(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
 
+  // LES LANGUES (/js/i18n.js, chargé dans le <head>) : le français reste écrit
+  // ici, argument de repli de T() ; l'anglais vit dans /bandas/lang/en.js. Les
+  // textes du HTML portent leur clé (data-i18n) et passent d'un coup ; en
+  // français, appliquer() ne touche à rien.
+  FPI18n.appliquer(document);
+
   function sameUser(a, b) { return String(a == null ? "" : a).toLowerCase() === String(b == null ? "" : b).toLowerCase(); }
   function isMe(p) { return !!p && (sameUser(p.u, state.user) || sameUser(p.n, state.user)); }
 
@@ -28,6 +34,8 @@
     amical: { titre: "MATCHES AMICAUX" },
   };
   var SALLE_DEFAUT = "chall";
+  // Le titre AFFICHÉ d'une salle (l'identifiant et SALLES restent tels quels).
+  function titreSalle(sa) { return SALLES[sa] ? T("bandas.salle." + sa, SALLES[sa].titre) : ""; }
   function salleGardee() {
     try { var s = localStorage.getItem("bandas.salle"); if (SALLES[s]) return s; } catch (e) {}
     return SALLE_DEFAUT;
@@ -50,8 +58,8 @@
   function showFdPopin(kind) {
     if (document.getElementById("fd-popin")) return;
     var msg = (kind === "opp-no-fd")
-      ? "Ton adversaire n’a plus de disque Challenge aujourd’hui. Proposez-lui un entraînement contre les bots (toujours libre), ou réessayez demain."
-      : "Nom d’un Pamplefrousse ! Tu as perdu tous tes disques Challenge pour aujourd’hui ! Continue à t’entraîner librement contre les bots, retente demain ou achète un pass en boutique !";
+      ? T("bandas.fdAdversaire", "Ton adversaire n’a plus de disque Challenge aujourd’hui. Proposez-lui un entraînement contre les bots (toujours libre), ou réessayez demain.")
+      : T("bandas.fdMoi", "Nom d’un Pamplefrousse ! Tu as perdu tous tes disques Challenge pour aujourd’hui ! Continue à t’entraîner librement contre les bots, retente demain ou achète un pass en boutique !");
     var wrap = document.createElement("div");
     wrap.id = "fd-popin";
     wrap.style.cssText = "position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.30)";
@@ -64,7 +72,7 @@
           '</div>' +
           '<p style="font-family:Verdana,Arial,sans-serif;font-size:14px;line-height:1.5;margin:0 0 20px">' + msg + '</p>' +
           '<div style="text-align:center">' +
-            '<button id="fd-popin-close" style="width:124px;height:30px;border:0;padding:0 0 2px;background:url(/fb/bouton_popin.png) no-repeat center/100% 100%;font-family:Verdana,Arial,sans-serif;font-weight:bold;font-size:13px;color:#660000;cursor:pointer">Fermer</button>' +
+            '<button id="fd-popin-close" style="width:124px;height:30px;border:0;padding:0 0 2px;background:url(/fb/bouton_popin.png) no-repeat center/100% 100%;font-family:Verdana,Arial,sans-serif;font-weight:bold;font-size:13px;color:#660000;cursor:pointer">' + esc(T("bandas.fermer", "Fermer")) + '</button>' +
           '</div>' +
         '</div>' +
       '</div>';
@@ -82,14 +90,14 @@
 
   // ── Connexion ────────────────────────────────────────────────────────────
   function start() {
-    if (!sid) { setStatus("Session manquante (?sid=)."); return; }
+    if (!sid) { setStatus(T("bandas.sessionManquante", "Session manquante (?sid=).")); return; }
     fetch("/api/forum/me?sid=" + encodeURIComponent(sid), { cache: "no-store" })
       .then(function (r) { return r.json(); })
       .then(function (d) {
-        if (!d || !d.user) { setStatus("Session invalide."); return; }
+        if (!d || !d.user) { setStatus(T("bandas.sessionInvalide", "Session invalide.")); return; }
         state.user = d.user; state.myBouille = d.bouille || DEFAULT_BOUILLE; connect();
       })
-      .catch(function () { setStatus("Réseau indisponible."); });
+      .catch(function () { setStatus(T("bandas.reseau", "Réseau indisponible.")); });
   }
   function connect() {
     var proto = location.protocol === "https:" ? "wss" : "ws";
@@ -97,7 +105,7 @@
     try { ws = new WebSocket(proto + "://" + location.host + "/"); } catch (e) { scheduleReconnect(); return; }
     state.ws = ws;
     ws.onopen = function () {
-      setStatus("Identification…");
+      setStatus(T("bandas.identification", "Identification…"));
       state.gotLobby = false; // (re)connexion → on se ré-enregistre au lobby
       send('<k l="' + xml(state.user) + '" s="' + xml(sid) + '" />');
       if (state.helloTimer) clearInterval(state.helloTimer);
@@ -108,7 +116,7 @@
       }, 600);
     };
     ws.onmessage = function (ev) { onData(ev.data); };
-    ws.onclose = function () { if (state.ws !== ws) return; setStatus("Reconnexion…"); scheduleReconnect(); };
+    ws.onclose = function () { if (state.ws !== ws) return; setStatus(T("bandas.reconnexion", "Reconnexion…")); scheduleReconnect(); };
     ws.onerror = function () { try { ws.close(); } catch (e) {} };
   }
   // Reconnexion automatique. Sur mobile, passer l'app en arrière-plan (ou un
@@ -161,7 +169,7 @@
     if (e === "err") {
       var m = el.getAttribute("m");
       if (m === "spectator-mute") { GV.muet(); return; }
-      if (m === "no-such-game" && state.screen === "lobby") { setStatus("Cette partie vient de se terminer."); bd({ a: "list" }); return; }
+      if (m === "no-such-game" && state.screen === "lobby") { setStatus(T("bandas.partieTerminee", "Cette partie vient de se terminer.")); bd({ a: "list" }); return; }
       // Refus FD d'un match classé : popin native (pas une simple ligne d'état).
       if (m === "no-fd" || m === "opp-no-fd") { showFdPopin(m); return; }
       if ($("#differe-vue").classList.contains("on") && differeUI.erreur) { differeUI.erreur(m); return; }
@@ -180,12 +188,15 @@
     salle: function () { return state.salle === "chall" ? null : state.salle; },
     ouvrir: function (id) { fermerDiffere(); bd({ a: "dopen", id: id }); },
     onListe: function (ui) {
-      var l = function (sa) { var n = ui.aMoi(sa), m = ui.enCours(sa); return m ? ("En différé : <b>" + n + "</b> à jouer · " + m + " en cours") : "En différé : 3 jours par coup"; };
+      var l = function (sa) {
+        var n = ui.aMoi(sa), m = ui.enCours(sa);
+        return m ? T("bandas.differeCompte", "En différé : <b>{n}</b> à jouer · {m} en cours", { n: n, m: m }) : T("bandas.differeRegle", "En différé : 3 jours par coup");
+      };
       $("#dif-champ").innerHTML = l("champ"); $("#dif-amical").innerHTML = l("amical");
     },
   });
   function ouvrirDiffere() {
-    $("#differe-titre").textContent = "Parties en différé — " + (SALLES[state.salle] ? SALLES[state.salle].titre.toLowerCase() : "");
+    $("#differe-titre").textContent = T("bandas.partiesDiffereSalle", "Parties en différé — {salle}", { salle: titreSalle(state.salle).toLowerCase() });
     $("#differe-vue").classList.add("on");
     differeUI.rendre();
     bd({ a: "dlist" });
@@ -204,11 +215,11 @@
   // ── Lobby ────────────────────────────────────────────────────────────────
   var lobbyPlayers = [], lobbyGames = [], lobbyLive = [], lobbySel = null;
   var SQCLASS = { idle: "SQ-idle", waiting: "SQ-waiting", playing: "SQ-playing" };
-  var STATUSLABEL = { idle: "Disponible", waiting: "En attente", playing: "En partie" };
+  var STATUSLABEL = { idle: T("bandas.disponible", "Disponible"), waiting: T("bandas.enAttente", "En attente"), playing: T("bandas.enPartie", "En partie") };
   function onLobby(el) {
     if (!state.gotLobby) {
       state.gotLobby = true;
-      setStatus("Connecté — " + state.user);
+      setStatus(T("bandas.connecte", "Connecté — {nom}", { nom: state.user }));
       if (state.screen === "connect") showScreen("mode");
       // Reconnecté en pleine observation : le serveur nous a oubliés.
       else if (state.inGame && GV.spectator) quitterSpectacle();
@@ -245,12 +256,12 @@
   function majNote() {
     var box = $("#ma-note"); if (!box) return;
     var moi = lobbyPlayers.filter(isMe)[0];
-    box.innerHTML = (moi && moi.el) ? "Ta note : <b>" + moi.el + "</b>" : "";
+    box.innerHTML = (moi && moi.el) ? T("bandas.taNote", "Ta note : <b>{note}</b>", { note: moi.el }) : "";
   }
   function findPlayer(uid) { for (var i = 0; i < lobbyPlayers.length; i++) if (lobbyPlayers[i].u === uid) return lobbyPlayers[i]; return null; }
   function renderLobby() {
     var me = lobbyPlayers.filter(isMe)[0];
-    $("#btn-create").textContent = (me && me.s === "waiting") ? "Annuler la partie" : "Créer une partie";
+    $("#btn-create").textContent = (me && me.s === "waiting") ? T("bandas.annulerPartie", "Annuler la partie") : T("bandas.creerPartie", "Créer une partie");
     if (lobbySel && !findPlayer(lobbySel)) lobbySel = null;
     renderPlayers(); renderDefis();
     if (isMobile() && $(".lobby-main") && !/\bmt-/.test($(".lobby-main").className)) setLobbyTab(state.lobbyTab || "players");
@@ -259,13 +270,13 @@
     var box = $("#players"); box.innerHTML = "";
     var playing = 0, waiting = 0;
     lobbyPlayers.forEach(function (p) { if (p.s === "playing") playing++; else if (p.s === "waiting") waiting++; });
-    box.appendChild(countRow("SQ-playing", playing + (playing > 1 ? " qui jouent" : " qui joue")));
-    box.appendChild(countRow("SQ-waiting", waiting + " en attente"));
+    box.appendChild(countRow("SQ-playing", T.n("bandas.quiJouent", playing, { one: "{n} qui joue", other: "{n} qui jouent" })));
+    box.appendChild(countRow("SQ-waiting", T("bandas.nEnAttente", "{n} en attente", { n: waiting })));
     lobbyPlayers.forEach(function (p) {
       if (isMe(p)) return;
       var row = div("pli can" + (lobbySel === p.u ? " sel" : ""));
       row.innerHTML = '<span class="sq ' + (SQCLASS[p.s] || "SQ-idle") + '"></span><span class="nm">' + esc(p.n || p.u) + "</span>"
-        + (p.w ? '<span class="eye" title="Regarde une partie">👁</span>' : "");
+        + (p.w ? '<span class="eye" title="' + esc(T("bandas.regardeUnePartie", "Regarde une partie")) + '">👁</span>' : "");
       row.onclick = function () { selectPlayer(p.u); };
       box.appendChild(row);
     });
@@ -281,52 +292,52 @@
     var p = lobbySel ? findPlayer(lobbySel) : null;
     var title = $("#defis-title"), body = $("#defis-body"), foot = $("#defis-foot");
     if (!p) {
-      title.textContent = "Liste des défis";
-      body.innerHTML = '<div class="defis-empty">Clique sur un joueur dans la liste de droite pour voir son statut et le défier.</div>';
+      title.textContent = T("bandas.listeDefis", "Liste des défis");
+      body.innerHTML = '<div class="defis-empty">' + T("bandas.cliqueJoueur", "Clique sur un joueur dans la liste de droite pour voir son statut et le défier.") + '</div>';
       renderLive(body);
-      foot.innerHTML = '<span class="arrow" data-col="defis" title="Replier">»</span>';
+      foot.innerHTML = '<span class="arrow" data-col="defis" title="' + esc(T("bandas.replier", "Replier")) + '">»</span>';
       return;
     }
     var name = p.n || p.u;
     // Au championnat, le nombre entre parenthèses est la NOTE de l'adversaire
     // (c'est elle qui dit ce qu'on a à gagner ou à perdre) ; ailleurs, sa série.
-    title.textContent = "Liste des défis de " + name
-      + " (" + (state.salle === "champ" ? (p.el || 0) : (p.sr || 0)) + ")";
-    body.innerHTML = '<div class="defis-status"><span class="sq ' + (SQCLASS[p.s] || "SQ-idle") + '"></span>' + esc(STATUSLABEL[p.s] || "Disponible") + "</div>";
+    title.textContent = T("bandas.listeDefisDe", "Liste des défis de {nom} ({n})",
+      { nom: name, n: state.salle === "champ" ? (p.el || 0) : (p.sr || 0) });
+    body.innerHTML = '<div class="defis-status"><span class="sq ' + (SQCLASS[p.s] || "SQ-idle") + '"></span>' + esc(STATUSLABEL[p.s] || STATUSLABEL.idle) + "</div>";
     foot.innerHTML = "";
     var btn = document.createElement("button"); btn.className = "btn-defier";
-    if (p.s === "idle") { btn.textContent = "Défier " + name; btn.onclick = function () { bd({ a: "challenge", u: p.u }); }; }
+    if (p.s === "idle") { btn.textContent = T("bandas.defier", "Défier {nom}", { nom: name }); btn.onclick = function () { bd({ a: "challenge", u: p.u }); }; }
     else if (p.s === "waiting") {
       var g = lobbyGames.filter(function (x) { return x.host === p.u; })[0];
-      if (g) { btn.textContent = "Rejoindre " + name; btn.onclick = function () { bd({ a: "join", g: g.id }); }; }
-      else { btn.textContent = "Défier " + name; btn.disabled = true; }
+      if (g) { btn.textContent = T("bandas.rejoindre", "Rejoindre {nom}", { nom: name }); btn.onclick = function () { bd({ a: "join", g: g.id }); }; }
+      else { btn.textContent = T("bandas.defier", "Défier {nom}", { nom: name }); btn.disabled = true; }
     } else {
       // En partie : on peut aller regarder.
       var lv = liveOf(p.u);
-      if (lv) { btn.textContent = "Regarder la partie"; btn.onclick = function () { bd({ a: "watch", g: lv.g }); }; }
-      else { btn.textContent = name + " est en partie"; btn.disabled = true; }
+      if (lv) { btn.textContent = T("bandas.regarderPartie", "Regarder la partie"); btn.onclick = function () { bd({ a: "watch", g: lv.g }); }; }
+      else { btn.textContent = T("bandas.estEnPartie", "{nom} est en partie", { nom: name }); btn.disabled = true; }
     }
     foot.appendChild(btn);
     // Hors Challenge : le même adversaire peut se jouer EN DIFFÉRÉ, qu'il soit
     // libre ou déjà en partie — l'invitation attend trois jours.
     if (state.salle !== "chall" && !p.bot) {
       var bd2 = document.createElement("button"); bd2.className = "btn-defier"; bd2.style.marginLeft = "6px";
-      bd2.textContent = "En différé"; bd2.title = "Inviter " + name + " à une partie en différé (3 jours par coup)";
+      bd2.textContent = T("bandas.enDiffere", "En différé"); bd2.title = T("bandas.inviterDiffere", "Inviter {nom} à une partie en différé (3 jours par coup)", { nom: name });
       bd2.onclick = function () { bd({ a: "dinvite", u: p.u, sa: state.salle }); ouvrirDiffere(); };
       foot.appendChild(bd2);
     }
-    var arr = document.createElement("span"); arr.className = "arrow"; arr.setAttribute("data-col", "defis"); arr.setAttribute("title", "Replier"); arr.textContent = "»"; foot.appendChild(arr);
+    var arr = document.createElement("span"); arr.className = "arrow"; arr.setAttribute("data-col", "defis"); arr.setAttribute("title", T("bandas.replier", "Replier")); arr.textContent = "»"; foot.appendChild(arr);
   }
   // ── Les parties en cours (spectateurs) ──────────────────────────────────
   function liveOf(uid) { for (var i = 0; i < lobbyLive.length; i++) if (lobbyLive[i].u0 === uid || lobbyLive[i].u1 === uid) return lobbyLive[i]; return null; }
   function renderLive(box) {
     if (!lobbyLive.length) return;
-    var t = div("live-title"); t.textContent = "Parties en cours"; box.appendChild(t);
+    var t = div("live-title"); t.textContent = T("bandas.partiesEnCours", "Parties en cours"); box.appendChild(t);
     lobbyLive.forEach(function (lv) {
       var r = div("live-row");
-      r.innerHTML = '<span class="lv-nm">' + esc(lv.n0) + " contre " + esc(lv.n1) + "</span>"
+      r.innerHTML = '<span class="lv-nm">' + T("bandas.contre", "{a} contre {b}", { a: esc(lv.n0), b: esc(lv.n1) }) + "</span>"
         + (lv.ns ? '<span class="lv-ns">👁 ' + lv.ns + "</span>" : "");
-      var b = document.createElement("button"); b.className = "btn-regarder"; b.textContent = "Regarder";
+      var b = document.createElement("button"); b.className = "btn-regarder"; b.textContent = T("bandas.regarder", "Regarder");
       b.onclick = function () { bd({ a: "watch", g: lv.g }); };
       r.appendChild(b); box.appendChild(r);
     });
@@ -359,7 +370,7 @@
       lobbyPlayers = []; lobbyGames = [];
       bd({ a: "room", sa: salle });
     }
-    $("#lobby-title").textContent = SALLES[salle].titre;
+    $("#lobby-title").textContent = titreSalle(salle);
     lobbySel = null;
     $("#panel-defis").classList.add("collapsed");
     showScreen("lobby");
@@ -408,30 +419,32 @@
     var t = tournoi.tournoi;
     var mien = monMatch();
     var texte;
+    // Le nom du tournoi et celui du tour viennent du serveur (le tour, dans la
+    // langue du joueur) ; le reste de la phrase est au client.
     if (t.statut === "finished") {
-      texte = "<b>" + esc(t.nom) + "</b> — 🏆 " + esc(t.champion || "—") + " l’emporte.";
+      texte = T("bandas.tournoiFini", "<b>{tournoi}</b> — 🏆 {champion} l’emporte.", { tournoi: esc(t.nom), champion: esc(t.champion || "—") });
     } else if (mien) {
-      texte = "<b>" + esc(t.nom) + "</b> · " + esc(mien.tour) + " — ton match :"
-        + ' <span class="adv">' + esc(mien.adv || "à déterminer") + "</span>"
+      texte = T("bandas.tournoiMonMatch", "<b>{tournoi}</b> · {tour} — ton match :", { tournoi: esc(t.nom), tour: esc(mien.tour) })
+        + ' <span class="adv">' + esc(mien.adv || T("bandas.aDeterminer", "à déterminer")) + "</span>"
         + " <b>" + mien.moi + " – " + mien.lui + "</b>"
-        + ' <span style="color:#6b7a55">(' + t.ecart + " d’écart pour plier)</span>";
+        + ' <span style="color:#6b7a55">' + T("bandas.ecartPourPlier", "({n} d’écart pour plier)", { n: t.ecart }) + "</span>";
     } else {
-      texte = "<b>" + esc(t.nom) + "</b> — aucun match en attente pour toi.";
+      texte = T("bandas.tournoiRien", "<b>{tournoi}</b> — aucun match en attente pour toi.", { tournoi: esc(t.nom) });
     }
     bandeau.innerHTML = texte + ' <span style="flex:1"></span>'
-      + '<span class="x" id="tournoi-ouvrir" style="color:#5d7a1c">Voir le tableau »</span>';
+      + '<span class="x" id="tournoi-ouvrir" style="color:#5d7a1c">' + T("bandas.voirTableau", "Voir le tableau »") + '</span>';
     bandeau.style.display = "";
     $("#tournoi-ouvrir").onclick = ouvrirTournoi;
   }
   function ligneMatch(m) {
     var g = function (u) { return m.fini && m.v && sameUser(m.v, u); };
     var nom = function (u) {
-      if (!u) return '<span style="color:#bbb">à déterminer</span>';
+      if (!u) return '<span style="color:#bbb">' + T("bandas.aDeterminer", "à déterminer") + '</span>';
       return '<span class="' + (g(u) ? "gagne" : "") + '">' + esc(u) + "</span>";
     };
-    if (!m.p2) return "<div>" + nom(m.p1) + ' <span style="color:#888">— exempt</span></div>';
+    if (!m.p2) return "<div>" + nom(m.p1) + ' <span style="color:#888">' + T("bandas.exempt", "— exempt") + '</span></div>';
     return "<div>" + nom(m.p1) + " <b>" + m.s1 + " – " + m.s2 + "</b> " + nom(m.p2)
-      + (m.fini ? "" : ' <span class="encours">en cours</span>') + "</div>";
+      + (m.fini ? "" : ' <span class="encours">' + T("bandas.enCours", "en cours") + '</span>') + "</div>";
   }
   function ouvrirTournoi() {
     if (!tournoi) return;
@@ -439,8 +452,9 @@
     $("#tournoi-titre").textContent = t.nom;
     var html = "";
     (tournoi.poules || []).forEach(function (p) {
-      html += '<div><h4>Poule ' + esc(p.poule) + "</h4><table>"
-        + "<tr><th>#</th><th>Joueur</th><th>V</th><th>D</th><th>Manches</th></tr>"
+      html += '<div><h4>' + T("bandas.poule", "Poule {poule}", { poule: esc(p.poule) }) + "</h4><table>"
+        + "<tr><th>#</th><th>" + T("bandas.colJoueur", "Joueur") + "</th><th>" + T("bandas.colV", "V") + "</th><th>"
+        + T("bandas.colD", "D") + "</th><th>" + T("bandas.colManches", "Manches") + "</th></tr>"
         + p.lignes.map(function (l, i) {
           return '<tr class="' + (sameUser(l.username, state.user) ? "moi" : "") + '"><td>' + (i + 1)
             + "</td><td>" + esc(l.username) + "</td><td>" + l.gagnes + "</td><td>" + l.perdus
@@ -451,7 +465,7 @@
       if (x.round === 0) return;                 // les poules sont déjà au-dessus
       html += "<div><h4>" + esc(x.nom) + "</h4>" + x.matchs.map(ligneMatch).join("") + "</div>";
     });
-    $("#tournoi-corps").innerHTML = html || '<p style="color:#999">Le tirage n’est pas encore fait.</p>';
+    $("#tournoi-corps").innerHTML = html || '<p style="color:#999">' + T("bandas.pasDeTirage", "Le tirage n’est pas encore fait.") + '</p>';
     $("#tournoi-vue").classList.add("on");
   }
   $("#btn-tournoi").onclick = ouvrirTournoi;
@@ -565,6 +579,6 @@
   };
 
   GV.init();
-  if (!window.Bandas || !window.Bandas.engine) setStatus("Moteur indisponible (engine.js).");
+  if (!window.Bandas || !window.Bandas.engine) setStatus(T("bandas.moteur", "Moteur indisponible (engine.js)."));
   else start();
 })();

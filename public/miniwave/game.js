@@ -21,6 +21,19 @@
 
 (function () {
 
+/*
+ * LES LANGUES (/js/i18n.js, chargé dans le <head> ; l'anglais dans
+ * /miniwave/lang/en.js). Sans FPI18n, le français, gabarit rempli. Ce qui
+ * reste tel quel : « level N » (déjà la chaîne anglaise de game/Main.as, dans
+ * l'Arcade Classic qui n'a que ses glyphes), GAME OVER, BRAVO, les noms des
+ * niveaux (des jeux de mots, levels.json) et celui du boss, « Orangre ».
+ */
+const I18N = (typeof window !== 'undefined' && window.FPI18n) || null;
+function tr(cle, fr, p) {
+  if (I18N) return I18N.T(cle, fr, p);
+  return String(fr).replace(/\{(\w+)\}/g, (m, k) => (p && p[k] != null ? String(p[k]) : m));
+}
+
 const E = window.MiniwaveEngine;
 const LARGEUR = E.LARGEUR, HAUTEUR = E.HAUTEUR;
 const BASE = '/miniwave/';
@@ -521,7 +534,7 @@ class Client {
           type: d.boss ? 3 : 0,
           titre: d.boss ? '' : ('level ' + (d.level + 1)),
           texte: d.boss
-            ? 'Attention ! Vous entrez dans une zone à haut risque : la présence de "Orangre" le boss des fruits mutants est détectée dans ce secteur...'
+            ? tr('miniwave.alerteBoss', 'Attention ! Vous entrez dans une zone à haut risque : la présence de "Orangre" le boss des fruits mutants est détectée dans ce secteur...')
             : (d.name || ''),
           alpha: 0, ta: 1,
         };
@@ -583,7 +596,7 @@ class Client {
         this.pauser(false);
         // Type 1 = game over, type 2 = félicitations (Main.getEndMsg).
         this.panneau = (d.raison === 'fin')
-          ? { type: 2, titre: '', texte: 'vous avez repoussé l\'attaque des fruits mutants', alpha: 0, ta: 1 }
+          ? { type: 2, titre: '', texte: tr('miniwave.felicitations', 'vous avez repoussé l\'attaque des fruits mutants'), alpha: 0, ta: 1 }
           : { type: 1, titre: 'GAME OVER', texte: '', alpha: 0, ta: 1 };
         this.panneauT = 1e9;
         break;
@@ -1176,7 +1189,7 @@ class Client {
     // Endurance : le palier atteint, seule mesure d'avancement du mode.
     if (this.mode === 'survival') {
       ctx.fillStyle = '#8fd0ff';
-      ctx.fillText('palier ' + (jeu.level + 1), 4, 3);
+      ctx.fillText(tr('miniwave.palier', 'palier {n}', { n: jeu.level + 1 }), 4, 3);
     }
 
     if (this.panneauT > 0 && this.panneau) this.dessinerMessage(ctx);
@@ -1270,7 +1283,7 @@ class Client {
     ctx.fillText('PAUSE', LARGEUR / 2, HAUTEUR / 2 - 1.5);
     ctx.font = '10px VerdanaPix, Verdana, sans-serif';
     ctx.fillStyle = 'rgba(255,255,255,.75)';
-    ctx.fillText('P, Échap ou ⏸ pour reprendre', LARGEUR / 2, HAUTEUR / 2 + 22);
+    ctx.fillText(tr('miniwave.reprendre', 'P, Échap ou ⏸ pour reprendre'), LARGEUR / 2, HAUTEUR / 2 + 22);
     ctx.textAlign = 'left';
     ctx.textBaseline = 'alphabetic';
   }

@@ -325,7 +325,8 @@ test('Mini-Wave en invité : six vaisseaux, cinq missions, deux modes spéciaux,
     const p = await attendrePanneau(page);
     assert.strictEqual(await page.evaluate(() => document.getElementById('fin').classList.contains('on')), true,
       'l\'écran de fin du jeu est là, dessous');
-    assert.deepStrictEqual(p.appels, [{ score: '0 points', libelle: 'Ton score' }]);
+    // libelleEn : le libellé du panneau en anglais (docs/I18N.md, « Les jeux »).
+    assert.deepStrictEqual(p.appels, [{ score: '0 points', libelle: 'Ton score', libelleEn: 'Your score' }]);
     assert.strictEqual(p.ouverts, 1);
     assert.strictEqual(await page.evaluate(() => document.getElementById('fin-pictos').textContent), '',
       'plus de « Partie hors compte. »');

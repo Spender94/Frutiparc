@@ -18,9 +18,13 @@
 
   var CARD_KEYS = ["enclume", "celerite", "confiscation", "renfort", "desordre",
     "petrification", "vachette", "conversion", "charge", "entracte", "solo", "piege"];
-  var CARD_LABELS = ["Enclume", "Célérité", "Confiscation", "Renfort", "Désordre",
-    "Pétrification", "Vachette", "Conversion", "Charge", "Entracte", "Solo", "Piège"];
-  var CARD_DESCS = [
+  // Les noms et les textes des cartes se traduisent d'un bloc (T.table, voir
+  // /bandas/lang/en.js) : les noms anglais sont ceux des bannières anglaises
+  // d'origine (assets/advertiser — ANVIL, SECOND WAVE, COW…). CARD_KEYS, lui,
+  // nomme les images et ne change pas.
+  var CARD_LABELS = T.table("bandas.cartes", ["Enclume", "Célérité", "Confiscation", "Renfort", "Désordre",
+    "Pétrification", "Vachette", "Conversion", "Charge", "Entracte", "Solo", "Piège"]);
+  var CARD_DESCS = T.table("bandas.cartesTexte", [
     "L'enclume détruit la case ciblée. Si l'enclume rencontre un obstacle, celui-ci est détruit.",
     "Vous pouvez jouer une seconde fois à ce tour.",
     "Si votre adversaire joue une carte au prochain tour, annulez son effet et récupérez la carte.",
@@ -33,7 +37,7 @@
     "Vous ne jouez pas ce tour-ci.",
     "Seul le fruit choisi se déplacera lors de votre prochain mouvement.",
     "Pose un piège sur une case libre : le fruit qui s'y placera sera détruit avec la case.",
-  ];
+  ]);
   // cible requise (Card.as) : enclume, pétrification, vachette, conversion, solo, piège
   var NEEDS_TARGET = { 0: 1, 5: 1, 6: 1, 7: 1, 10: 1, 11: 1 };
   var CARD = { ENCLUME: 0, CELERITE: 1, CONFISCATION: 2, RENFORT: 3, DESORDRE: 4, PETRIFICATION: 5, VACHETTE: 6, CONVERSION: 7, CHARGE: 8, ENTRACTE: 9, SOLO: 10, PIEGE: 11 };
@@ -185,16 +189,17 @@
     $("#bd-chatbox").innerHTML = "";
     if (GV.spectator) {
       var noms = players.slice().sort(function (a, b2) { return a.e - b2.e; }).map(function (p) { return p.n || p.u; });
-      logLine("Vous observez la partie de " + noms.join(" et ") + ". " + MUET);
+      logLine(T("bandas.vousObservez", "Vous observez la partie de {noms}.", { noms: noms.join(T("bandas.et", " et ")) }) + " " + MUET);
     } else if (GV.differe) {
-      logLine("Partie en différé : chacun joue quand il passe, trois jours par coup. Tu peux fermer, la partie t'attend — tu seras prévenu quand ce sera à toi.");
+      logLine(T("bandas.avertDiffere", "Partie en différé : chacun joue quand il passe, trois jours par coup. Tu peux fermer, la partie t'attend — tu seras prévenu quand ce sera à toi."));
     } else {
-      logLine("ATTENTION : Les touches F5, Alt-F4, Control-W, ou autres ferment ou relancent Frutiparc et vous font perdre la partie. Ne les utilisez pas !");
+      logLine(T("bandas.attention", "ATTENTION : Les touches F5, Alt-F4, Control-W, ou autres ferment ou relancent Frutiparc et vous font perdre la partie. Ne les utilisez pas !"));
     }
     var inp = $("#bd-input");
     inp.disabled = GV.spectator || GV.differe; inp.value = "";
-    inp.placeholder = GV.spectator ? "Chat en lecture seule (observateur)" : GV.differe ? "Pas de chat en différé" : "Discuter… (Entrée pour envoyer)";
-    $("#btn-giveup").textContent = $("#m-giveup").textContent = (GV.spectator || GV.differe) ? "Fermer" : "Abandon";
+    inp.placeholder = GV.spectator ? T("bandas.chatLecture", "Chat en lecture seule (observateur)")
+      : GV.differe ? T("bandas.pasDeChat", "Pas de chat en différé") : T("bandas.discuter", "Discuter… (Entrée pour envoyer)");
+    $("#btn-giveup").textContent = $("#m-giveup").textContent = (GV.spectator || GV.differe) ? T("bandas.fermer", "Fermer") : T("bandas.abandon", "Abandon");
     $("#bd-end").style.display = "none";
     $("#bd-banner").style.display = "none";
     $("#m-hint").classList.remove("on");
@@ -262,7 +267,7 @@
         var i = GV.pool.indexOf(c); if (i >= 0) GV.pool.splice(i, 1);
         GV.hands[team].push(c);
         if (el.getAttribute("mp") === "1") GV.phase = 2;
-        logLine(nameOf(team) + " a choisi une carte");
+        logLine(T("bandas.aChoisi", "{nom} a choisi une carte", { nom: nameOf(team) }));
         refreshPanes();
         break;
       }
@@ -481,7 +486,7 @@
       GV.hands[team].push(p);
       // ma confiscation avait déjà disparu de ma main à la pose
       if (team !== GV.myTeam) removeFromHand(team, CARD.CONFISCATION);
-      logLine(nameOf(team) + " confisque la carte de " + nameOf(1 - team) + " !");
+      logLine(T("bandas.confisque", "{nom} confisque la carte de {autre} !", { nom: nameOf(team), autre: nameOf(1 - team) }));
     } else if (!alreadyGone) {
       removeFromHand(team, card);
     }
@@ -513,7 +518,9 @@
         }
         break;
       case CARD.CELERITE:
-        logLine(team === GV.myTeam ? "Effet célérité, encore à vous !" : GV.spectator ? "Effet célérité, " + nameOf(team) + " bouge encore !" : "Effet célérité, l'adversaire bouge encore !");
+        logLine(team === GV.myTeam ? T("bandas.celeriteMoi", "Effet célérité, encore à vous !")
+          : GV.spectator ? T("bandas.celeriteJoueur", "Effet célérité, {nom} bouge encore !", { nom: nameOf(team) })
+            : T("bandas.celeriteAdversaire", "Effet célérité, l'adversaire bouge encore !"));
         break;
       // désordre / charge / entracte / confiscation : bannière seulement
     }
@@ -963,7 +970,7 @@
       $("#pside" + t).classList.toggle("active", active);
       $("#mchip" + t).classList.toggle("active", active);
     });
-    if (GV.phase === 1 && GV.currentTeam === GV.myTeam && !GV.ended) logLine("Choisissez une carte");
+    if (GV.phase === 1 && GV.currentTeam === GV.myTeam && !GV.ended) logLine(T("bandas.choisissezCarte", "Choisissez une carte"));
   }
 
   function refreshArrows() {
@@ -1024,13 +1031,13 @@
 
   function nameOf(team) {
     var p = GV.players.filter(function (q) { return q.e === team; })[0];
-    return p ? (p.n || p.u) : "équipe " + team;
+    return p ? (p.n || p.u) : T("bandas.equipe", "équipe {n}", { n: team });
   }
 
   // ── Chat & log ─────────────────────────────────────────────────────────────
   function logLine(txt) { addChatLine('<span class="log">' + esc(txt) + "</span>"); }
   // Erreur 2035 du jeu d'origine.
-  var MUET = "Les observateurs ne peuvent parler dans cette partie.";
+  var MUET = T("bandas.muet", "Les observateurs ne peuvent parler dans cette partie.");
   GV.note = logLine;
   GV.muet = function () { logLine(MUET); };
   // <bd e="spec" ns l="Kiwi, Pomme"> : on annonce qui arrive et qui s'en va
@@ -1040,8 +1047,8 @@
     var noms = l ? l.split(", ") : [];
     var avant = GV.specs || [];
     var moi = function (n) { return String(n).toLowerCase() === String(GV.user || "").toLowerCase(); };
-    noms.forEach(function (n) { if (avant.indexOf(n) < 0 && !moi(n)) logLine("👁 " + n + " observe la partie."); });
-    avant.forEach(function (n) { if (noms.indexOf(n) < 0 && !moi(n)) logLine("👁 " + n + " n'observe plus la partie."); });
+    noms.forEach(function (n) { if (avant.indexOf(n) < 0 && !moi(n)) logLine(T("bandas.observe", "👁 {nom} observe la partie.", { nom: n })); });
+    avant.forEach(function (n) { if (noms.indexOf(n) < 0 && !moi(n)) logLine(T("bandas.nObservePlus", "👁 {nom} n'observe plus la partie.", { nom: n })); });
     GV.specs = noms;
   };
   GV.chatMessage = function (user, msg) { addChatLine('<span class="nk">' + esc(user) + " &gt;</span> " + esc(msg)); };
@@ -1055,32 +1062,35 @@
     if (atBottom) box.scrollTop = box.scrollHeight;
   }
 
-  // ── Fin de partie (textes d'origine, en français) ─────────────────────────
+  // ── Fin de partie (textes d'origine — Texts.as —, en français ; leur anglais
+  //    est dans /bandas/lang/en.js) ──────────────────────────────────────────
   function showEnd() {
     var box = $("#bd-end");
     var mine = GV.winner === GV.myTeam;
     var draw = !(GV.winner === 0 || GV.winner === 1);
     // L'égalité par blocage (game.js) dit pourquoi ; celle de la Vachette garde son mot.
-    var nul = GV.endWhy === "repetition" ? "Égalité ! La même position pour la troisième fois : la partie tourne en rond."
-      : GV.endWhy === "blocage" ? "Égalité ! Vingt coups chacun sans qu’un fruit ne tombe : la partie est bloquée."
-      : "Égalité ! La Vachette gagne…";
+    var nul = GV.endWhy === "repetition" ? T("bandas.nulRepetition", "Égalité ! La même position pour la troisième fois : la partie tourne en rond.")
+      : GV.endWhy === "blocage" ? T("bandas.nulBlocage", "Égalité ! Vingt coups chacun sans qu’un fruit ne tombe : la partie est bloquée.")
+      : T("bandas.nulVachette", "Égalité ! La Vachette gagne…");
+    var gagne = T("bandas.aGagne", "La partie est terminée, {nom} a gagné !", { nom: nameOf(GV.winner) });
+    var remporte = T("bandas.remporte", "{nom} remporte la partie.", { nom: nameOf(GV.winner) });
     if (GV.spectator) {
       // L'observateur n'a ni série ni défaite : juste l'issue.
-      $("#bd-endtext").textContent = draw ? nul : "La partie est terminée, " + nameOf(GV.winner) + " a gagné !";
+      $("#bd-endtext").textContent = draw ? nul : gagne;
       $("#bd-endsub").textContent = "";
     } else if (GV.differe) {
       // En différé : ni série ni challenge — l'issue, et retour à la liste.
-      $("#bd-endtext").textContent = draw ? nul : mine ? "Partie en différé gagnée !" : "Partie en différé perdue.";
-      $("#bd-endsub").textContent = draw ? "" : nameOf(GV.winner) + " remporte la partie.";
+      $("#bd-endtext").textContent = draw ? nul : mine ? T("bandas.differeGagnee", "Partie en différé gagnée !") : T("bandas.differePerdue", "Partie en différé perdue.");
+      $("#bd-endsub").textContent = draw ? "" : remporte;
     } else if (draw) {
-      $("#bd-endtext").textContent = nul + "\nVous avez encore vos chances sur le challenge.";
+      $("#bd-endtext").textContent = T("bandas.nulChallenge", "{nul}\nVous avez encore vos chances sur le challenge.", { nul: nul });
       $("#bd-endsub").textContent = "";
     } else if (mine) {
-      $("#bd-endtext").textContent = "La partie est terminée, " + nameOf(GV.winner) + " a gagné !";
-      $("#bd-endsub").textContent = "+1 à votre série !";
+      $("#bd-endtext").textContent = gagne;
+      $("#bd-endsub").textContent = T("bandas.plusUnSerie", "+1 à votre série !");
     } else {
-      $("#bd-endtext").textContent = "Vous avez perdu !\nÀ bientôt sur le challenge Frutibandas.";
-      $("#bd-endsub").textContent = nameOf(GV.winner) + " remporte la partie.";
+      $("#bd-endtext").textContent = T("bandas.perdu", "Vous avez perdu !\nÀ bientôt sur le challenge Frutibandas.");
+      $("#bd-endsub").textContent = remporte;
     }
     box.style.display = "block";
     refreshArrows();
@@ -1130,7 +1140,7 @@
       var map = { ArrowUp: DIR.UP, ArrowDown: DIR.DOWN, ArrowLeft: DIR.LEFT, ArrowRight: DIR.RIGHT };
       if (map[ev.key] !== undefined) { ev.preventDefault(); requestMove(map[ev.key]); }
       if (ev.key === "m" || ev.key === "M") toggleMusic();
-      if (ev.key === "Escape" && GV.targetCard !== null) cancelTarget("Lancement de carte annulé.");
+      if (ev.key === "Escape" && GV.targetCard !== null) cancelTarget(T("bandas.carteAnnulee", "Lancement de carte annulé."));
     });
     // plateau : visée des cartes
     canvas.addEventListener("mousemove", function (ev) {
@@ -1147,7 +1157,7 @@
     $("#page").addEventListener("click", function (ev) {
       if (GV.targetCard === null) return;
       if (ev.target.closest("#bd-canvas, .cardslot, #m-sheet, #m-sheet-backdrop, #m-hint, #m-dpad, #m-chatbtn, #chatwrap")) return;
-      cancelTarget("Vous avez cliqué hors du plateau, lancement de carte annulé !");
+      cancelTarget(T("bandas.horsPlateau", "Vous avez cliqué hors du plateau, lancement de carte annulé !"));
     });
     // cartes
     $("#slots0").addEventListener("click", onSlotClick);
@@ -1168,7 +1178,7 @@
     function onGiveUp() {
       if (GV.ended) { closeEnd(); return; }
       if (GV.spectator || GV.differe) { if (GV.onQuit) GV.onQuit(); return; }   // regarder, ou différé : fermer sans confirmation
-      if (window.confirm("Voulez-vous abandonner la partie ?")) { if (GV.onQuit) GV.onQuit(); }
+      if (window.confirm(T("bandas.confirmerAbandon", "Voulez-vous abandonner la partie ?"))) { if (GV.onQuit) GV.onQuit(); }
     }
     $("#btn-giveup").addEventListener("click", onGiveUp);
     $("#m-giveup").addEventListener("click", onGiveUp);
@@ -1206,7 +1216,7 @@
       var d = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? DIR.RIGHT : DIR.LEFT) : (dy > 0 ? DIR.DOWN : DIR.UP);
       requestMove(d);
     }, { passive: false });
-    $("#m-hint-cancel").addEventListener("click", function () { cancelTarget("Lancement de carte annulé."); });
+    $("#m-hint-cancel").addEventListener("click", function () { cancelTarget(T("bandas.carteAnnulee", "Lancement de carte annulé.")); });
     $("#m-sheet-close").addEventListener("click", closeSheet);
     $("#m-sheet-backdrop").addEventListener("click", closeSheet);
     $("#m-sheet-play").addEventListener("click", function () {
@@ -1233,7 +1243,7 @@
     $("#m-sheet-img").src = "assets/cards/" + CARD_KEYS[card] + ".png";
     $("#m-sheet-name").textContent = CARD_LABELS[card];
     $("#m-sheet-desc").textContent = CARD_DESCS[card];
-    $("#m-sheet-play").textContent = GV.phase === 1 ? "Choisir cette carte" : "Jouer";
+    $("#m-sheet-play").textContent = GV.phase === 1 ? T("bandas.choisirCarte", "Choisir cette carte") : T("bandas.jouer", "Jouer");
     document.body.classList.add("sheet-open");
   }
   function closeSheet() {
@@ -1262,8 +1272,8 @@
     if (NEEDS_TARGET[card]) {                   // viser une case
       GV.targetCard = card;
       canvas.classList.add("target");
-      logLine("Choisissez une cible pour « " + CARD_LABELS[card] + " » (Échap pour annuler)");
-      $("#m-hint-txt").textContent = "Touche une case pour « " + CARD_LABELS[card] + " »";
+      logLine(T("bandas.choisissezCible", "Choisissez une cible pour « {carte} » (Échap pour annuler)", { carte: CARD_LABELS[card] }));
+      $("#m-hint-txt").textContent = T("bandas.toucheCase", "Touche une case pour « {carte} »", { carte: CARD_LABELS[card] });
       $("#m-hint").classList.add("on");
       refreshArrows();
     } else {
@@ -1275,7 +1285,7 @@
   function onBoardTap(clientX, clientY) {
     if (GV.targetCard === null) return;
     var c = cellAtClient(clientX, clientY);
-    if (!c) { cancelTarget("Vous avez cliqué hors du plateau, lancement de carte annulé !"); return; }
+    if (!c) { cancelTarget(T("bandas.horsPlateau", "Vous avez cliqué hors du plateau, lancement de carte annulé !")); return; }
     var err = validTarget(GV.targetCard, c);
     if (err) { logLine(err); if (isMobileView()) $("#m-hint-txt").textContent = err; return; }
     GV.send({ a: "play", c: GV.targetCard, x: c.x, y: c.y });
@@ -1287,9 +1297,9 @@
 
   function validTarget(card, c) {
     var el = GV.board.getElement(c);
-    if (card === CARD.PIEGE && el !== E.FREE) return "Vous devez cibler un emplacement libre !";
-    if ((card === CARD.PETRIFICATION || card === CARD.CONVERSION) && !(el === 0 || el === 1)) return "Vous devez cibler un fruit !";
-    if (card === CARD.SOLO && el !== GV.myTeam) return "Vous devez cibler un fruit vous appartenant !";
+    if (card === CARD.PIEGE && el !== E.FREE) return T("bandas.cibleLibre", "Vous devez cibler un emplacement libre !");
+    if ((card === CARD.PETRIFICATION || card === CARD.CONVERSION) && !(el === 0 || el === 1)) return T("bandas.cibleFruit", "Vous devez cibler un fruit !");
+    if (card === CARD.SOLO && el !== GV.myTeam) return T("bandas.cibleMonFruit", "Vous devez cibler un fruit vous appartenant !");
     return null;
   }
 
