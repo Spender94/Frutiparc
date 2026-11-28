@@ -1,5 +1,4 @@
 'use strict';
-const FPI18n = require('./public/js/i18n.js');
 /*
  * LES QUÊTES DE GROMELIN — le module pur.
  *
