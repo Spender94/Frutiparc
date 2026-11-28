@@ -90,19 +90,33 @@ test('Chromium : le téléphone a sa page d’accueil, le bureau garde la sienne
     const p = await ctx.newPage();
     const erreurs = [];
     p.on('pageerror', (e) => erreurs.push(e.message));
+    const urlsMobile = [];
+    p.on('request', (r) => urlsMobile.push(r.url()));
     await p.goto(BASE + '/?lang=fr', { waitUntil: 'networkidle' });
     assert.ok(await visible(p, '#landing'), 'la page du téléphone');
-    assert.equal(await p.textContent('.m-devise'), 'Des fruits, des jeux,du chat !');
-    for (const sel of ['#m-jeux', '#m-chat', '#m-fruits']) assert.ok(await visible(p, sel), sel);
+    assert.equal(await p.textContent('.m-devise'), 'Des jeux fruités,gratuits !');
+    for (const sel of ['#m-jeux', '#m-compte']) assert.ok(await visible(p, sel), sel);
     for (const sel of ['.layout > .games', '#welcome-text', '#topbar', '#register-form']) {
       assert.ok(!(await visible(p, sel)), sel + ' : l’accueil d’époque s’efface');
     }
-    assert.equal(await p.locator('#m-carrousel .m-jeu').count(), 11, 'onze jeux');
-    assert.equal(await p.locator('#m-carrousel .m-jeu-badge').count(), 2, 'deux jeux en ligne');
-    assert.equal(await p.locator('#m-ecrans .m-ecran').count(), 4, 'quatre frutiz au salon');
-    // La colline : cinq frutiz, dessinés quand la page a fini de charger.
-    await p.waitForFunction(() => document.querySelectorAll('#m-badauds .m-badaud canvas').length === 5, null, { timeout: 15000 });
-    assert.ok(await p.locator('#m-fil .m-ligne').count() >= 3, 'le salon n’est jamais vide');
+    // Les jeux, le cœur de la page : tous à l'écran d'un coup, en deux colonnes.
+    assert.equal(await p.locator('#m-grille .m-jeu').count(), 11, 'onze jeux');
+    assert.equal(await p.locator('#m-grille .m-jeu-badge').count(), 2, 'deux jeux en ligne');
+    const colonnes = await p.evaluate(() => new Set([...document.querySelectorAll('#m-grille .m-jeu')].map((j) => Math.round(j.getBoundingClientRect().left))).size);
+    assert.equal(colonnes, 2, 'deux colonnes au téléphone');
+    // Les filtres.
+    const montres = () => p.evaluate(() => [...document.querySelectorAll('#m-grille .m-jeu')].filter((j) => !j.hidden).length);
+    await p.click('.m-filtre[data-filtre="plusieurs"]');
+    assert.equal(await montres(), 2, 'à plusieurs : Frutibandas et Grapiz');
+    assert.equal(await p.getAttribute('.m-filtre[data-filtre="plusieurs"]', 'aria-pressed'), 'true');
+    await p.click('.m-filtre[data-filtre="reflexion"]');
+    assert.equal(await montres(), 4);
+    await p.click('.m-filtre[data-filtre="action"]');
+    assert.equal(await montres(), 7);
+    await p.click('.m-filtre[data-filtre=""]');
+    assert.equal(await montres(), 11);
+    // Plus aucune frutibouille sur cette page : le moteur ne se charge pas.
+    assert.deepEqual(urlsMobile.filter((u) => /\/js\/bouille-|\/fbouille\//.test(u)), [], 'pas de moteur des bouilles');
     // La connexion monte en feuille, et se referme (voile, Échap, croix).
     await p.click('.m-connexion');
     assert.equal(await p.evaluate(() => document.body.dataset.feuille), 'connexion');
@@ -112,7 +126,7 @@ test('Chromium : le téléphone a sa page d’accueil, le bureau garde la sienne
     assert.equal(await p.evaluate(() => document.body.dataset.feuille || ''), '');
     assert.ok(!(await visible(p, '#topbar')));
     // L'inscription : des champs à la hauteur d'un doigt.
-    await p.click('.m-actions [data-m-inscription]');
+    await p.click('.m-compte [data-m-inscription]');
     assert.equal(await p.evaluate(() => document.body.dataset.feuille), 'inscription');
     const hauteurs = await p.evaluate(() => [...document.querySelectorAll('#register-form input')].map((i) => i.getBoundingClientRect().height));
     assert.deepEqual(hauteurs, [48, 48, 48, 48]);
@@ -136,12 +150,12 @@ test('Chromium : le téléphone a sa page d’accueil, le bureau garde la sienne
     assert.equal(await p.evaluate(() => getComputedStyle(document.getElementById('status')).position), 'fixed');
     await p.keyboard.press('Escape');
     // Un jeu, d'un doigt : le jeu en invité.
-    await p.click('#m-carrousel .m-jeu >> nth=0');
+    await p.click('#m-grille .m-jeu >> nth=0');
     assert.ok(await visible(p, '#jeu-invite'));
     assert.match(await p.getAttribute('#ji-cadre', 'src'), /^\/bkiwi\/\?invite=1$/);
     await p.click('#ji-fermer');
     // Un jeu en ligne propose l'inscription — qui monte en feuille.
-    await p.click('#m-carrousel .m-jeu >> nth=9');
+    await p.click('#m-grille .m-jeu >> nth=9');
     await p.click('#ji-message button');
     assert.equal(await p.evaluate(() => document.body.dataset.feuille), 'inscription');
     assert.deepEqual(erreurs, []);
@@ -151,10 +165,11 @@ test('Chromium : le téléphone a sa page d’accueil, le bureau garde la sienne
     const ctxEn = await navigateur.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, locale: 'en-US' });
     const en = await ctxEn.newPage();
     await en.goto(BASE + '/?lang=en', { waitUntil: 'networkidle' });
-    assert.equal(await en.textContent('.m-devise'), 'Fruits, gamesand chat!');
+    assert.equal(await en.textContent('.m-devise'), 'Fruity games,all free!');
     assert.equal(await en.textContent('#m-jouer'), 'Play now');
-    assert.equal(await en.textContent('#m-carrousel .m-jeu-genre >> nth=0'), 'Racing');
-    assert.match(await en.textContent('#m-fil'), /Kiwinette: Hi everyone!!!/);
+    assert.equal(await en.textContent('#m-grille .m-jeu-genre >> nth=0'), 'Racing');
+    assert.equal(await en.textContent('.m-filtre[data-filtre="plusieurs"]'), 'Multiplayer');
+    assert.equal(await en.textContent('#m-titre-compte'), 'With an account');
     await ctxEn.close();
 
     // ── Le téléphone tenu à l'horizontale : toujours sa page, pas le bureau ──
