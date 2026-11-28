@@ -53,7 +53,7 @@ test('sources : la page du téléphone n’existe pas au bureau, et chacun de se
   assert.equal(ordre.length, 11);
   for (const id of ordre) assert.match(fiches, new RegExp('\\n      ' + id + ': \\['), id);
   // Les vignettes nettes existent.
-  for (const f of ['logo', 'fruits', 'bk', 'frutisnake', 'mb', 'fb', 'swapou', 'grapiz', 'kaluga', 'mwave', 'jamajama', 'mpixiz']) {
+  for (const f of ['logo', 'bk', 'frutisnake', 'mb', 'fb', 'swapou', 'grapiz', 'kaluga', 'mwave', 'jamajama', 'mpixiz']) {
     assert.ok(fs.existsSync(path.join(ROOT, 'public/images/m', f + '.webp')), f + '.webp');
   }
 });

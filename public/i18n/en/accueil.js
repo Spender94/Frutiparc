@@ -43,7 +43,7 @@ FPI18n.ajouter('en', {
   // ── L'accueil du téléphone (la page « landing » sous 760 px) ──
   'accueil.m.seConnecter': 'Log in',
   'accueil.m.devise': 'Fruits, games<br>and chat!',
-  'accueil.m.accroche': 'The fruity park is back. Play right away, no sign-up needed.',
+  'accueil.m.accroche': 'The fruity park is back. Play right away, no sign‑up needed.',
   'accueil.m.jouer': 'Play now',
   'accueil.m.creerCompte': 'Create my account',
   'accueil.m.frutizEnLigne': { one: '{n} frutiz online', other: '{n} frutiz online' },

@@ -388,12 +388,12 @@
        le touche (tout est sous la requête média, et les éléments `.m-only`
        n'y paraissent pas). Les téléphones n'existaient pas pour cet accueil-là :
        on s'y permet une vraie page d'accueil, ÉPURÉE, dans les codes du parc :
-       les verts de sa palette (le vert feuille #73B01E pour l'action, comme les
-       boutons du light et du mode invité ; pas de rose inventé), les cartes
-       blanches arrondies, le Verdana, le logo et la grappe de fruits, les
-       frutibouilles. Elle suit la devise :
+       ses verts, le rose de ses boutons d'action (celui des boutons d'époque
+       « S'inscrire » et « Découvrir » : #FFAAAD, texte #AF0512), les cartes
+       blanches arrondies, le Verdana, le logo, les frutibouilles. Elle suit la
+       devise :
 
-         · la SCÈNE   — logo, devise, grappe de fruits, « Jouer maintenant » ;
+         · la SCÈNE   — logo, devise, « Jouer maintenant » ;
          · DES JEUX   — les jeux en carrousel, à jouer en invité d'un doigt ;
          · DU CHAT    — un salon qui vit tout seul, frutibouilles animées ;
          · DES FRUITS — une frutibouille tirée au sort, puis l'inscription.
@@ -437,12 +437,14 @@
         background: url('/images/bg.gif') 35% 0 / auto var(--m-decor) no-repeat;
       }
       /* La hauteur du décor : celle de l'image à 260 % de la largeur d'un
-         téléphone en portrait, bornée pour l'écran large de l'horizontale. Le
-         bas de l'image se fond dans le vert : le fondu finit où elle s'arrête. */
+         téléphone en portrait, bornée pour l'écran large de l'horizontale.
+         Elle se fond dans le vert JUSTE SOUS LE LOGO : un bandeau de ciel et
+         d'arbres, et le texte, en dessous, sur le vert uni — sur l'arbre, il
+         se lisait mal. */
       .m-hero { --m-decor: clamp(290px, 88.5vw, 400px); }
       .m-hero::after {
-        content: ''; position: absolute; left: 0; right: 0; top: calc(var(--m-decor) - 130px); height: 130px; z-index: 0;
-        background: linear-gradient(rgba(185,234,118,0), #b9ea76); pointer-events: none;
+        content: ''; position: absolute; left: 0; right: 0; top: 96px; bottom: 0; z-index: 0;
+        background: linear-gradient(rgba(185,234,118,0), #b9ea76 104px); pointer-events: none;
       }
       .m-hero > * { position: relative; z-index: 1; }
       .langues { position: absolute; top: 12px; left: 12px; right: auto; font-size: 12px; z-index: 6; }
@@ -452,21 +454,20 @@
         font: bold 13px Verdana, Geneva, sans-serif; color: #335511;
         background: #fff; border: 0; border-radius: 16px; padding: 8px 14px; cursor: pointer;
       }
-      .m-logo { display: block; width: 216px; height: auto; margin: 0 auto; }
-      .m-grappe { display: block; width: 156px; height: auto; margin: 10px auto 0; }
-      .m-devise { margin: 14px 0 8px; font: bold 22px/1.25 Verdana, Geneva, sans-serif; color: #335511; }
+      .m-logo { display: block; width: 236px; height: auto; margin: 6px auto 0; }
+      .m-devise { margin: 32px 0 8px; font: bold 22px/1.25 Verdana, Geneva, sans-serif; color: #335511; }
       .m-devise br { display: block; }
       .m-accroche { max-width: 320px; margin: 0 auto 22px; font-size: 15px; line-height: 1.5; color: #4b6a24; }
       .m-actions { display: flex; flex-direction: column; gap: 10px; max-width: 320px; margin: 0 auto; }
-      /* Les boutons du parc : plats, arrondis, en Verdana gras — le vert
-         feuille pour agir, le blanc pour le reste. */
+      /* Les boutons du parc : plats, arrondis, en Verdana gras — le rose des
+         boutons d'époque pour agir, le blanc pour le reste. */
       .m-btn {
         display: block; width: 100%; border-radius: 14px; padding: 15px 18px; cursor: pointer;
         font: bold 16px/1.1 Verdana, Geneva, sans-serif;
       }
       .m-btn:active { transform: translateY(1px); }
-      .m-btn-plein { color: #fff; background: #73B01E; border: 0; box-shadow: 0 3px 0 #4f7d1e; }
-      .m-btn-plein:active { box-shadow: 0 2px 0 #4f7d1e; }
+      .m-btn-rose { color: #AF0512; background: #FFAAAD; border: 0; box-shadow: 0 3px 0 #F28687; }
+      .m-btn-rose:active { box-shadow: 0 2px 0 #F28687; }
       .m-btn-jouer::before { content: '\25B6\00A0\00A0'; font-size: 13px; vertical-align: 1px; }
       .m-btn-blanc { color: #335511; background: #fff; border: 0; }
       .m-enligne { margin: 16px 0 0; font-size: 13px; color: #335511; }
@@ -502,7 +503,7 @@
       .m-jeu:active .m-jeu-image { opacity: .85; }
       .m-jeu-jouer {
         position: absolute; right: 7px; bottom: 7px; width: 30px; height: 30px; border-radius: 50%;
-        background: #73B01E; color: #fff; font: 11px/30px Verdana, sans-serif; text-align: center;
+        background: #FFAAAD; color: #AF0512; font: 11px/30px Verdana, sans-serif; text-align: center;
       }
       .m-jeu-badge {
         position: absolute; left: 7px; top: 7px; padding: 4px 7px; border-radius: 8px;
@@ -637,10 +638,10 @@
       .mode-ring circle { display: none; }
       .btn { padding: 0 14px; font-size: 16px; line-height: 1; }
       .btn-primary, #forgot-submit {
-        flex: 1 1 100%; height: 50px; margin-top: 12px; border-radius: 14px; color: #fff;
-        background: #73B01E; border: 0; box-shadow: 0 3px 0 #4f7d1e; font: bold 16px/1 Verdana, Geneva, sans-serif;
+        flex: 1 1 100%; height: 50px; margin-top: 12px; border-radius: 14px; color: #AF0512;
+        background: #FFAAAD; border: 0; box-shadow: 0 3px 0 #F28687; font: bold 16px/1 Verdana, Geneva, sans-serif;
       }
-      .btn-primary:active, #forgot-submit:active { transform: translateY(1px); box-shadow: 0 2px 0 #4f7d1e; }
+      .btn-primary:active, #forgot-submit:active { transform: translateY(1px); box-shadow: 0 2px 0 #F28687; }
       .btn-secondary {
         flex: 1 1 100%; height: 48px; margin: 10px 0 0; padding: 0 14px; border-radius: 14px;
         border: 2px solid #E8F8D3; color: #4f7d1e; background: #fff; text-decoration: none; font-size: 15px;
@@ -712,11 +713,10 @@
     <section class="m-hero">
       <button type="button" class="m-connexion" data-m-connexion data-i18n="accueil.m.seConnecter">Se connecter</button>
       <img loading="lazy" decoding="async" class="m-logo" src="/images/m/logo.webp" width="236" height="105" alt="Frutiparc" />
-      <img loading="lazy" decoding="async" class="m-grappe" src="/images/m/fruits.webp" width="196" height="195" alt="" />
       <h1 class="m-devise" data-i18n-html="accueil.m.devise">Des fruits, des jeux,<br>du chat !</h1>
       <p class="m-accroche" data-i18n="accueil.m.accroche">Le parc fruité est de retour. Joue tout de suite, sans inscription.</p>
       <div class="m-actions">
-        <button type="button" class="m-btn m-btn-plein m-btn-jouer" id="m-jouer" data-i18n="accueil.m.jouer">Jouer maintenant</button>
+        <button type="button" class="m-btn m-btn-rose m-btn-jouer" id="m-jouer" data-i18n="accueil.m.jouer">Jouer maintenant</button>
         <button type="button" class="m-btn m-btn-blanc" data-m-inscription data-i18n="accueil.m.creerCompte">Créer mon compte</button>
       </div>
       <p class="m-enligne hidden" id="m-enligne"><i aria-hidden="true"></i><span></span></p>
@@ -747,7 +747,7 @@
         <button type="button" class="m-tete" id="m-tete" aria-label="Faire réagir la frutibouille" data-i18n-attr="aria-label:accueil.m.faireReagir"></button>
         <button type="button" class="m-autre" id="m-autre" data-i18n="accueil.m.uneAutre">Une autre !</button>
       </div>
-      <button type="button" class="m-btn m-btn-plein" data-m-inscription data-i18n="accueil.m.creerCompte">Créer mon compte</button>
+      <button type="button" class="m-btn m-btn-rose" data-m-inscription data-i18n="accueil.m.creerCompte">Créer mon compte</button>
       <p class="m-deja"><span data-i18n="accueil.m.dejaFrutiz">Déjà frutiz ?</span> <a href="#" data-m-connexion data-i18n="accueil.m.seConnecter">Se connecter</a></p>
     </section>
   </main>

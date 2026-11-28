@@ -3,8 +3,8 @@
 /*
  * LES IMAGES NETTES DE L'ACCUEIL DU TÉLÉPHONE (public/images/m/).
  *
- * L'accueil d'époque est en petites images : le logo fait 167 × 74, la grappe
- * de fruits 292 × 290, les vignettes des jeux 150 px. Sur l'écran d'un
+ * L'accueil d'époque est en petites images : le logo fait 167 × 74, les
+ * vignettes des jeux 150 px. Sur l'écran d'un
  * ordinateur de 2005, c'était le pixel près ; sur un téléphone, qui affiche
  * deux à trois pixels par point, c'est flou. On les agrandit donc ici en xBR —
  * l'algorithme des émulateurs, qui suit les contours des dessins au lieu de les
@@ -101,18 +101,6 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'fp-accueil-'));
 // écrans de téléphone. Agrandi sur du blanc, la couleur de son liseré.
 lisereDuLogo(path.join(PUB, 'images/logo.png'), path.join(tmp, 'logo.png'));
 agrandirDetoure(path.join(tmp, 'logo.png'), path.join(SORTIE, 'logo.webp'), 3, 'white');
-/*
- * La grappe de fruits de l'accueil, ×2 (elle s'affiche plus petite que nature).
- * Le GIF n'a PAS de transparence : il était posé sur le blanc de la carte
- * d'accueil. Le téléphone le pose sur le vert de la scène ; on efface donc le
- * blanc du FOND — par remplissage depuis les quatre coins, et non toute couleur
- * blanche, sans quoi le blanc des yeux partirait avec.
- */
-const detoure = path.join(tmp, 'fruits.png');
-execFileSync('convert', [path.join(PUB, 'images/welcome.gif') + '[0]', '-alpha', 'set', '-fuzz', '8%', '-fill', 'none',
-  '-draw', 'color 0,0 floodfill', '-draw', 'color 291,0 floodfill',
-  '-draw', 'color 0,289 floodfill', '-draw', 'color 291,289 floodfill', detoure]);
-agrandirDetoure(detoure, path.join(SORTIE, 'fruits.webp'), 2, '0xb9ea76');
 for (const f of ['bk', 'frutisnake', 'mb', 'fb', 'swapou', 'grapiz', 'kaluga', 'mwave', 'jamajama', 'mpixiz']) {
   agrandirVignette(path.join(PUB, 'images', f + '.png'), path.join(SORTIE, f + '.webp'));
 }
