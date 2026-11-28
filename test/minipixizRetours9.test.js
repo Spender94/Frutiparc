@@ -316,7 +316,9 @@ test('dans Chromium : la forêt dit l\'XP, Ornegon une barre par sort, le sac te
         return f.apply(this, arguments);
       };
     });
-    await p.goto(`http://localhost:${PORT}/minipixiz/index.html`);
+    // Le jeu parle la langue du navigateur (/js/i18n.js) — un Chromium sans
+    // réglage se dit « en-US » : on lit ici les textes FRANÇAIS, on le dit.
+    await p.goto(`http://localhost:${PORT}/minipixiz/index.html?lang=fr`);
     await p.waitForFunction(() => window.__plateforme && window.__client && window.__entrerEnForet);
     await p.evaluate(() => {
       const c = window.__plateforme.carte;

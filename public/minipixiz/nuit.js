@@ -39,6 +39,29 @@ const O = sousNode ? require('./items.js') : racine.MinipixizObjets;
 // page, donc la capture immédiate ne ramenait qu'un `undefined`. Ici, c'était
 // le cadeau d'une fée de retour de mission qui plantait la nuit.
 const P = () => (sousNode ? require('./plateforme.js') : racine.MinipixizPlateforme);
+// missions.js vient après nous dans la page : on le cherche au moment de lire
+// une phrase de fin (validerMission), pas au chargement.
+const M = () => (sousNode ? require('./missions.js') : racine.MinipixizMissions);
+
+// LES LANGUES (/js/i18n.js). FPI18n est cherché à CHAQUE appel ; sans lui —
+// sous Node, au serveur et aux tests —, le français, gabarits remplis.
+//
+// LE HASARD NE PARLE PAS. Partout où la nuit tire une phrase au sort (une
+// bâtisse, un adjectif, une envie de partir), elle tire le RANG dans la liste
+// française, puis lit la même case dans la liste traduite : le tirage, donc la
+// nuit tout entière, est le même dans les deux langues.
+function remplir(s, p) {
+  return String(s).replace(/\{(\w+)\}/g, (m, k) => (p && p[k] != null ? String(p[k]) : m));
+}
+function T(cle, fr, p) {
+  const I = racine.FPI18n;
+  return I && I.T ? I.T(cle, fr, p) : remplir(fr, p);
+}
+function dansLaLangue(cle, fr, i) {
+  const I = racine.FPI18n;
+  const t = (I && I.T && I.T.table) ? I.T.table(cle, null) : null;
+  return (t && typeof t[i] === 'string') ? t[i] : fr[i];
+}
 
 const JOUR = 86400000;                // Cs.sDay
 const MISSION_SEUIL_COURSE = 1000;    // Cm.upkeep : pas de mission avant d'avoir couru
@@ -163,30 +186,44 @@ function validerMission(carte, id, dire, enAttente) {
   for (const fs of (carte.$faerie || [])) {
     if (fs.$mission === id) { fs.$mission = null; revenues.push(fs); }
   }
+  const et = T('minipixiz.liste.et', ' et ');
   const groupe = revenues.map((f) => f.$name).reduce((s, v, i) => {
     if (i === 0) return v;
-    return s + (i === revenues.length - 1 ? ' et ' : ', ') + v;
+    return s + (i === revenues.length - 1 ? et : ', ') + v;
   }, '');
   const pluriel = revenues.length > 1;
+
+  // La phrase de fin est rangée en FRANÇAIS ($string, le format du SWF) ;
+  // missions.js la refait dans la langue du joueur. S'il n'y parvient pas (une
+  // phrase d'une autre version), le message reste en français d'un bout à
+  // l'autre plutôt que de mêler les deux langues.
+  const Mi = M();
+  const traduite = (Mi && Mi.phraseDeFinDansLaLangue) ? Mi.phraseDeFinDansLaLangue(mis) : null;
+  const p = {
+    groupe, n: revenues.length, phrase: traduite === null ? mis.$string : traduite,
+    a: pluriel ? 'ont' : 'a', na: pluriel ? 'n\'ont' : 'n\'a',
+  };
+  const phraseDeFin = (cle, fr) => (traduite === null ? remplir(fr, p) : T(cle, fr, p));
 
   let texte;
   if (mis.$gift !== null && mis.$gift !== undefined) {
     const it = O.info(mis.$gift);
-    texte = 'Félicitations !\n' + groupe + (pluriel ? ' ont ' : ' a ') + mis.$string
-      + '\nVous avez gagné l\'objet suivant : ' + (it ? it.nom : '?') + ' !';
+    p.objet = it ? it.nom : '?';
+    texte = phraseDeFin('minipixiz.nuit.missionReussie',
+      'Félicitations !\n{groupe} {a} {phrase}\nVous avez gagné l\'objet suivant : {objet} !');
     if (P().ramasser(carte, mis.$gift) === 'perdu') {
       if (Array.isArray(enAttente)) {
         enAttente.push(nombre(mis.$gift));
-        texte += '\nVotre inventaire était plein : l\'objet vous attend à l\'entrée du sac. '
-          + 'Faites-lui de la place avant de repartir.';
+        texte += '\n' + T('minipixiz.nuit.objetEnAttente', 'Votre inventaire était plein : l\'objet vous attend à l\'entrée du sac. '
+          + 'Faites-lui de la place avant de repartir.');
       } else {
-        texte += '\nMalheureusement, vous n\'aviez pas assez de place dans votre inventaire '
+        texte += '\n' + T('minipixiz.nuit.objetOffert', 'Malheureusement, vous n\'aviez pas assez de place dans votre inventaire '
           + 'pour cet objet. Il a donc été généreusement offert à l\'AFD '
-          + '( Association des Fées Démunies ) qui vous remercie chaleureusement pour ce don.';
+          + '( Association des Fées Démunies ) qui vous remercie chaleureusement pour ce don.');
       }
     }
   } else {
-    texte = groupe + (pluriel ? ' n\'ont ' : ' n\'a ') + mis.$string;
+    texte = phraseDeFin('minipixiz.nuit.missionRatee', '{groupe} {na} {phrase}');
   }
   if (dire) dire(texte);
 
@@ -269,13 +306,13 @@ function entretien(carte, alea) {
         else pond.$fs.$carac[t.entier(6)]++;
       }
       nouvellesFees++;
-      dire('On peut apercevoir une lueur étrange au fond du bassin...');
+      dire(T('minipixiz.nuit.lueur', 'On peut apercevoir une lueur étrange au fond du bassin...'));
     }
   } else if (pond.$d > 1) {
     pond.$d = 0;
     pond.$fs = null;
     pond.$q = null;
-    dire('La lueur du bassin s\'est éteinte cette nuit.');
+    dire(T('minipixiz.nuit.lueurEteinte', 'La lueur du bassin s\'est éteinte cette nuit.'));
   }
 
   // ── 3. LE DONJON ──
@@ -286,8 +323,12 @@ function entretien(carte, alea) {
     if (Math.pow(nombre(don.$lvl) + 1, 2) * 5000 < nombre(carte.$stat.$run)
       && (jour - nombre(don.$day)) > 4) {
       don.$f = true;
-      dire('Une ' + DONJONS[nombre(don.$lvl)] + ' a été construite pendant la nuit. '
-        + 'Des êtres ' + t.choisir(ADJECTIFS) + ' semblent rôder autour de celle-ci...');
+      const a = t.entier(ADJECTIFS.length);         // t.choisir(ADJECTIFS), le rang en main
+      dire(T('minipixiz.nuit.donjon', 'Une {batisse} a été construite pendant la nuit. '
+        + 'Des êtres {adjectif} semblent rôder autour de celle-ci...', {
+        batisse: dansLaLangue('minipixiz.nuit.DONJONS', DONJONS, nombre(don.$lvl)),
+        adjectif: dansLaLangue('minipixiz.nuit.ADJECTIFS', ADJECTIFS, a),
+      }));
     }
   }
 
@@ -295,7 +336,8 @@ function entretien(carte, alea) {
   for (const fs of (carte.$faerie || [])) {
     const moral = nombre(fs.$moral);
     if (nombre(fs.$level) >= 15 && moral > 0 && jour % moral === 0) {
-      dire(t.choisir(ENVIES_DE_PARTIR).split('$').join(fs.$name));
+      const e = t.entier(ENVIES_DE_PARTIR.length);  // t.choisir, le rang en main
+      dire(dansLaLangue('minipixiz.nuit.ENVIES_DE_PARTIR', ENVIES_DE_PARTIR, e).split('$').join(fs.$name));
     }
   }
 
@@ -310,7 +352,7 @@ function entretien(carte, alea) {
       arc.$day = 0;
       arc.$f = true;
       arc.$it = objetArcEnCiel(carte, t.entier);
-      dire('Il y a un magnifique arc-en-ciel, ce matin !');
+      dire(T('minipixiz.nuit.arcEnCiel', 'Il y a un magnifique arc-en-ciel, ce matin !'));
     }
   }
 

@@ -45,6 +45,17 @@ const F = sousNode ? require('./faerie.js') : racine.MinipixizFee;
 const nombre = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 const borner = (a, v, b) => Math.min(Math.max(a, v), b);
 
+// LES LANGUES (/js/i18n.js, chargé en tête de page). FPI18n est cherché à
+// CHAQUE appel ; sans lui — sous Node, au serveur et aux tests —, le français,
+// gabarits remplis.
+function remplir(s, p) {
+  return String(s).replace(/\{(\w+)\}/g, (m, k) => (p && p[k] != null ? String(p[k]) : m));
+}
+function T(cle, fr, p) {
+  const I = racine.FPI18n;
+  return I && I.T ? I.T(cle, fr, p) : remplir(fr, p);
+}
+
 // Mission.getNameList : les jetons à remplacer, dans CET ordre. Il compte —
 // `$2fromLocation` doit passer avant `$fromLocation`, sans quoi le remplacement
 // du second couperait le premier en deux.
@@ -74,9 +85,12 @@ const JETONS = [
 class Semeur {
   constructor(graine) { this.graine = nombre(graine); }
 
+  // `rang` retient la case tirée : c'est par lui que la phrase passe d'une
+  // langue à l'autre (voir motsDansLaLangue).
   mot(liste) {
-    if (!liste || liste.length === 0) return '';
-    const s = liste[this.graine % liste.length];
+    if (!liste || liste.length === 0) { this.rang = null; return ''; }
+    this.rang = this.graine % liste.length;
+    const s = liste[this.rang];
     this.graine = Math.floor(Math.pow(this.graine, 2) % (10000 + s.length));
     return s;
   }
@@ -108,6 +122,28 @@ function motsDeLaMission(graine) {
 }
 
 /**
+ * LA MÊME TABLE, DANS LA LANGUE DU JOUEUR.
+ *
+ * La graine tourne sur les mots FRANÇAIS — c'est leur LONGUEUR qui la
+ * transforme d'un mot au suivant, et une mission doit raconter la même
+ * histoire dans les deux langues. On retient donc le RANG de chaque mot tiré,
+ * et l'on prend le mot de même rang dans la liste traduite
+ * (minipixiz.langue.WORD_*, cf. MinipixizLangue.dansLaLangue). Les noms de
+ * fées ne se traduisent pas. Sans traduction, c'est motsDeLaMission.
+ */
+function motsDansLaLangue(graine) {
+  const s = new Semeur(graine);
+  const table = [];
+  for (const [jeton, cle] of JETONS) {
+    const fr = s.mot(L[cle]);
+    table.push([jeton, s.rang === null ? fr : L.dansLaLangue(cle, [s.rang])]);
+  }
+  table.push(['$2faerieName', s.nomDeFee()]);
+  table.push(['$faerieName', s.nomDeFee()]);
+  return table;
+}
+
+/**
  * Mission.getMissionText — remplace, dans l'ordre.
  *
  * `$faerieName` restant après la table est remplacé par un nom TIRÉ AU HASARD à
@@ -125,8 +161,35 @@ function texte(canevas, table, alea) {
   return s;
 }
 
+/*
+ * LE GABARIT TRADUIT. L'anglais range ses articles et ses prépositions dans
+ * ses propres canevas (« the $victims of $fromLocation »), et non dans les
+ * listes de mots comme le français (« les nains du moulin ») : chaque langue
+ * fait sa grammaire chez elle. Il lui faut une chose de plus — la MAJUSCULE
+ * d'un mot posé en tête de phrase : « $Kingdom » rend « The kingdom of… » là
+ * où « $kingdom » rend « the kingdom of… ». Ce jeton n'existe pas dans les
+ * canevas français : ce passage ne change pas un octet de leurs phrases.
+ */
+const majuscule = (s) => String(s).charAt(0).toUpperCase() + String(s).slice(1);
+function texteDansLaLangue(canevas, table, alea) {
+  let s = canevas;
+  for (const [jeton, mot] of table) {
+    const Jeton = '$' + majuscule(jeton.slice(1));
+    if (Jeton !== jeton && s.indexOf(Jeton) >= 0) s = s.split(Jeton).join(majuscule(mot));
+    s = s.split(jeton).join(mot);
+  }
+  if (s.indexOf('$faerieName') >= 0) {
+    s = s.split('$faerieName').join(F.genererNom(alea || Math.random));
+  }
+  return s;
+}
+
 /**
  * Ce que l'écran de Gromelin affiche pour une mission proposée.
+ *
+ * En FRANÇAIS, toujours : c'est d'ici que `accepter` tire la phrase de fin
+ * qu'il range dans la sauvegarde ($mis[].$string, que le SWF du bureau relit
+ * telle quelle). L'écran, lui, passe par decrireDansLaLangue.
  *
  * @param {Array} info  [difficulté, type, jours, cadeau, graine]
  */
@@ -149,6 +212,66 @@ function decrire(info, alea) {
     nomCadeau: objet ? objet.nom : '?',
     test: canevas.test,
   };
+}
+
+/**
+ * Ce que l'écran affiche, dans la langue du joueur : les canevas traduits
+ * (minipixiz.langue.MISSION), les mots de même rang (motsDansLaLangue), la
+ * difficulté, la durée et le nom du type. Tout le reste — le rang, les jours,
+ * le cadeau, ce que la mission met à l'épreuve — est celui de `decrire`. Sans
+ * traduction, c'est `decrire` au caractère près.
+ */
+function decrireDansLaLangue(info, alea) {
+  const d = decrire(info, alea);
+  const type = L.MISSION[info[1]] ? info[1] : 0;
+  const table = motsDansLaLangue(info[4]);
+  const canevas = (k) => L.dansLaLangue('MISSION', [type, 'desc', k]);
+  return Object.assign(d, {
+    titre: texteDansLaLangue(canevas(0), table, alea),
+    enonce: texteDansLaLangue(canevas(1), table, alea)
+      .split('$day').join(T('minipixiz.mission.jours', '{n} jours', { n: info[2] }))
+      .split('$dif').join(L.dansLaLangue('MISSION_DIF', [info[0]]) || ''),
+    reussite: texteDansLaLangue(canevas(2), table, alea),
+    echec: texteDansLaLangue(canevas(3), table, alea),
+    type: L.dansLaLangue('MISSION', [type, 'type']),
+  });
+}
+
+/**
+ * LA PHRASE DE FIN, DANS LA LANGUE DU JOUEUR — celle que la nuit lit le jour
+ * de l'échéance (nuit.js, validerMission).
+ *
+ * La sauvegarde garde la phrase FRANÇAISE, pas la graine ($mis[] = {$d,
+ * $gift, $type, $string} : le format du SWF du bureau, qui la relit). Or la
+ * phrase est entièrement fixée par le canevas ($type), l'issue (un cadeau, ou
+ * rien) et la graine : on retrouve donc la graine en refaisant la phrase
+ * française — dix mille graines au plus, la plage de Cm.genMissions —, puis on
+ * écrit la même avec les mots traduits.
+ *
+ * @returns {string|null} la phrase traduite ; null sans traduction (le
+ *          français), ou pour une phrase qu'aucune graine ne refait (une fiche
+ *          d'une autre version) — l'appelant garde alors le français.
+ */
+const phrasesRetrouvees = new Map();
+function phraseDeFinDansLaLangue(mis) {
+  if (!mis || typeof mis.$string !== 'string') return null;
+  const type = nombre(mis.$type);
+  if (!L.MISSION[type]) return null;
+  const k = (mis.$gift !== null && mis.$gift !== undefined) ? 2 : 3;
+  const fr = L.MISSION[type].desc[k];
+  const traduit = L.dansLaLangue('MISSION', [type, 'desc', k]);
+  if (traduit === fr) return null;
+  const cle = type + ':' + k + ':' + mis.$string;
+  if (phrasesRetrouvees.has(cle)) return phrasesRetrouvees.get(cle);
+  let trouve = null;
+  for (let g = 0; g < 10000; g++) {
+    if (texte(fr, motsDeLaMission(g)) === mis.$string) {
+      trouve = texteDansLaLangue(traduit, motsDansLaLangue(g));
+      break;
+    }
+  }
+  phrasesRetrouvees.set(cle, trouve);
+  return trouve;
 }
 
 /**
@@ -227,28 +350,30 @@ function accueil(carte, coefNuit, dejaVu) {
   if (!carte.$mission || nuit < 0.2) {
     return {
       ouvre: false,
-      dial: ['Toc, toc...', '...', 'Toc, toc, toc...', 'Apparemment, il n\'y a personne...'],
+      dial: [T('minipixiz.gromelin.toc', 'Toc, toc...'), '...',
+        T('minipixiz.gromelin.tocToc', 'Toc, toc, toc...'),
+        T('minipixiz.gromelin.personne', 'Apparemment, il n\'y a personne...')],
     };
   }
-  dial.push('Toc, toc...');
+  dial.push(T('minipixiz.gromelin.toc', 'Toc, toc...'));
   if (!dejaVu) {
-    dial.push('Que fais-tu là petit homme ?');
+    dial.push(T('minipixiz.gromelin.queFaisTu', 'Que fais-tu là petit homme ?'));
     if ((carte.$faerie || []).length > 0) {
-      dial.push('Ho mais c\'est une fée que tu as là ?');
-      dial.push('J\'ai peut-être du travail pour tes fées...');
+      dial.push(T('minipixiz.gromelin.uneFee', 'Ho mais c\'est une fée que tu as là ?'));
+      dial.push(T('minipixiz.gromelin.duTravail', 'J\'ai peut-être du travail pour tes fées...'));
     } else {
-      dial.push('C\'est pas ici que tu trouveras une fée, tu ferais mieux d\'aller voir '
-        + 'du côté du bassin...');
+      dial.push(T('minipixiz.gromelin.pasIci', 'C\'est pas ici que tu trouveras une fée, tu ferais mieux d\'aller voir '
+        + 'du côté du bassin...'));
     }
-    dial.push('Si tu veux gagner de chouettes objets sans te fatiguer, envoie-moi tes fées...');
-    dial.push('...Je peux leur trouver du travail, je connais bien ce pays.');
-    dial.push('Reviens me voir avec tes fées !');
-    dial.push('Attention ! Je ne m\'occupe que des fées correctement conditionnées... '
-      + 'Pas de fées sans bocal !');
+    dial.push(T('minipixiz.gromelin.envoieMoi', 'Si tu veux gagner de chouettes objets sans te fatiguer, envoie-moi tes fées...'));
+    dial.push(T('minipixiz.gromelin.cePays', '...Je peux leur trouver du travail, je connais bien ce pays.'));
+    dial.push(T('minipixiz.gromelin.reviens', 'Reviens me voir avec tes fées !'));
+    dial.push(T('minipixiz.gromelin.conditionnees', 'Attention ! Je ne m\'occupe que des fées correctement conditionnées... '
+      + 'Pas de fées sans bocal !'));
     return { ouvre: true, dial, missions: false };
   }
   if ((carte.$faerie || []).length === 0) {
-    dial.push('Grrr... Reviens me voir quand tu auras des fées, petit homme...');
+    dial.push(T('minipixiz.gromelin.pasDeFees', 'Grrr... Reviens me voir quand tu auras des fées, petit homme...'));
     return { ouvre: true, dial, missions: false };
   }
   // Accepter une mission RETIRE l'offre de la liste (`accepter` la splice, comme
@@ -258,34 +383,38 @@ function accueil(carte, coefNuit, dejaVu) {
   // retrouvait devant un parchemin nu sans un mot d'explication. Le jeu
   // d'origine a le même trou ; on le bouche du seul côté qui manquait.
   if (!(carte.$mission || []).length) {
-    dial.push('Grumph... Je n\'ai plus rien sous la main aujourd\'hui.');
-    dial.push('Repasse demain, j\'aurai retrouvé du travail pour tes fées.');
+    dial.push(T('minipixiz.gromelin.plusRien', 'Grumph... Je n\'ai plus rien sous la main aujourd\'hui.'));
+    dial.push(T('minipixiz.gromelin.repasse', 'Repasse demain, j\'aurai retrouvé du travail pour tes fées.'));
     return { ouvre: true, dial, missions: false };
   }
   const libres = feesDisponibles(carte);
   if (libres.length === 0) {
-    dial.push('Grumph.... Tu m\'as dérangé pour rien...');
-    dial.push('Tu n\'as pas de fées prêtes à recevoir une mission...');
-    dial.push('N\'oublie pas que je ne m\'occupe que des fées qui sont dans un bocal !');
+    dial.push(T('minipixiz.gromelin.pourRien', 'Grumph.... Tu m\'as dérangé pour rien...'));
+    dial.push(T('minipixiz.gromelin.pasPretes', 'Tu n\'as pas de fées prêtes à recevoir une mission...'));
+    dial.push(T('minipixiz.gromelin.bocal', 'N\'oublie pas que je ne m\'occupe que des fées qui sont dans un bocal !'));
     return { ouvre: true, dial, missions: false };
   }
-  dial.push('Voyons voir...');
-  dial.push('Mmmmhhh... J\'ai peut-être du boulot pour ' + enumerer(libres.map((f) => f.$name)) + '.');
-  dial.push('Rentre donc à l\'intérieur...');
+  dial.push(T('minipixiz.gromelin.voyons', 'Voyons voir...'));
+  dial.push(T('minipixiz.gromelin.duBoulot', 'Mmmmhhh... J\'ai peut-être du boulot pour {fees}.',
+    { fees: enumerer(libres.map((f) => f.$name)) }));
+  dial.push(T('minipixiz.gromelin.rentre', 'Rentre donc à l\'intérieur...'));
   return { ouvre: true, dial, missions: true, fees: libres };
 }
 
 // « a, b et c » — la façon dont Gromelin et Cm.validateMission énumèrent.
+// Le dernier lien est un mot de la langue : « a, b and c ».
 function enumerer(noms) {
+  const et = T('minipixiz.liste.et', ' et ');
   return noms.reduce((s, v, i) => {
     if (i === 0) return v;
-    return s + (i === noms.length - 1 ? ' et ' : ', ') + v;
+    return s + (i === noms.length - 1 ? et : ', ') + v;
   }, '');
 }
 
 const API = {
   Semeur, motsDeLaMission, texte, decrire, chances, feesDisponibles, accepter,
   accueil, enumerer, JETONS,
+  motsDansLaLangue, texteDansLaLangue, decrireDansLaLangue, phraseDeFinDansLaLangue,
 };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = API;

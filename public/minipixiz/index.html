@@ -249,6 +249,11 @@
   }
 </style>
 <script src="/js/sid-discret.js"></script>
+<!-- Les langues (docs/I18N.md, « Les jeux ») : T(), et le dictionnaire du jeu,
+     public/minipixiz/lang/en.js — chargé seulement hors du français. Le
+     français reste écrit dans le code, argument de repli de chaque T(). -->
+<script src="/js/i18n.js"></script>
+<script>FPI18n.charger(['commun', 'widgets', '/minipixiz/lang/{lang}.js']);</script>
 <!-- Le mode invité (?invite=1, lancé depuis l'accueil) : voir le fichier. -->
 <script src="/js/invite.js"></script>
 </head>
@@ -257,24 +262,24 @@
 <div id="tout">
   <div id="aire"><canvas id="stage" width="240" height="240"></canvas></div>
   <div id="manette">
-    <button type="button" data-cmd="gauche" aria-label="Gauche">◀</button>
-    <button type="button" class="tourner" data-cmd="tourner" aria-label="Tourner">⟳</button>
-    <button type="button" class="bas" data-cmd="bas" aria-label="Poser">POSER</button>
-    <button type="button" data-cmd="droite" aria-label="Droite">▶</button>
-    <button type="button" class="fee" data-cmd-aide aria-label="Appeler la fée">✦</button>
+    <button type="button" data-cmd="gauche" aria-label="Gauche" data-i18n-attr="aria-label:minipixiz.manette.gauche">◀</button>
+    <button type="button" class="tourner" data-cmd="tourner" aria-label="Tourner" data-i18n-attr="aria-label:minipixiz.manette.tourner">⟳</button>
+    <button type="button" class="bas" data-cmd="bas" aria-label="Poser" data-i18n="minipixiz.manette.poserBouton" data-i18n-attr="aria-label:minipixiz.manette.poser">POSER</button>
+    <button type="button" data-cmd="droite" aria-label="Droite" data-i18n-attr="aria-label:minipixiz.manette.droite">▶</button>
+    <button type="button" class="fee" data-cmd-aide aria-label="Appeler la fée" data-i18n-attr="aria-label:minipixiz.manette.fee">✦</button>
   </div>
-  <div id="aide-tactile">tapotez le plateau pour tourner · glissez pour déplacer · tirez vers le bas pour poser</div>
-  <div id="aide">← → pour déplacer · espace pour tourner · ↓ pour poser · ↑ pour appeler la fée — touches remappables au moulin</div>
+  <div id="aide-tactile" data-i18n="minipixiz.aide.tactile">tapotez le plateau pour tourner · glissez pour déplacer · tirez vers le bas pour poser</div>
+  <div id="aide" data-i18n="minipixiz.aide.clavier">← → pour déplacer · espace pour tourner · ↓ pour poser · ↑ pour appeler la fée — touches remappables au moulin</div>
 </div>
 
-<button type="button" id="sac-but">🎒 sac</button>
-<button type="button" id="pause-but" data-cmd-pause aria-pressed="false" aria-label="Mettre en pause">❚❚ pause</button>
+<button type="button" id="sac-but" data-i18n="minipixiz.sac">🎒 sac</button>
+<button type="button" id="pause-but" data-cmd-pause aria-pressed="false" aria-label="Mettre en pause" data-i18n="minipixiz.pause.bouton" data-i18n-attr="aria-label:minipixiz.pause.mettreEnPause">❚❚ pause</button>
 
 <!-- Le menu de l'aventure (Menu.mt) : l'écran d'où tout part. -->
 <div id="menu">
   <div id="menu-aire"><canvas id="menu-stage" width="240" height="240"></canvas></div>
   <div id="menu-pied">
-    <button type="button" id="menu-sac">🎒 sac</button>
+    <button type="button" id="menu-sac" data-i18n="minipixiz.sac">🎒 sac</button>
   </div>
   <!-- La lettre du courrier (mcMail) : le parchemin `inside`, le champ, les
        flèches `up`/`down`, et le voile `out` qui referme d'un clic à côté.
@@ -291,7 +296,7 @@
 <!-- L'inventaire, sur les dessins du jeu (Inventory.mt). -->
 <div id="inventaire">
   <div id="inv-aire"><canvas id="inv-stage" width="240" height="240"></canvas></div>
-  <button type="button" id="inv-fermer">retour</button>
+  <button type="button" id="inv-fermer" data-i18n="minipixiz.inv.retour">retour</button>
 </div>
 
 <!-- Le moulin (Option.mt) : le mode souris et les cinq touches du jeu,
@@ -299,15 +304,15 @@
      C'est ici que les joueurs historiques remettent leur sort sur espace. -->
 <div id="moulin">
   <div class="panneau">
-    <h2>Le Moulin — Options</h2>
-    <div class="rang"><span>Jouer à la souris</span><button type="button" id="mo-souris"></button></div>
-    <div class="rang"><span>Gauche</span><button type="button" data-role="0"></button></div>
-    <div class="rang"><span>Droite</span><button type="button" data-role="1"></button></div>
-    <div class="rang"><span>Tourner</span><button type="button" data-role="2"></button></div>
-    <div class="rang"><span>Descendre</span><button type="button" data-role="3"></button></div>
-    <div class="rang"><span>Appeler la fée (sort)</span><button type="button" data-role="4"></button></div>
-    <div class="note">clique une touche puis presse la nouvelle — Échap annule</div>
-    <div class="pied"><button type="button" id="mo-fermer">Fermer</button></div>
+    <h2 data-i18n="minipixiz.moulin.titre">Le Moulin — Options</h2>
+    <div class="rang"><span data-i18n="minipixiz.moulin.souris">Jouer à la souris</span><button type="button" id="mo-souris"></button></div>
+    <div class="rang"><span data-i18n="minipixiz.moulin.gauche">Gauche</span><button type="button" data-role="0"></button></div>
+    <div class="rang"><span data-i18n="minipixiz.moulin.droite">Droite</span><button type="button" data-role="1"></button></div>
+    <div class="rang"><span data-i18n="minipixiz.moulin.tourner">Tourner</span><button type="button" data-role="2"></button></div>
+    <div class="rang"><span data-i18n="minipixiz.moulin.descendre">Descendre</span><button type="button" data-role="3"></button></div>
+    <div class="rang"><span data-i18n="minipixiz.moulin.fee">Appeler la fée (sort)</span><button type="button" data-role="4"></button></div>
+    <div class="note" data-i18n="minipixiz.moulin.note">clique une touche puis presse la nouvelle — Échap annule</div>
+    <div class="pied"><button type="button" id="mo-fermer" data-i18n="minipixiz.moulin.fermer">Fermer</button></div>
   </div>
 </div>
 
@@ -315,11 +320,14 @@
   <div class="scene" id="scene-titre">
     <img class="logo" src="/minipixiz/titre-logo.svg" alt="MiniPixiz">
     <img class="bande" src="/minipixiz/titre-bande.svg" alt="">
-    <div class="mot">chargement en cours</div>
+    <div class="mot" data-i18n="minipixiz.chargement">chargement en cours</div>
     <div class="barre"><div id="jauge"></div></div>
   </div>
 </div>
 <script>
+  // Le HTML marqué data-i18n prend sa langue (FPI18n.appliquer) — en français,
+  // rien ne bouge.
+  if (window.FPI18n) FPI18n.appliquer(document);
   // L'écran-titre est dessiné aux mesures de la scène (240 × 240) : on l'agrandit
   // du même facteur que le canevas du jeu, pour qu'il ne saute pas à l'ouverture.
   (function () {
@@ -360,6 +368,11 @@
   // l'accueil. Pas de sid, jamais — ni fiche lue ou écrite, ni arbre classé,
   // ni voyant « en partie » —, et une fiche d'habitué en mémoire
   // (P.carteInvite : la forêt, le donjon, l'arc-en-ciel, Ornegon, une fée).
+  // LES LANGUES (/js/i18n.js, chargé en tête) : T(clé, français, params), le
+  // français en clair et en repli ; sans FPI18n, le français tel quel.
+  var T = window.T || function (cle, fr, p) {
+    return String(fr).replace(/\{(\w+)\}/g, function (m, k) { return p && p[k] != null ? String(p[k]) : m; });
+  };
   var invite = !!(window.FPInvite && FPInvite.actif);
   var sid = invite ? '' : ((window.FPSid && FPSid.sid) || new URLSearchParams(location.search).get('sid') || '');
   /*
@@ -415,9 +428,9 @@
    *     #1028 → 0 : le donjon      #1029 → 1 : le bassin      #1030 → 2 : Ornegon
    */
   var REFUS = [
-    'Vous avez besoin d\'une clé pour entrer dans donjon !!!',
-    'Vous ne pouvez pas plonger dans le bassin avec une fée en liberté !',
-    'Ornegon la grenouille ne peut communiquer qu\'avec les fées !',
+    T('minipixiz.refus.donjon', 'Vous avez besoin d\'une clé pour entrer dans donjon !!!'),
+    T('minipixiz.refus.bassin', 'Vous ne pouvez pas plonger dans le bassin avec une fée en liberté !'),
+    T('minipixiz.refus.ornegon', 'Ornegon la grenouille ne peut communiquer qu\'avec les fées !'),
   ];
 
   // Le voyant « en partie » — la même icône que le bureau pose à côté du
@@ -532,7 +545,18 @@
     if (!fs) return null;
     var fi = new window.MinipixizFee.Fee(fs, null, plateforme.carte);
     var raison = fi.raisonDeRester();
-    return raison ? (fs.$name + ' ' + raison + '. Vous partez seul.') : null;
+    return raison ? T('minipixiz.partSeul', '{nom} {raison}. Vous partez seul.', { nom: fs.$name, raison: raison }) : null;
+  }
+  // FaerieInfo.levelUp, dit à la clairière : « Lila passe au niveau 4 — +1 en
+  // force », ou « — elle apprend un sort ! ». Le nom de la caractéristique se
+  // lit dans la langue du joueur (MinipixizFee.nomCarac), pas dans « appris.nom ».
+  function direMontee(fi, appris) {
+    var F = window.MinipixizFee;
+    var p = { nom: fi.fs.$name, niveau: Number(fi.fs.$level) + 1,
+      carac: (F && F.nomCarac) ? F.nomCarac(appris.id) : appris.nom };
+    return appris.genre === 'carac'
+      ? T('minipixiz.monteeCarac', '{nom} passe au niveau {niveau} — +1 en {carac}', p)
+      : T('minipixiz.monteeSort', '{nom} passe au niveau {niveau} — elle apprend un sort !', p);
   }
   // La dernière raison annoncée. On ne retient le joueur qu'une fois par
   // raison : la deuxième tape part en forêt, et si la fée change d'état la
@@ -580,7 +604,7 @@
     g.fillStyle = '#34428d';
     g.textAlign = 'left';
     g.textBaseline = 'alphabetic';
-    g.fillText('chargement en cours', 47.95, 140.25);
+    g.fillText(T('minipixiz.chargement', 'chargement en cours'), 47.95, 140.25);
     return c;
   }
 
@@ -680,12 +704,7 @@
                     fi: mfXp.fi,
                     surChoix: function (choix) {
                       var appris = mfXp.fi.monterNiveau(choix, sortAApprendre);
-                      if (appris) {
-                        menu.dire(mfXp.fi.fs.$name + ' passe au niveau '
-                          + (Number(mfXp.fi.fs.$level) + 1) + ' — '
-                          + (appris.genre === 'carac' ? '+1 en ' + appris.nom
-                            : 'elle apprend un sort !'));
-                      }
+                      if (appris) menu.dire(direMontee(mfXp.fi, appris));
                       plateforme.ecrire(plateforme.carte);
                       // Le panneau s'est refermé : le niveau suivant s'ouvre
                       // sur sa gerbe.
@@ -712,12 +731,12 @@
               client.ouvrirNouvelle({
                 genre: 'relais',
                 numero: cpAvant + 2,
-                nom: (P.RELAIS || [])[cpAvant + 1] || '',
-                surFermer: function () { ouvrirMenu(); direFinInvite(finInviteForet('Relais atteint !')); },
+                nom: P.nomDuRelais ? P.nomDuRelais(cpAvant + 1) : ((P.RELAIS || [])[cpAvant + 1] || ''),
+                surFermer: function () { ouvrirMenu(); direFinInvite(finInviteForet(true)); },
               });
             } else {
               ouvrirMenu();
-              direFinInvite(finInviteForet('Relais atteint !'));
+              direFinInvite(finInviteForet(true));
             }
             return;
           }
@@ -729,9 +748,11 @@
       });
 
       // Ce que le panneau de l'invité dit d'une course : le niveau atteint,
-      // compté à partir de un comme sur la carte des relais.
-      function finInviteForet(titre) {
-        return { titre: titre, score: (course ? course.niveau : 0) + 1, libelle: 'Niveau atteint' };
+      // compté à partir de un comme sur la carte des relais. Le panneau porte
+      // son anglais à côté du français (libelleEn, titreEn : /js/invite.js).
+      function finInviteForet(relais) {
+        return { titre: relais ? 'Relais atteint !' : undefined, titreEn: relais ? 'Checkpoint reached!' : undefined,
+          score: (course ? course.niveau : 0) + 1, libelle: 'Niveau atteint', libelleEn: 'Level reached' };
       }
 
       // Fin de course — perdue ou menée jusqu'au relais. C'est le seul endroit
@@ -885,7 +906,7 @@
             // lance pas deux parties.
             if (arbreEnPreparation) return;
             arbreEnPreparation = true;
-            if (plateforme.sid) menu.dire('L\u2019arbre se prépare…');
+            if (plateforme.sid) menu.dire(T('minipixiz.arbre.prepare', 'L\u2019arbre se prépare…'));
             plateforme.demanderPartieArbre().then(function (partie) {
               arbreEnPreparation = false;
               menu.dire('');
@@ -895,7 +916,7 @@
           }
           if (lieu.va === 'rainbow') {
             if (!plateforme.carte.$rainbow.$f) {
-              menu.dire('Il n\'y a pas d\'arc-en-ciel aujourd\'hui.');
+              menu.dire(T('minipixiz.menu.pasDArcEnCiel', 'Il n\'y a pas d\'arc-en-ciel aujourd\'hui.'));
               return;
             }
             fermerMenu(); ouvrirLieu('ArcEnCiel'); irisVersJeu(); return;
@@ -923,7 +944,7 @@
             // joueur qui a déjà sa fée au bras.
             if (etat.feeEnMain) { menu.dire(REFUS[1]); return; }
             if (!etat.ouvert) {
-              menu.dire('Le bassin est calme. Aucune lueur au fond.');
+              menu.dire(T('minipixiz.menu.bassinCalme', 'Le bassin est calme. Aucune lueur au fond.'));
               return;
             }
             fermerMenu();
@@ -931,7 +952,8 @@
             irisVersJeu();
             return;
           }
-          menu.dire(lieu.titre + ' : pas encore ouvert.');
+          menu.dire(T('minipixiz.menu.pasEncoreOuvert', '{lieu} : pas encore ouvert.',
+            { lieu: T('minipixiz.lieu.' + lieu.nom, lieu.titre) }));
         },
         // Menu.initMsgIcon : toucher l'enveloppe ouvre la lettre.
         surCourrier: function () { ouvrirCourrier(); },
@@ -987,11 +1009,12 @@
         var html = '', jour = null;
         for (var i = 0; i < courrier.list.length; i++) {
           var o = courrier.list[i];
-          if (o.d !== jour) { html += '<b>Jour ' + o.d + '</b> :<br>'; jour = o.d; }
+          // « Jour N » en gras, et la ponctuation de la langue : « Day 3: ».
+          if (o.d !== jour) { html += T('minipixiz.courrier.jour', '<b>Jour {n}</b> :', { n: o.d }) + '<br>'; jour = o.d; }
           html += echapperHtml(o.txt).replace(/\n/g, '<br>') + '<br>';
         }
         var corps = $('#courrier-texte');
-        corps.innerHTML = html || 'Rien à lire pour le moment.';
+        corps.innerHTML = html || echapperHtml(T('minipixiz.courrier.vide', 'Rien à lire pour le moment.'));
         poserCadreCourrier();
         $('#courrier').classList.add('on');
         corps.scrollTop = 0;
@@ -1042,7 +1065,7 @@
             // `rideau` nous ramène. La fée qui s'envole, elle, ne perd pas.
             if (nom === 'rideau') { ouvrirMenu(); direFinInvite(); return; }
             if (nom === 'feeEnvolee') {
-              setTimeout(function () { ouvrirMenu(); direFinInvite({ titre: 'Une fée est libérée !' }); }, 600);
+              setTimeout(function () { ouvrirMenu(); direFinInvite({ titre: 'Une fée est libérée !', titreEn: 'A fairy is free!' }); }, 600);
               return;
             }
             if (nom === 'finPartie' && info && info.gagne) {
@@ -1069,13 +1092,13 @@
         gainsDonjon = null;
         var phrases = [];
         if (g.diamant !== null && g.diamant !== undefined) {
-          phrases.push('Le donjon est vaincu : un diamant de plus dans le sac ('
-            + (Number(g.diamant) + 1) + ' sur 5) !');
+          phrases.push(T('minipixiz.donjon.diamant', 'Le donjon est vaincu : un diamant de plus dans le sac ({n} sur 5) !',
+            { n: Number(g.diamant) + 1 }));
         } else {
-          phrases.push('Le donjon est vaincu — encore un tour de fait !');
+          phrases.push(T('minipixiz.donjon.vaincu', 'Le donjon est vaincu — encore un tour de fait !'));
         }
-        if (g.ornegon) phrases.push('Ornegon est libéré !');
-        if (g.arcEnCiel) phrases.push('Un arc-en-ciel est apparu dans la clairière !');
+        if (g.ornegon) phrases.push(T('minipixiz.donjon.ornegon', 'Ornegon est libéré !'));
+        if (g.arcEnCiel) phrases.push(T('minipixiz.donjon.arcEnCiel', 'Un arc-en-ciel est apparu dans la clairière !'));
         menu.dire(phrases.join(' '));
       }
 
@@ -1088,6 +1111,8 @@
       var arbreEnPreparation = false;
       var classementArbre = null;
       var battementsArbre = null;
+      // Le serveur rend un CODE ; le texte se choisit ici, dans la langue du
+      // joueur (minipixiz.arbre.<code>).
       var MOTIFS_ARBRE = {
         hors_ligne: 'partie jouée sans le serveur : elle n\u2019est pas classée.',
         partie_refusee: 'le serveur n\u2019a pas retrouvé cette partie en la rejouant : elle n\u2019est pas classée.',
@@ -1101,10 +1126,13 @@
         var r = classementArbre;
         classementArbre = null;
         if (r.ok) {
-          menu.dire(r.updated ? 'Arbre creux : ' + r.score + ' points, au classement du jour !'
-            : 'Arbre creux : ' + r.score + ' points (ton meilleur du jour reste ' + r.oldScore + ').');
+          menu.dire(r.updated
+            ? T('minipixiz.arbre.classe', 'Arbre creux : {score} points, au classement du jour !', { score: r.score })
+            : T('minipixiz.arbre.pasMieux', 'Arbre creux : {score} points (ton meilleur du jour reste {ancien}).',
+              { score: r.score, ancien: r.oldScore }));
         } else if (MOTIFS_ARBRE[r.error]) {
-          menu.dire('Arbre creux : ' + MOTIFS_ARBRE[r.error]);
+          menu.dire(T('minipixiz.arbre.motif', 'Arbre creux : {motif}',
+            { motif: T('minipixiz.arbre.' + r.error, MOTIFS_ARBRE[r.error]) }));
         }
       }
 
@@ -1119,12 +1147,15 @@
         // l'arc-en-ciel.
         function finInviteLieu() {
           var lieu = l || client.lieu;
-          if (classe === 'Arbre') return { score: lieu ? lieu.score : 0, libelle: 'Ton score' };
+          if (classe === 'Arbre') return { score: lieu ? lieu.score : 0, libelle: 'Ton score', libelleEn: 'Your score' };
           if (classe === 'Donjon') {
-            return { titre: lieu && lieu.gagne ? 'Donjon vaincu !' : undefined,
-              score: ((lieu ? lieu.level : 0) + 1) + ' / 10', libelle: 'Étage atteint' };
+            var vaincu = !!(lieu && lieu.gagne);
+            return { titre: vaincu ? 'Donjon vaincu !' : undefined, titreEn: vaincu ? 'Dungeon conquered!' : undefined,
+              score: ((lieu ? lieu.level : 0) + 1) + ' / 10', libelle: 'Étage atteint', libelleEn: 'Floor reached' };
           }
-          return { titre: lieu && lieu.gagne ? 'L’arc-en-ciel t’a donné son lot !' : undefined };
+          var lot = !!(lieu && lieu.gagne);
+          return { titre: lot ? 'L’arc-en-ciel t’a donné son lot !' : undefined,
+            titreEn: lot ? 'The rainbow gave you its prize!' : undefined };
         }
         var l = client.nouveauLieu(classe, {
           carte: plateforme.carte,
@@ -1233,12 +1264,7 @@
                     fi: mfXp.fi,
                     surChoix: function (choix) {
                       var appris = mfXp.fi.monterNiveau(choix, sortAApprendre);
-                      if (appris) {
-                        menu.dire(mfXp.fi.fs.$name + ' passe au niveau '
-                          + (Number(mfXp.fi.fs.$level) + 1) + ' — '
-                          + (appris.genre === 'carac' ? '+1 en ' + appris.nom
-                            : 'elle apprend un sort !'));
-                      }
+                      if (appris) menu.dire(direMontee(mfXp.fi, appris));
                       plateforme.ecrire(avant);
                       client.commencerOuverture(((client.lieu
                         && client.lieu.level) || 0) + 1);
@@ -1341,15 +1367,16 @@
       var NOMS_TOUCHES = { 8: 'Retour', 9: 'Tab', 13: 'Entrée', 16: 'Maj',
         17: 'Ctrl', 18: 'Alt', 32: 'Espace', 37: '←', 38: '↑', 39: '→',
         40: '↓', 46: 'Suppr' };
+      // Le nom d'une touche dans la langue du joueur (minipixiz.touche.<code>).
       function nomTouche(code) {
-        if (NOMS_TOUCHES[code]) return NOMS_TOUCHES[code];
+        if (NOMS_TOUCHES[code]) return T('minipixiz.touche.' + code, NOMS_TOUCHES[code]);
         if (code >= 48 && code <= 90) return String.fromCharCode(code);
-        if (code >= 96 && code <= 105) return 'PavNum ' + (code - 96);
+        if (code >= 96 && code <= 105) return T('minipixiz.touche.pavNum', 'PavNum {n}', { n: code - 96 });
         if (code >= 112 && code <= 123) return 'F' + (code - 111);
-        return 'code ' + code;
+        return T('minipixiz.touche.code', 'code {n}', { n: code });
       }
       function peindreMoulin() {
-        $('#mo-souris').textContent = plateforme.pref.$mouse ? 'oui' : 'non';
+        $('#mo-souris').textContent = plateforme.pref.$mouse ? T('minipixiz.moulin.oui', 'oui') : T('minipixiz.moulin.non', 'non');
         var boutons = document.querySelectorAll('#moulin [data-role]');
         Array.prototype.forEach.call(boutons, function (b) {
           b.textContent = nomTouche(plateforme.pref.$key[Number(b.getAttribute('data-role'))]);
@@ -1378,7 +1405,7 @@
             if (attente) attente.classList.remove('attend');
             attente = b;
             b.classList.add('attend');
-            b.textContent = 'presse…';
+            b.textContent = T('minipixiz.moulin.presse', 'presse…');
             client.captureTouche = true;
             var capter = function (ev) {
               ev.preventDefault();
@@ -1427,8 +1454,8 @@
       }
     })
     .catch(function (e) {
-      $('#chargement').innerHTML = '<div>Chargement impossible</div><div style="font-size:11px">'
-        + String(e && e.message || e) + '</div>';
+      $('#chargement').innerHTML = '<div>' + T('minipixiz.chargementImpossible', 'Chargement impossible')
+        + '</div><div style="font-size:11px">' + String(e && e.message || e) + '</div>';
     });
 })();
 </script>

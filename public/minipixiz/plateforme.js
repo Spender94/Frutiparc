@@ -54,6 +54,16 @@ const RELAIS = [
   'Le sentier oublié',
 ];
 
+// Le nom d'un relais dans la langue du joueur (minipixiz.relais.<rang>) — et
+// au-delà des sept, « Relais 8 ». FPI18n est cherché à CHAQUE appel ; sans lui
+// (Node), le français.
+function nomDuRelais(i) {
+  const I = racine.FPI18n;
+  const T = (cle, fr, p) => (I && I.T ? I.T(cle, fr, p)
+    : String(fr).replace(/\{(\w+)\}/g, (m, k) => (p && p[k] != null ? String(p[k]) : m)));
+  return RELAIS[i] ? T('minipixiz.relais.' + i, RELAIS[i]) : T('minipixiz.relais.n', 'Relais {n}', { n: i + 1 });
+}
+
 // Cs.bagLimit : combien de places l'inventaire offre selon le sac possédé.
 // Sans sac — $bag à zéro — il n'y a AUCUNE place, et c'est voulu : Item.getRandomId
 // ne fait alors tomber que des sacs. Le premier sac ouvre le jeu.
@@ -760,7 +770,7 @@ class Plateforme {
       index: i,
       niveau,
       affiche: niveau + 1,
-      nom: RELAIS[i] || ('Relais ' + (i + 1)),
+      nom: nomDuRelais(i),
       fin: finDeCourse(niveau),
     }));
   }
@@ -788,7 +798,7 @@ const API = {
   lireLoadVars, feeEnMain,
   normaliserPref, PREF_DEFAUT,
   nouveauxPictos, porteUneProgression, finDeCourse,
-  VERSION, NB_ZONES, PAS_CHECKPOINT, PLACES_SAC, RELAIS,
+  VERSION, NB_ZONES, PAS_CHECKPOINT, PLACES_SAC, RELAIS, nomDuRelais,
 };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = API;

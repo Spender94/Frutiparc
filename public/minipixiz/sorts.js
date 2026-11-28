@@ -54,6 +54,16 @@ const E = sousNode ? require('./engine.js') : racine.MinipixizEngine;
 // combat.js et ce fichier se citent l'un l'autre — on résout à l'appel.
 function combat() { return sousNode ? require('./combat.js') : racine.MinipixizCombat; }
 
+// LES LANGUES (/js/i18n.js) : le nom et l'effet de chaque sort, que montrent
+// la fiche de la fée, Ornegon, les parchemins et le panneau de montée —
+// minipixiz.sort.<Classe> et minipixiz.sort.<Classe>.desc. Rien d'autre ne les
+// lit : un sort se reconnaît à son numéro (`sid`), jamais à son nom. FPI18n
+// est cherché à CHAQUE appel ; sans lui (Node), le français.
+function T(cle, fr) {
+  const I = racine.FPI18n;
+  return I && I.T ? I.T(cle, fr) : fr;
+}
+
 const FORCE = 0, RAPIDITE = 1, INTELLIGENCE = 3, CONCENTRATION = 4;
 
 /**
@@ -354,8 +364,8 @@ class TirBilles extends Tir {
     s.init();
     s.initDirect(4);
   }
-  nom() { return 'Balles de lumières'; }
-  description() { return 'Elles permettent aux fées de se défendre contre les démons.'; }
+  nom() { return T('minipixiz.sort.TirBilles', 'Balles de lumières'); }
+  description() { return T('minipixiz.sort.TirBilles.desc', 'Elles permettent aux fées de se défendre contre les démons.'); }
 }
 
 // ── 21 · Théo laser ───────────────────────────────────────────────────────
@@ -369,8 +379,8 @@ class TirLaser extends Tir {
     s.initDirect(6);
     s.orienter();
   }
-  nom() { return 'Théo laser'; }
-  description() { return 'Ce tir rapide permet de toucher les démons les plus nerveux.'; }
+  nom() { return T('minipixiz.sort.TirLaser', 'Théo laser'); }
+  description() { return T('minipixiz.sort.TirLaser.desc', 'Ce tir rapide permet de toucher les démons les plus nerveux.'); }
 }
 
 // ── 22 · Solero shot ──────────────────────────────────────────────────────
@@ -384,8 +394,8 @@ class TirSolero extends Tir {
     s.initDirect(4.5);
     s.orienter();
   }
-  nom() { return 'Solero shot'; }
-  description() { return 'Tir efficace bien que vert.'; }
+  nom() { return T('minipixiz.sort.TirSolero', 'Solero shot'); }
+  description() { return T('minipixiz.sort.TirSolero.desc', 'Tir efficace bien que vert.'); }
 }
 
 // ── 23 · Mèches fantômes ──────────────────────────────────────────────────
@@ -403,8 +413,8 @@ class TirMeches extends Tir {
       s.majVitesse();
     }
   }
-  nom() { return 'Mèches fantômes'; }
-  description() { return 'Les mèches poursuivent votre ennemi, mais elles ne sont pas très puissantes.'; }
+  nom() { return T('minipixiz.sort.TirMeches', 'Mèches fantômes'); }
+  description() { return T('minipixiz.sort.TirMeches.desc', 'Les mèches poursuivent votre ennemi, mais elles ne sont pas très puissantes.'); }
 }
 
 // ── 24 · Glumelle ─────────────────────────────────────────────────────────
@@ -447,8 +457,8 @@ class TirGlumelle extends Tir {
       p.orienter();
     }
   }
-  nom() { return 'Glumelle'; }
-  description() { return 'La glumelle ralentit les démons touchés.'; }
+  nom() { return T('minipixiz.sort.TirGlumelle', 'Glumelle'); }
+  description() { return T('minipixiz.sort.TirGlumelle.desc', 'La glumelle ralentit les démons touchés.'); }
 }
 
 // ── 25 · Clametorche ──────────────────────────────────────────────────────
@@ -491,8 +501,8 @@ class TirClametorche extends Tir {
     shot.fondu = [3, 1];
     shot.timer = 4 + this.alea() * 10;
   }
-  nom() { return 'Clametorche'; }
-  description() { return 'C\'est une arme redoutable malgré sa courte portée.'; }
+  nom() { return T('minipixiz.sort.TirClametorche', 'Clametorche'); }
+  description() { return T('minipixiz.sort.TirClametorche.desc', 'C\'est une arme redoutable malgré sa courte portée.'); }
 }
 
 // ── 26 · Damaïdes ─────────────────────────────────────────────────────────
@@ -509,8 +519,8 @@ class TirDamaide extends Tir {
     s.types.push(C.T.FLOT);
     s.init();
   }
-  nom() { return 'Damaïdes'; }
-  description() { return 'Ce sont de puissantes vagues d\'énergie qui détruisent tout sur leur passage.'; }
+  nom() { return T('minipixiz.sort.TirDamaide', 'Damaïdes'); }
+  description() { return T('minipixiz.sort.TirDamaide.desc', 'Ce sont de puissantes vagues d\'énergie qui détruisent tout sur leur passage.'); }
 }
 
 // ── 27 · Âme en peine ─────────────────────────────────────────────────────
@@ -526,8 +536,8 @@ class TirAmeEnPeine extends Tir {
     s.types.push(C.T.SPHERE);
     s.init();
   }
-  nom() { return 'Âme en peine'; }
-  description() { return 'Elle poursuit sa victime jusqu\'à ce que celle-ci soit vidée de sa substance vitale.'; }
+  nom() { return T('minipixiz.sort.TirAmeEnPeine', 'Âme en peine'); }
+  description() { return T('minipixiz.sort.TirAmeEnPeine.desc', 'Elle poursuit sa victime jusqu\'à ce que celle-ci soit vidée de sa substance vitale.'); }
 }
 
 // ── 0 · Schème de Dimitri ─────────────────────────────────────────────────
@@ -646,8 +656,8 @@ class SchemeDeDimitri extends Sort {
     return this.best ? Math.max(0.001, this.best.score / 100) : 0;
   }
 
-  nom() { return 'Schème de Dimitri'; }
-  description() { return 'Échange deux billes adjacentes du niveau.'; }
+  nom() { return T('minipixiz.sort.SchemeDeDimitri', 'Schème de Dimitri'); }
+  description() { return T('minipixiz.sort.SchemeDeDimitri.desc', 'Échange deux billes adjacentes du niveau.'); }
 }
 
 // ── 1 · Perce-Puits ───────────────────────────────────────────────────────
@@ -747,8 +757,8 @@ class PercePuits extends Sort {
     return this.best ? this.best.score / 100 : 0;
   }
 
-  nom() { return 'Perce-Puits'; }
-  description() { return 'Détruit le sommet d\'une colonne de billes.'; }
+  nom() { return T('minipixiz.sort.PercePuits', 'Perce-Puits'); }
+  description() { return T('minipixiz.sort.PercePuits.desc', 'Détruit le sommet d\'une colonne de billes.'); }
 }
 
 // ── 2 · Dactylo ───────────────────────────────────────────────────────────
@@ -889,8 +899,8 @@ class Dactylo extends Sort {
   }
 
   pertinence() { return this.alea() * nombre(this.fi.carac[CONCENTRATION]) * 2; }
-  nom() { return 'Dactylo'; }
-  description() { return 'Les prochaines pièces contiendront une bille de moins.'; }
+  nom() { return T('minipixiz.sort.Dactylo', 'Dactylo'); }
+  description() { return T('minipixiz.sort.Dactylo.desc', 'Les prochaines pièces contiendront une bille de moins.'); }
 }
 
 // ── 3 · Météore ───────────────────────────────────────────────────────────
@@ -1082,8 +1092,8 @@ class Meteore extends Sort {
     return (best0 + best1) * 0.5;
   }
 
-  nom() { return 'Météore'; }
-  description() { return 'Transforme la prochaine pièce en un météore ardent destructeur.'; }
+  nom() { return T('minipixiz.sort.Meteore', 'Météore'); }
+  description() { return T('minipixiz.sort.Meteore.desc', 'Transforme la prochaine pièce en un météore ardent destructeur.'); }
 }
 
 // ── 4 · Gobeur de perles ──────────────────────────────────────────────────
@@ -1151,8 +1161,8 @@ class GobeurDePerles extends Sort {
   }
 
   pertinence() { return Math.pow(this.perles().length, 1.3) * 0.25; }
-  nom() { return 'Gobeur de perles'; }
-  description() { return 'Détruit toutes les perles présentes dans les billes colorées.'; }
+  nom() { return T('minipixiz.sort.GobeurDePerles', 'Gobeur de perles'); }
+  description() { return T('minipixiz.sort.GobeurDePerles.desc', 'Détruit toutes les perles présentes dans les billes colorées.'); }
 }
 
 // ── 5 · Dépressurisation ──────────────────────────────────────────────────
@@ -1238,8 +1248,8 @@ class Depressurisation extends Sort {
   }
 
   pertinence() { return Math.pow(this.armures().length, 1.3) * 0.4; }
-  nom() { return 'Dépressurisation'; }
-  description() { return 'Retire l\'armure de toutes les billes colorées du niveau.'; }
+  nom() { return T('minipixiz.sort.Depressurisation', 'Dépressurisation'); }
+  description() { return T('minipixiz.sort.Depressurisation.desc', 'Retire l\'armure de toutes les billes colorées du niveau.'); }
 }
 
 // ── 6 · Valse Fossile ─────────────────────────────────────────────────────
@@ -1389,8 +1399,8 @@ class ValseFossile extends Sort {
     return Math.pow(this.jeu.colorList.length - 1, 2) + this.best.score;
   }
 
-  nom() { return 'Valse Fossile'; }
-  description() { return 'Élimine une couleur présente à l\'écran en la remplaçant par des pierres.'; }
+  nom() { return T('minipixiz.sort.ValseFossile', 'Valse Fossile'); }
+  description() { return T('minipixiz.sort.ValseFossile.desc', 'Élimine une couleur présente à l\'écran en la remplaçant par des pierres.'); }
 }
 
 // ── 7 · Ascension ─────────────────────────────────────────────────────────
@@ -1472,8 +1482,8 @@ class Ascension extends Sort {
     return this.best ? this.best.score : 0;
   }
 
-  nom() { return 'Ascension'; }
-  description() { return 'Élimine une bille haute en la projetant dans les cieux.'; }
+  nom() { return T('minipixiz.sort.Ascension', 'Ascension'); }
+  description() { return T('minipixiz.sort.Ascension.desc', 'Élimine une bille haute en la projetant dans les cieux.'); }
 }
 
 // ── 8 · Exaltation ────────────────────────────────────────────────────────
@@ -1533,8 +1543,8 @@ class Exaltation extends Sort {
     return score;
   }
 
-  nom() { return 'Exaltation'; }
-  description() { return 'Transforme votre fée en une impitoyable machine à tuer.'; }
+  nom() { return T('minipixiz.sort.Exaltation', 'Exaltation'); }
+  description() { return T('minipixiz.sort.Exaltation.desc', 'Transforme votre fée en une impitoyable machine à tuer.'); }
 }
 
 // ── 9 · Tranche-Cimes ─────────────────────────────────────────────────────
@@ -1610,8 +1620,8 @@ class TrancheCimes extends Sort {
     return score;
   }
 
-  nom() { return 'Tranche-Cimes'; }
-  description() { return 'Coupe et supprime les plus hautes billes du niveau.'; }
+  nom() { return T('minipixiz.sort.TrancheCimes', 'Tranche-Cimes'); }
+  description() { return T('minipixiz.sort.TrancheCimes.desc', 'Coupe et supprime les plus hautes billes du niveau.'); }
 }
 
 // ── 10 · Silence ──────────────────────────────────────────────────────────
@@ -1656,8 +1666,8 @@ class Silence extends Sort {
     return this.champ.impList.filter((i) => !i.statut[C.STATUT.SILENCE]).length * 2;
   }
 
-  nom() { return 'Silence'; }
-  description() { return 'Empêche les démons de lancer leurs sortilèges.'; }
+  nom() { return T('minipixiz.sort.Silence', 'Silence'); }
+  description() { return T('minipixiz.sort.Silence.desc', 'Empêche les démons de lancer leurs sortilèges.'); }
 }
 
 // ── 11 · Tremblement de terre ─────────────────────────────────────────────
@@ -1739,8 +1749,8 @@ class Tremblement extends Sort {
     return score;
   }
 
-  nom() { return 'Tremblement de terre'; }
-  description() { return 'Détruit une partie des billes colorées du niveau.'; }
+  nom() { return T('minipixiz.sort.Tremblement', 'Tremblement de terre'); }
+  description() { return T('minipixiz.sort.Tremblement.desc', 'Détruit une partie des billes colorées du niveau.'); }
 }
 
 // ── 12 · Cloche d'immunité ────────────────────────────────────────────────
@@ -1860,8 +1870,8 @@ class Cloche extends Sort {
     return this.champ.impList.length * 0.5 / vie;
   }
 
-  nom() { return 'Cloche d\'immunité'; }
-  description() { return 'Crée un bouclier d\'énergie qui protège votre fée des tirs et des charges.'; }
+  nom() { return T('minipixiz.sort.Cloche', 'Cloche d\'immunité'); }
+  description() { return T('minipixiz.sort.Cloche.desc', 'Crée un bouclier d\'énergie qui protège votre fée des tirs et des charges.'); }
 }
 
 // ── 13 · Super Nova ───────────────────────────────────────────────────────
@@ -1985,8 +1995,8 @@ class SuperNova extends Sort {
     return score;
   }
 
-  nom() { return 'Super Nova'; }
-  description() { return 'Crée un trou noir aspirant les billes les plus proches.'; }
+  nom() { return T('minipixiz.sort.SuperNova', 'Super Nova'); }
+  description() { return T('minipixiz.sort.SuperNova.desc', 'Crée un trou noir aspirant les billes les plus proches.'); }
 }
 
 // ── 14 · Bannissement ─────────────────────────────────────────────────────
@@ -2046,8 +2056,8 @@ class Bannissement extends Sort {
     return score;
   }
 
-  nom() { return 'Bannissement'; }
-  description() { return 'Bannit définitivement tous les démons en liberté du niveau.'; }
+  nom() { return T('minipixiz.sort.Bannissement', 'Bannissement'); }
+  description() { return T('minipixiz.sort.Bannissement.desc', 'Bannit définitivement tous les démons en liberté du niveau.'); }
 }
 
 // ── 15 · Billes de lumière ────────────────────────────────────────────────
@@ -2182,8 +2192,8 @@ class BillesDeLumiere extends Sort {
     return (nombre(this.fi.carac[CONCENTRATION]) + this.champ.impList.length) * 0.4;
   }
 
-  nom() { return 'Billes de lumière'; }
-  description() { return 'Elles anéantiront vos ennemis ou les billes du niveau.'; }
+  nom() { return T('minipixiz.sort.BillesDeLumiere', 'Billes de lumière'); }
+  description() { return T('minipixiz.sort.BillesDeLumiere.desc', 'Elles anéantiront vos ennemis ou les billes du niveau.'); }
 }
 
 // ── 16 · Pigmentation ─────────────────────────────────────────────────────
@@ -2255,8 +2265,8 @@ class Pigmentation extends Sort {
     return score * Math.pow(nombre(this.fi.carac[RAPIDITE]), 0.5);
   }
 
-  nom() { return 'Pigmentation'; }
-  description() { return 'Votre fée peint d\'une couleur unique les billes du niveau en les touchant.'; }
+  nom() { return T('minipixiz.sort.Pigmentation', 'Pigmentation'); }
+  description() { return T('minipixiz.sort.Pigmentation.desc', 'Votre fée peint d\'une couleur unique les billes du niveau en les touchant.'); }
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -2374,8 +2384,8 @@ class ChuteJetons extends SortImpy {
     }
   }
 
-  nom() { return 'Éboulement'; }
-  description() { return 'Fait retomber des billes au sommet des colonnes.'; }
+  nom() { return T('minipixiz.sort.ChuteJetons', 'Éboulement'); }
+  description() { return T('minipixiz.sort.ChuteJetons.desc', 'Fait retomber des billes au sommet des colonnes.'); }
 }
 
 // ── Fils Paralysants (Bind) ───────────────────────────────────────────────
@@ -2420,8 +2430,8 @@ class Lien extends SortImpy {
     super.dissiper();
   }
 
-  nom() { return 'Fils Paralysants'; }
-  description() { return 'La pièce en cours ne peut plus tourner.'; }
+  nom() { return T('minipixiz.sort.Lien', 'Fils Paralysants'); }
+  description() { return T('minipixiz.sort.Lien.desc', 'La pièce en cours ne peut plus tourner.'); }
 }
 
 // ── Fumée troublante (Smoke) ──────────────────────────────────────────────
@@ -2482,8 +2492,8 @@ class Fumee extends SortImpy {
   // Il n'est plus là : rien ne peut l'interrompre.
   arretUrgence() {}
 
-  nom() { return 'Fumée troublante'; }
-  description() { return 'Le démon s\'évapore et reparaît au tour suivant.'; }
+  nom() { return T('minipixiz.sort.Fumee', 'Fumée troublante'); }
+  description() { return T('minipixiz.sort.Fumee.desc', 'Le démon s\'évapore et reparaît au tour suivant.'); }
 }
 
 // ── Quintal (Wall) ────────────────────────────────────────────────────────
@@ -2544,8 +2554,8 @@ class Mur extends SortImpy {
     }
   }
 
-  nom() { return 'Quintal'; }
-  description() { return 'Dresse un mur de pierres en travers du niveau.'; }
+  nom() { return T('minipixiz.sort.Mur', 'Quintal'); }
+  description() { return T('minipixiz.sort.Mur.desc', 'Dresse un mur de pierres en travers du niveau.'); }
 }
 
 // ── Cuirasse (Armor) ──────────────────────────────────────────────────────
@@ -2619,8 +2629,8 @@ class Armure extends SortImpy {
     if (this.eList.length === 0) this.toutFinir();
   }
 
-  nom() { return 'Cuirasse'; }
-  description() { return 'Blinde une partie des billes du niveau.'; }
+  nom() { return T('minipixiz.sort.Armure', 'Cuirasse'); }
+  description() { return T('minipixiz.sort.Armure.desc', 'Blinde une partie des billes du niveau.'); }
 }
 
 // ── Conglomérat ───────────────────────────────────────────────────────────
@@ -2707,8 +2717,8 @@ class Conglomerat extends SortImpy {
     super.dissiper();
   }
 
-  nom() { return 'Conglomérat'; }
-  description() { return 'La prochaine pièce sera énorme.'; }
+  nom() { return T('minipixiz.sort.Conglomerat', 'Conglomérat'); }
+  description() { return T('minipixiz.sort.Conglomerat.desc', 'La prochaine pièce sera énorme.'); }
 }
 
 // ── Migraine (ShapeBig) ───────────────────────────────────────────────────
@@ -2822,8 +2832,8 @@ class GrandeForme extends SortImpy {
     super.dissiper();
   }
 
-  nom() { return 'Migraine'; }
-  description() { return 'Les prochaines pièces contiendront une bille de plus.'; }
+  nom() { return T('minipixiz.sort.GrandeForme', 'Migraine'); }
+  description() { return T('minipixiz.sort.GrandeForme.desc', 'Les prochaines pièces contiendront une bille de plus.'); }
 }
 
 // ── Nuit Noire (Night) ────────────────────────────────────────────────────
@@ -2910,8 +2920,8 @@ class Nuit extends SortImpy {
     this.jeu.nuit = { x: this.lanceur.x, y: this.lanceur.y, prc: 100, ouverture: 0 };
   }
 
-  nom() { return 'Nuit Noire'; }
-  description() { return 'Éteint le niveau, sauf autour de la pièce.'; }
+  nom() { return T('minipixiz.sort.Nuit', 'Nuit Noire'); }
+  description() { return T('minipixiz.sort.Nuit.desc', 'Éteint le niveau, sauf autour de la pièce.'); }
 }
 
 // ── Origine ───────────────────────────────────────────────────────────────
@@ -3009,8 +3019,8 @@ class Origine extends SortImpy {
     }
   }
 
-  nom() { return 'Origine'; }
-  description() { return 'Ajoute une couleur au niveau.'; }
+  nom() { return T('minipixiz.sort.Origine', 'Origine'); }
+  description() { return T('minipixiz.sort.Origine.desc', 'Ajoute une couleur au niveau.'); }
 }
 
 const CLASSES_IMPY = {

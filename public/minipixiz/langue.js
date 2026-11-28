@@ -1261,21 +1261,66 @@ const LANGUE = {
   ]
 };
 
+/*
+ * LA LANGUE DU JOUEUR. Ces tables restent FRANÇAISES (elles sont extraites) ;
+ * l'anglais vit dans public/minipixiz/lang/en.js, sous minipixiz.langue.<NOM>,
+ * en tables de MÊME FORME (T.table de /js/i18n.js). La règle, partout où l'on
+ * tire au sort : le tirage se fait dans la table FRANÇAISE — sa longueur, ses
+ * trous (une case nulle est un silence) —, puis on lit la case de même rang
+ * dans la traduction. Le hasard consommé, et ce qu'il décide (parler ou se
+ * taire, la graine d'une mission), ne dépendent donc jamais de la langue.
+ *
+ * Sans FPI18n (le serveur, les tests sous Node) ou en français, la traduction
+ * est nulle et tout se lit dans les tables d'ici.
+ */
+function traduction(nom) {
+  const I = racine.FPI18n;
+  return (I && I.T && I.T.table) ? I.T.table('minipixiz.langue.' + nom, null) : null;
+}
+
+// La case au bout de `chemin` (une suite de rangs, ou de clés) dans la table
+// `nom`, dans la langue du joueur. Le français quand la traduction n'a rien à
+// cet endroit — et le silence partout où le français se tait.
+LANGUE.dansLaLangue = function (nom, chemin) {
+  let fr = LANGUE[nom], t = traduction(nom);
+  for (const k of (chemin || [])) {
+    fr = (fr === null || fr === undefined) ? fr : fr[k];
+    t = (t === null || t === undefined) ? t : t[k];
+  }
+  if (fr === null || fr === undefined) return fr;
+  return (t === null || t === undefined || typeof t !== typeof fr) ? fr : t;
+};
+
 // Lang.getItemFamily — comment la fée NOMME un objet qu'elle ne connaît pas :
 // par sa famille, jamais par son nom exact.
+//
+// Dans la langue du joueur : minipixiz.langue.FAMILLE (les noms de famille,
+// par clé), TRUC et TRUC_COLORE. L'adjectif ne se recolle pas — l'anglais le
+// met DEVANT le nom (« a colorful thingy »), d'où une liste à part, de même
+// longueur ; le rang du « truc » se tire toujours dans la liste française.
 LANGUE.getItemFamily = function (n, alea) {
   const hasard = alea || Math.random;
-  if (n >= 0 && n < 30) return "un objet magique";
-  if (n >= 40 && n < 50) return LANGUE.TRUC[Math.floor(hasard() * LANGUE.TRUC.length)];
-  if (n >= 50 && n < 60) return "une orbe";
-  if (n >= 60 && n < 70) return LANGUE.TRUC[Math.floor(hasard() * LANGUE.TRUC.length)] + " coloré";
-  if (n >= 70 && n < 80) return "une potion";
-  if (n >= 80 && n < 90) return "un nouveau sac";
-  if (n >= 100 && n < 200) return "un parchemin";
-  if (n >= 200 && n < 300) return "un livre";
-  if (n === 30) return "un bocal";
-  if (n === 31) return "une clé";
-  return "un Kouglof";
+  const famille = (cle, fr) => {
+    const t = traduction('FAMILLE');
+    return (t && typeof t[cle] === 'string') ? t[cle] : fr;
+  };
+  const truc = (colore) => {
+    const i = Math.floor(hasard() * LANGUE.TRUC.length);
+    const fr = colore ? LANGUE.TRUC[i] + " coloré" : LANGUE.TRUC[i];
+    const t = traduction(colore ? 'TRUC_COLORE' : 'TRUC');
+    return (t && typeof t[i] === 'string') ? t[i] : fr;
+  };
+  if (n >= 0 && n < 30) return famille('magique', "un objet magique");
+  if (n >= 40 && n < 50) return truc(false);
+  if (n >= 50 && n < 60) return famille('orbe', "une orbe");
+  if (n >= 60 && n < 70) return truc(true);
+  if (n >= 70 && n < 80) return famille('potion', "une potion");
+  if (n >= 80 && n < 90) return famille('sac', "un nouveau sac");
+  if (n >= 100 && n < 200) return famille('parchemin', "un parchemin");
+  if (n >= 200 && n < 300) return famille('livre', "un livre");
+  if (n === 30) return famille('bocal', "un bocal");
+  if (n === 31) return famille('cle', "une clé");
+  return famille('kouglof', "un Kouglof");
 };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = LANGUE;

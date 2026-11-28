@@ -292,11 +292,11 @@ test('le panneau écrit ses champs là où le fichier les pose', () => {
   assert.match(src, /bold 16px "Berlin Sans FB Demi"/);
   assert.match(src, /ctx\.fillText\(l, 5\.75, ty\)/);
   // butAccept : un bouton-texte sans plaque, boîte en (57,3 ; 223,3).
-  assert.match(src, /'accepter la mission!', 59\.3, 225\.3/);
+  assert.match(src, /'accepter la mission!'\), 59\.3, 225\.3/);
   assert.match(src, /\{ quoi: 'accepter', x: 57\.3, y: 223\.3, l: 125\.5, h: 16 \}/);
   // La frame 4 remplace le titre par l'en-tête statique du fichier.
-  assert.match(src, /'selectionner une ou plusieurs fées', 10\.1/);
-  assert.match(src, /'pour cette mission', 10\.1/);
+  assert.match(src, /'selectionner une ou plusieurs fées'\), 10\.1/);
+  assert.match(src, /'pour cette mission'\), 10\.1/);
   // fieldPrc à gauche en 120,65 — plus d'alignement à droite inventé.
   assert.match(src, /ctx\.fillText\(prc \+ '%', 120\.65/);
 });
@@ -354,7 +354,7 @@ test('la clairière porte l\'enveloppe qui clignote et la lettre du fichier', ()
   const html = fs.readFileSync(path.join(ROOT, 'public/minipixiz/index.html'), 'utf8');
   // Menu.displayLog : groupé par jour, « Jour N » en gras, et la lettre est le
   // parchemin du clip mcMail avec ses flèches.
-  assert.match(html, /<b>Jour ' \+ o\.d \+ '<\/b>/);
+  assert.match(html, /'<b>Jour \{n\}<\/b> :', \{ n: o\.d \}/);
   assert.match(html, /shape1039\.svg/);
   assert.match(html, /shape1042\.svg/);
   // Le défilé de bulles d'autrefois a disparu au profit du courrier.
