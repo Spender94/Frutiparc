@@ -20,6 +20,10 @@
 <meta charset="UTF-8">
 <title>Prunostics — Frutiparc</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Les langues du parc (voir /js/i18n.js) : en anglais, le dictionnaire des
+     Prunostics arrive pendant l'analyse de la page ; en français, rien. -->
+<script src="/js/i18n.js"></script>
+<script>FPI18n.charger(['commun', 'paris']);</script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font: 11px Verdana, Arial, Helvetica, sans-serif; background: #ADE76B; color: #335511; padding: 12px; }
@@ -214,18 +218,20 @@
   </div>
   <div class="onglets">
     <button data-vue="challenge" class="on">Challenge</button>
-    <button data-vue="tournois">Tournois</button>
-    <button data-vue="registre">Registre</button>
-    <button data-vue="parc">Le parc</button>
+    <button data-vue="tournois" data-i18n="paris.ongletTournois">Tournois</button>
+    <button data-vue="registre" data-i18n="paris.ongletRegistre">Registre</button>
+    <button data-vue="parc" data-i18n="paris.ongletParc">Le parc</button>
   </div>
-  <div class="vue" id="vue-challenge"><p class="vide">Chargement…</p></div>
-  <div class="vue" id="vue-tournois" hidden><p class="vide">Chargement…</p></div>
+  <div class="vue" id="vue-challenge"><p class="vide" data-i18n="paris.chargement">Chargement…</p></div>
+  <div class="vue" id="vue-tournois" hidden><p class="vide" data-i18n="paris.chargement">Chargement…</p></div>
   <div class="vue" id="vue-registre" hidden></div>
   <div class="vue" id="vue-parc" hidden></div>
 </div>
 <script>
 (function () {
   'use strict';
+  // Les textes écrits en dur dans la page (data-i18n), dans la langue du joueur.
+  FPI18n.appliquer(document);
   var params = new URLSearchParams(location.search);
   var sid = params.get('sid') || '';
   if (!sid) {
@@ -245,10 +251,25 @@
     });
   }
   function $(s) { return document.querySelector(s); }
-  function nombre(n) { return Number(n || 0).toLocaleString('fr-FR'); }
+  // LES NOMBRES ET LES COTES, à la manière de chaque langue : « 1 250 kikooz »
+  // et « ×2,5 » en français, « 1,250 kikooz » et « ×2.5 » en anglais. Le mot
+  // « kikooz » ne se traduit pas (glossaire du parc).
+  function nombre(n) { return T.nombre(Number(n || 0)); }
   function kz(n) { return nombre(n) + ' kikooz'; }
-  function cote(c) { return c == null ? '—' : '×' + String(c).replace('.', ','); }
+  // « 40 kikooz misés » : ce qui est déjà sur une cote.
+  function kzMises(n) { return T('paris.kzMises', '{montant} misés', { montant: kz(n) }); }
+  function cote(c) { return c == null ? '—' : '×' + String(c).replace('.', T('paris.virgule', ',')); }
   function retour(mise, c) { return Math.floor(mise * c + 1e-9); }
+  /*
+   * LES DATES. Le serveur écrit les jours en toutes lettres en français
+   * (`jourLisible`, `lisible` : « samedi 28 novembre ») et donne aussi le jour
+   * lui-même (`jour`, AAAA-MM-JJ) : c'est de lui que l'anglais tire le sien
+   * (« Saturday, November 28 »). Le français reste celui du serveur.
+   */
+  function jourLisible(fr, jour) { return T('paris.jourLisible', fr, { jour: jour }); }
+  // L'ordinal d'un rang au classement (« 12e », « 12th ») ; le rang affiché
+  // ainsi dépasse toujours 10 (voir rendreRegistre).
+  function ordinal(n) { return T('paris.ordinal', '{n}e', { n: n }); }
   // LES MÉDAILLES DU SITE — les jetons d'awards.swf (/fb/medal_*.svg), les
   // médailles de chaque jeu (/fb/medal_<métal>_<jeu>.png, celles des fiches),
   // et le trophée des tournois (/fb/trophee.svg). Pas d'emoji.
@@ -257,16 +278,21 @@
   // « en or » : le jeton d'or ; « médaillé » : les trois, l'un sur l'autre.
   // Le défi médaille : le jeton de la couleur demandée.
   var DEFI = { defi_bronze: 'bronze', defi_argent: 'argent', defi_or: 'or' };
-  var DEFI_QUOI = { bronze: 'une médaille', argent: 'l’argent ou l’or', or: 'l’or' };
+  // Ce que demande chaque défi, dans la langue du joueur (paris.defiQuoiOr…).
+  var DEFI_QUOI_FR = { bronze: 'une médaille', argent: 'l’argent ou l’or', or: 'l’or' };
+  var DEFI_QUOI = {
+    bronze: T('paris.defiQuoiBronze', DEFI_QUOI_FR.bronze),
+    argent: T('paris.defiQuoiArgent', DEFI_QUOI_FR.argent),
+    or: T('paris.defiQuoiOr', DEFI_QUOI_FR.or),
+  };
   function iconePari(type) {
     if (DEFI[type]) return jeton(DEFI[type]);
     return type === 'or' ? jeton('or') : '<span class="trio">' + jeton('or') + jeton('argent') + jeton('bronze') + '</span>';
   }
-  // « médaillé », « en or », « décroche l'argent ou l'or ».
-  function quoiType(type) {
-    if (DEFI[type]) return 'décroche ' + DEFI_QUOI[DEFI[type]];
-    return type === 'or' ? 'en or' : 'médaillé';
-  }
+  // « médaillé », « en or » : l'étiquette des deux boutons de pari du
+  // Challenge. (Dans une phrase, chaque sorte de pari a sa clé entière :
+  // l'anglais ne place pas ces mots au même endroit.)
+  function enOrOuMedaille(type) { return type === 'or' ? T('paris.enOr', 'en or') : T('paris.medaille', 'médaillé'); }
   var TROPHEE = '<img class="tro" src="/fb/trophee.svg" alt="">';
   // jeu (clé du Challenge) → suffixe des médailles du jeu, comme sur la fiche.
   var MEDAILLE_JEU = { swapou2: 'swapou', snake3: 'snake', bkiwi: 'bk', mb2: 'mb2', kaluga: 'kaluga',
@@ -276,7 +302,10 @@
     return k ? '<img class="mj" src="/fb/medal_' + METAL[metal] + '_' + k + '.png" alt="">' : jeton(metal);
   }
   function json(r) { return r.json(); }
-  var CONNEXION = '<p class="connexion">Pour parier, <a href="/light.html">connecte-toi au parc</a>, puis reviens ici.</p>';
+  var CONNEXION = '<p class="connexion">' + T('paris.connexion', 'Pour parier, <a href="/light.html">connecte-toi au parc</a>, puis reviens ici.') + '</p>';
+  // « Le serveur ne répond pas. » — quand la page ne reçoit rien.
+  var MUET = '<p class="vide">' + T('paris.serveurMuet', 'Le serveur ne répond pas. Réessaie dans un instant.') + '</p>';
+  var MISE_MINI = T('paris.miseMini', 'Indique une mise d’au moins 1 kikooz.');
 
   // ── L'état ─────────────────────────────────────────────────────────────
   var vue = 'challenge';
@@ -292,7 +321,7 @@
   function majSolde(n) {
     if (n == null) return;
     solde = n;
-    $('#solde').innerHTML = kz(n) + '<small>ton solde</small>';
+    $('#solde').innerHTML = kz(n) + '<small>' + T('paris.tonSolde', 'ton solde') + '</small>';
   }
 
   // ── LE TICKET ──────────────────────────────────────────────────────────
@@ -303,29 +332,31 @@
     if (!reste) {
       return '<div class="ticket"><div class="qui">' + t.titre + '</div>'
         + '<div class="note">' + esc(t.plein) + '</div>'
-        + '<div class="go"><button class="ko" data-act="fermer">Fermer</button></div></div>';
+        + '<div class="go"><button class="ko" data-act="fermer">' + T('commun.fermer', 'Fermer') + '</button></div></div>';
     }
     var mise = Math.max(1, Math.min(reste, t.mise || Math.min(10, reste)));
     t.mise = mise;
     var puces = [5, 10, 20].filter(function (n) { return n < reste; }).map(function (n) {
       return '<button data-mise="' + n + '" class="' + (n === mise ? 'on' : '') + '">' + n + '</button>';
-    }).join('') + '<button data-mise="' + reste + '" class="' + (mise === reste ? 'on' : '') + '">Max (' + reste + ')</button>';
+    }).join('') + '<button data-mise="' + reste + '" class="' + (mise === reste ? 'on' : '') + '">' + T('paris.max', 'Max ({n})', { n: reste }) + '</button>';
     return '<div class="ticket">'
       + '<div class="qui">' + t.titre + '</div>'
-      + '<div class="puces">' + puces + '<input type="number" min="1" max="' + reste + '" value="' + mise + '" data-saisie="1" aria-label="Mise"> kikooz</div>'
+      + '<div class="puces">' + puces + '<input type="number" min="1" max="' + reste + '" value="' + mise + '" data-saisie="1" aria-label="' + T('paris.mise', 'Mise') + '"> kikooz</div>'
       + '<div class="gain" data-gain="1">' + t.gainHtml(mise) + '</div>'
       + (t.erreur ? '<div class="erreur">' + esc(t.erreur) + '</div>' : '')
-      + '<div class="go"><button class="ko" data-act="fermer">Annuler</button>'
-      + '<button class="ok" data-act="parier"' + (t.envoi ? ' disabled' : '') + '>' + (t.envoi ? 'Un instant…' : 'Parier ' + kz(mise)) + '</button></div>'
+      + '<div class="go"><button class="ko" data-act="fermer">' + T('commun.annuler', 'Annuler') + '</button>'
+      + '<button class="ok" data-act="parier"' + (t.envoi ? ' disabled' : '') + '>' + (t.envoi ? T('paris.unInstant', 'Un instant…') : boutonParier(mise)) + '</button></div>'
       + '</div>';
   }
+  // « Parier 10 kikooz »
+  function boutonParier(mise) { return T('paris.parier', 'Parier {mise}', { mise: kz(mise) }); }
   // La mise change sans redessiner la page (on garde le clavier).
   function majTicket() {
     var zone = document.querySelector('.ticket');
     if (!zone || !ticket) return;
     zone.querySelector('[data-gain]').innerHTML = ticket.gainHtml(ticket.mise);
     var ok = zone.querySelector('[data-act=parier]');
-    if (ok && !ticket.envoi) ok.textContent = 'Parier ' + kz(ticket.mise);
+    if (ok && !ticket.envoi) ok.textContent = boutonParier(ticket.mise);
     Array.prototype.forEach.call(zone.querySelectorAll('[data-mise]'), function (b) {
       b.classList.toggle('on', Number(b.getAttribute('data-mise')) === ticket.mise);
     });
@@ -343,7 +374,7 @@
     return fetch('/api/paris/challenge?sid=' + encodeURIComponent(sid), { cache: 'no-store' })
       .then(json)
       .then(function (d) { etatC = d; majSolde(d.solde); rendreChallenge(); })
-      .catch(function () { zoneC.innerHTML = '<p class="vide">Le serveur ne répond pas. Réessaie dans un instant.</p>'; });
+      .catch(function () { zoneC.innerHTML = MUET; });
   }
   function resteDuJour() { return etatC ? Math.max(0, etatC.plafond - (etatC.dejaMise || 0)) : 0; }
   function ligneJoueur(j, c, classe) {
@@ -356,15 +387,16 @@
     var bouton = function (type) {
       var pt = c.pot[type] || {};
       return '<button class="c' + (type === 'or' ? ' or' : '') + (choisi(type) ? ' choisi' : '') + '" data-jeu="' + esc(j.cle) + '" data-choix="' + esc(c.pseudo)
-        + '" data-type="' + type + '"' + (actif ? '' : ' disabled') + '><b>' + (pt.cote ? cote(pt.cote) : 'à prendre') + '</b><span>'
-        + iconePari(type) + (type === 'or' ? 'en or' : 'médaillé') + '</span><i>' + (pt.mises ? kz(pt.mises) + ' misés' : '&nbsp;') + '</i></button>';
+        + '" data-type="' + type + '"' + (actif ? '' : ' disabled') + '><b>' + (pt.cote ? cote(pt.cote) : T('paris.aPrendre', 'à prendre')) + '</b><span>'
+        + iconePari(type) + enOrOuMedaille(type) + '</span><i>' + (pt.mises ? kzMises(pt.mises) : '&nbsp;') + '</i></button>';
     };
     var stats = c.joues
-      ? c.podiums + ' podium' + (c.podiums > 1 ? 's' : '') + ' sur ' + c.joues + ' j.' + (c.ors ? ' · ' + c.ors + ' en or' : '')
-      : 'pas venu ces 30 jours';
+      ? T.n('paris.podiumsSur', c.podiums, { one: '{n} podium sur {joues} j.', other: '{n} podiums sur {joues} j.' }, { joues: c.joues })
+        + (c.ors ? ' · ' + T('paris.nEnOr', '{n} en or', { n: c.ors }) : '')
+      : T('paris.pasVenu', 'pas venu ces 30 jours');
     var sel = ticket && ticket.sorte === 'c' && ticket.jeu === j.cle && ticket.choix === c.pseudo;
     var h = '<div class="ligne' + (sel ? ' sel' : '') + (classe ? ' ' + classe : '') + '"><div class="nom">' + esc(c.nom)
-      + (c.soi ? ' <span class="toi">(toi)</span>' : '') + '<small>' + stats + '</small></div>' + bouton('podium') + bouton('or') + '</div>';
+      + (c.soi ? ' <span class="toi">' + T('paris.toi', '(toi)') + '</span>' : '') + '<small>' + stats + '</small></div>' + bouton('podium') + bouton('or') + '</div>';
     if (sel) h += ticketHtml(ticket);
     return h;
   }
@@ -372,26 +404,34 @@
     var d = etatC;
     if (!d) return;
     if (!d.actif) {
-      zoneC.innerHTML = '<p class="vide">Les Prunostics du Challenge sont fermés pour le moment. Passe voir l’onglet Tournois !</p>';
+      zoneC.innerHTML = '<p class="vide">' + T('paris.challengeFerme', 'Les Prunostics du Challenge sont fermés pour le moment. Passe voir l’onglet Tournois !') + '</p>';
       return;
     }
     var reste = resteDuJour();
     var noms = d.jeux.map(function (j) { return j.nom; });
-    var h = '<div class="soustitre"><b>Challenge de ' + esc(d.jourLisible) + '</b><span>'
-      + (noms.length ? 'les jeux du jour : ' + esc(noms.join(' et ')) : 'pas de jeu ouvert') + ' · mises jusqu’à minuit</span></div>'
-      + '<details class="regle"><summary>Comment ça marche ?</summary><div>'
-      + 'Chaque jour, <b>' + (noms.length || 2) + ' jeux</b> du Challenge sont ouverts aux Prunostics (ils changent tous les jours). '
-      + 'Touche un joueur : <b>médaillé</b> s’il finit sur le podium demain (or, argent ou bronze), <b>en or</b> s’il gagne. '
-      + 'C’est un <b>pari mutuel</b> : toutes les mises d’un pari font un pot, que se partagent ceux qui ont vu juste, au prorata de leur mise. '
-      + 'Plus tu vas contre la foule, plus tu gagnes ! La cote affichée est celle du pot à l’instant : elle bouge jusqu’à minuit. '
-      + 'Un pari perdu est perdu : ta mise paie ceux qui ont vu juste. Et si <b>personne</b> n’a vu juste, toutes les mises vont dans la <b>cagnotte</b>. '
-      + 'Tu peux miser sur toi — et tout le monde sur n’importe qui : cherche son pseudo. '
-      + 'Maximum : ' + kz(d.plafond) + ' par jour, tous jeux confondus. Et au début de chaque mois, Dimitri sacre le <b>Prunostiqueur du mois</b> : '
-      + 'il remporte la cagnotte' + (d.cagnotte > 0 ? ' (' + kz(d.cagnotte) + ' en ce moment)' : '') + ' et porte le titre tout le mois suivant.'
-      + (d.defi && d.defi.actif ? ' Plus bas, le <b>défi médaille</b> : parie sur toi, à n’importe quel jeu.' : '') + '</div></details>';
+    var h = '<div class="soustitre"><b>' + T('paris.challengeDe', 'Challenge de {jour}', { jour: esc(jourLisible(d.jourLisible, d.jour)) }) + '</b><span>'
+      + (noms.length ? T('paris.jeuxDuJour', 'les jeux du jour : {jeux}', { jeux: esc(noms.join(T('paris.et', ' et '))) })
+        : T('paris.pasDeJeu', 'pas de jeu ouvert'))
+      + T('paris.misesJusquaMinuit', ' · mises jusqu’à minuit') + '</span></div>'
+      + '<details class="regle"><summary>' + T('paris.commentCaMarche', 'Comment ça marche ?') + '</summary><div>'
+      + T('paris.regleChallenge',
+        'Chaque jour, <b>{n} jeux</b> du Challenge sont ouverts aux Prunostics (ils changent tous les jours). '
+        + 'Touche un joueur : <b>médaillé</b> s’il finit sur le podium demain (or, argent ou bronze), <b>en or</b> s’il gagne. '
+        + 'C’est un <b>pari mutuel</b> : toutes les mises d’un pari font un pot, que se partagent ceux qui ont vu juste, au prorata de leur mise. '
+        + 'Plus tu vas contre la foule, plus tu gagnes ! La cote affichée est celle du pot à l’instant : elle bouge jusqu’à minuit. '
+        + 'Un pari perdu est perdu : ta mise paie ceux qui ont vu juste. Et si <b>personne</b> n’a vu juste, toutes les mises vont dans la <b>cagnotte</b>. '
+        + 'Tu peux miser sur toi — et tout le monde sur n’importe qui : cherche son pseudo. '
+        + 'Maximum : {plafond} par jour, tous jeux confondus. Et au début de chaque mois, Dimitri sacre le <b>Prunostiqueur du mois</b> : '
+        + 'il remporte la cagnotte{cagnotte} et porte le titre tout le mois suivant.', {
+          n: noms.length || 2, plafond: kz(d.plafond),
+          // La cagnotte du moment, entre parenthèses, quand il y en a une.
+          cagnotte: d.cagnotte > 0 ? T('paris.cagnotteEnCeMoment', ' ({montant} en ce moment)', { montant: kz(d.cagnotte) }) : '',
+        })
+      + (d.defi && d.defi.actif ? T('paris.regleChallengeDefi', ' Plus bas, le <b>défi médaille</b> : parie sur toi, à n’importe quel jeu.') : '') + '</div></details>';
     if (!d.moi) h += CONNEXION;
     else {
-      h += '<div class="budget"><div class="l"><span>Misé pour demain : <b>' + kz(d.dejaMise) + '</b></span><span>il te reste <b>' + nombre(reste) + '</b> sur ' + nombre(d.plafond) + '</span></div>'
+      h += '<div class="budget"><div class="l"><span>' + T('paris.misePourDemain', 'Misé pour demain : <b>{montant}</b>', { montant: kz(d.dejaMise) }) + '</span>'
+        + '<span>' + T('paris.ilTeReste', 'il te reste <b>{reste}</b> sur {plafond}', { reste: nombre(reste), plafond: nombre(d.plafond) }) + '</span></div>'
         + '<div class="jauge"><i style="width:' + Math.min(100, Math.round(100 * (d.dejaMise || 0) / (d.plafond || 50))) + '%"></i></div></div>';
     }
     if (toast && toast.vue === 'challenge') h += '<div class="toast">✓ ' + esc(toast.texte) + '</div>';
@@ -399,25 +439,34 @@
     var mes = [];
     d.jeux.forEach(function (j) { j.mesParis.forEach(function (p) { mes.push({ j: j, p: p }); }); });
     var defis = (d.defi && d.defi.mesDefis) || [];
-    var ligneDefi = function (p) {
-      return jeton(p.couleur) + ' Défi : ' + DEFI_QUOI[p.couleur] + ' à ' + esc(p.nomJeu) + ' — ' + nombre(p.mise)
-        + ' → <b>' + nombre(p.retour) + '</b> à ' + cote(p.cote) + ' (cote fixe)';
+    // « → 25 à ×2,5 (cote fixe) » : ce que rapporte un pari à cote fixe.
+    var coteFixe = function (p) {
+      return T('paris.retourCoteFixe', ' → <b>{retour}</b> à {cote} (cote fixe)', { retour: nombre(p.retour), cote: cote(p.cote) });
     };
+    var ligneDefi = function (p) {
+      return jeton(p.couleur) + ' ' + T('paris.ligneDefi', 'Défi : {quoi} à {jeu} — {mise}',
+        { quoi: DEFI_QUOI[p.couleur], jeu: esc(p.nomJeu), mise: nombre(p.mise) }) + coteFixe(p);
+    };
+    // Un pari « en jeu » dont le serveur écrit lui-même la description.
+    var ligneAutre = function (p) {
+      return iconePari(p.type) + ' ' + esc(p.texte) + ' — ' + nombre(p.mise) + (p.retour != null ? coteFixe(p) : '');
+    };
+    var titreMes = '<div class="mes"><h4>' + T('paris.mesParisDemain', 'Mes paris pour demain') + '</h4>';
     if (defis.length && !mes.length && !(d.autresParis || []).length) {
-      h += '<div class="mes"><h4>Mes paris pour demain</h4>' + defis.map(ligneDefi).join('<br>') + '</div>';
+      h += titreMes + defis.map(ligneDefi).join('<br>') + '</div>';
     } else if (mes.length) {
-      h += '<div class="mes"><h4>Mes paris pour demain</h4>' + mes.map(function (x) {
+      h += titreMes + mes.map(function (x) {
         var p = x.p;
-        var fin = p.retour != null ? ' → <b>' + nombre(p.retour) + '</b> à ' + cote(p.cote) + ' (cote fixe)'
-          : ' → ≈ <b>' + nombre(estimation(x.j, p.type, p.choix, 0)) + '</b> si le pot en restait là';
-        return iconePari(p.type) + ' ' + esc(p.nom) + (p.type === 'or' ? ' en or' : ' médaillé') + ' à ' + esc(x.j.nom) + ' — ' + nombre(p.mise) + fin;
+        var fin = p.retour != null ? coteFixe(p)
+          : T('paris.siLePotEnRestaitLa', ' → ≈ <b>{retour}</b> si le pot en restait là', { retour: nombre(estimation(x.j, p.type, p.choix, 0)) });
+        var quoi = { nom: esc(p.nom), jeu: esc(x.j.nom), mise: nombre(p.mise) };
+        return iconePari(p.type) + ' ' + (p.type === 'or' ? T('paris.monPariOr', '{nom} en or à {jeu} — {mise}', quoi)
+          : T('paris.monPariMedaille', '{nom} médaillé à {jeu} — {mise}', quoi)) + fin;
       }).join('<br>') + (d.autresParis || []).map(function (p) {
-        return '<br>' + iconePari(p.type) + ' ' + esc(p.texte) + ' — ' + nombre(p.mise) + (p.retour != null ? ' → <b>' + nombre(p.retour) + '</b> à ' + cote(p.cote) + ' (cote fixe)' : '');
+        return '<br>' + ligneAutre(p);
       }).join('') + defis.map(function (p) { return '<br>' + ligneDefi(p); }).join('') + '</div>';
     } else if ((d.autresParis || []).length) {
-      h += '<div class="mes"><h4>Mes paris pour demain</h4>' + d.autresParis.map(function (p) {
-        return iconePari(p.type) + ' ' + esc(p.texte) + ' — ' + nombre(p.mise) + (p.retour != null ? ' → <b>' + nombre(p.retour) + '</b> à ' + cote(p.cote) + ' (cote fixe)' : '');
-      }).join('<br>') + defis.map(function (p) { return '<br>' + ligneDefi(p); }).join('') + '</div>';
+      h += titreMes + d.autresParis.map(ligneAutre).join('<br>') + defis.map(function (p) { return '<br>' + ligneDefi(p); }).join('') + '</div>';
     }
     // Les jeux en pastilles : celui choisi, sinon le premier où il se passe quelque chose.
     if (!jeuActif || !d.jeux.some(function (j) { return j.cle === jeuActif; })) {
@@ -430,9 +479,11 @@
     }).join('') + '</div>';
     var j = d.jeux.filter(function (x) { return x.cle === jeuActif; })[0];
     if (j) {
-      h += '<p class="decouv">Pot « médaillé » : <b>' + kz(j.pots.podium) + '</b> · pot « or » : <b>' + kz(j.pots.or) + '</b></p>';
+      h += '<p class="decouv">' + T('paris.pots', 'Pot « médaillé » : <b>{podium}</b> · pot « or » : <b>{or}</b>',
+        { podium: kz(j.pots.podium), or: kz(j.pots.or) }) + '</p>';
       if (d.moi) {
-        h += '<div class="cherche"><input placeholder="🔍 Un autre joueur…" data-cherche="' + esc(j.cle) + '"><button data-chercher="' + esc(j.cle) + '">Voir</button></div>';
+        h += '<div class="cherche"><input placeholder="' + T('paris.unAutreJoueur', '🔍 Un autre joueur…') + '" data-cherche="' + esc(j.cle) + '">'
+          + '<button data-chercher="' + esc(j.cle) + '">' + T('paris.voir', 'Voir') + '</button></div>';
       }
       if (trouve[j.cle]) {
         var tr = trouve[j.cle];
@@ -441,27 +492,38 @@
       var liste = toutVoir[j.cle] ? j.candidats : j.candidats.slice(0, 6);
       liste.forEach(function (c) { if (!trouve[j.cle] || trouve[j.cle].pseudo !== c.pseudo) h += ligneJoueur(j, c); });
       if (!j.candidats.length) {
-        h += '<p class="vide">Personne n’est encore venu régulièrement à ' + esc(j.nom) + '. Cherche un joueur ci-dessus — pourquoi pas toi ?</p>';
+        h += '<p class="vide">' + T('paris.personneHabitue', 'Personne n’est encore venu régulièrement à {jeu}. Cherche un joueur ci-dessus — pourquoi pas toi ?', { jeu: esc(j.nom) }) + '</p>';
       } else if (j.candidats.length > liste.length) {
-        h += '<div class="plus">+ ' + (j.candidats.length - liste.length) + ' autres habitués · <button data-toutvoir="' + esc(j.cle) + '">tout voir</button></div>';
+        // (Le français dit « autres habitués » même pour un seul : on le garde tel quel.)
+        h += '<div class="plus">' + T.n('paris.autresHabitues', j.candidats.length - liste.length,
+          { one: '+ {n} autres habitués', other: '+ {n} autres habitués' })
+          + ' · <button data-toutvoir="' + esc(j.cle) + '">' + T('paris.toutVoir', 'tout voir') + '</button></div>';
       }
     } else {
-      h += '<p class="vide">Aucun jeu n’est ouvert aux Prunostics demain.</p>';
+      h += '<p class="vide">' + T('paris.aucunJeuDemain', 'Aucun jeu n’est ouvert aux Prunostics demain.') + '</p>';
     }
     h += blocDefi(d);
     // Hier : les podiums, et ce que j'y avais misé.
     var hier = d.hier || {};
     if ((hier.podiums && hier.podiums.length) || (hier.mesParis && hier.mesParis.length)) {
-      h += '<div class="hier"><h4>Le Challenge de ' + esc(hier.jourLisible) + '</h4>';
+      h += '<div class="hier"><h4>' + T('paris.leChallengeDe', 'Le Challenge de {jour}', { jour: esc(jourLisible(hier.jourLisible, hier.jour)) }) + '</h4>';
       (hier.mesParis || []).forEach(function (p) {
-        var t = p.statut === 'gagne' ? 'gagné : <b>+' + nombre(p.gain - p.mise) + '</b> (' + kz(p.gain) + ' reçus)' : p.statut === 'perdu' ? 'perdu'
-          : p.statut === 'rembourse' ? 'remboursé' : 'en attente du changement de jour';
-        h += '<div class="' + p.statut + '">' + esc(p.texte) + ' — ' + kz(p.mise) + (p.cote != null ? ' à ' + cote(p.cote) : '') + ', ' + t + '</div>';
+        var t = p.statut === 'gagne' ? T('paris.hierGagne', 'gagné : <b>+{net}</b> ({recu} reçus)', { net: nombre(p.gain - p.mise), recu: kz(p.gain) })
+          : p.statut === 'perdu' ? T('paris.hierPerdu', 'perdu')
+          : p.statut === 'rembourse' ? T('paris.hierRembourse', 'remboursé') : T('paris.hierEnAttente', 'en attente du changement de jour');
+        // La description du pari (`texte`) est écrite par le serveur.
+        h += '<div class="' + p.statut + '">' + T('paris.ligneHier', '{texte} — {mise}{cote}, {resultat}', {
+          texte: esc(p.texte), mise: kz(p.mise), resultat: t,
+          cote: p.cote != null ? T('paris.aCote', ' à {cote}', { cote: cote(p.cote) }) : '',
+        }) + '</div>';
       });
       (hier.podiums || []).forEach(function (p) {
-        h += '<div><b>' + esc(p.nom) + '</b> : ' + medailleJeu(p.cle, 'or') + ' ' + esc(p.podium[0] || '—')
-          + (p.podium[1] ? ' · ' + medailleJeu(p.cle, 'argent') + ' ' + esc(p.podium[1]) : '')
-          + (p.podium[2] ? ' · ' + medailleJeu(p.cle, 'bronze') + ' ' + esc(p.podium[2]) : '') + '</div>';
+        h += '<div>' + T('paris.podiumHier', '<b>{jeu}</b> : {podium}', {
+          jeu: esc(p.nom),
+          podium: medailleJeu(p.cle, 'or') + ' ' + esc(p.podium[0] || '—')
+            + (p.podium[1] ? ' · ' + medailleJeu(p.cle, 'argent') + ' ' + esc(p.podium[1]) : '')
+            + (p.podium[2] ? ' · ' + medailleJeu(p.cle, 'bronze') + ' ' + esc(p.podium[2]) : ''),
+        }) + '</div>';
       });
       h += '</div>';
     }
@@ -478,15 +540,17 @@
   function blocDefi(d) {
     var df = d.defi;
     if (!df || !df.actif || !d.moi) return '';
-    var h = '<div class="defi"><div class="soustitre"><b>Défi médaille</b><span>sur toi-même, à n’importe quel jeu · cote fixe · '
-      + kz(df.plafond) + ' par jour au plus</span></div>'
-      + '<details class="regle"><summary>Le défi ?</summary><div>'
-      + 'Parie que <b>tu</b> décroches une médaille demain, au jeu de ton choix : <b>une médaille</b> (bronze ou mieux), '
-      + '<b>l’argent ou l’or</b>, ou <b>l’or</b>. Plus la couleur est haute, plus c’est dur… et plus ça paie. '
-      + 'La cote est <b>fixe</b>, tirée de tes 30 derniers jours sur le jeu (celle d’un joueur moyen si tu y viens peu), et figée au moment où tu paries : '
-      + 'réussi, tu reçois ta mise × la cote ; raté, ta mise est perdue. Si le jeu n’a donné aucune médaille ce jour-là, tu es remboursé. '
-      + 'Au plus ' + kz(df.plafond) + ' par jour sur les défis, dans ton plafond du jour. Pas de défi sur un jeu trop peu joué.</div></details>';
-    if (!df.jeux.length) return h + '<p class="vide" style="padding-left:0">Aucun jeu n’a assez tourné ces 30 jours pour un défi.</p></div>';
+    var h = '<div class="defi"><div class="soustitre"><b>' + T('paris.defiMedaille', 'Défi médaille') + '</b><span>'
+      + T('paris.defiSousTitre', 'sur toi-même, à n’importe quel jeu · cote fixe · {plafond} par jour au plus', { plafond: kz(df.plafond) }) + '</span></div>'
+      + '<details class="regle"><summary>' + T('paris.leDefi', 'Le défi ?') + '</summary><div>'
+      + T('paris.regleDefi',
+        'Parie que <b>tu</b> décroches une médaille demain, au jeu de ton choix : <b>une médaille</b> (bronze ou mieux), '
+        + '<b>l’argent ou l’or</b>, ou <b>l’or</b>. Plus la couleur est haute, plus c’est dur… et plus ça paie. '
+        + 'La cote est <b>fixe</b>, tirée de tes 30 derniers jours sur le jeu (celle d’un joueur moyen si tu y viens peu), et figée au moment où tu paries : '
+        + 'réussi, tu reçois ta mise × la cote ; raté, ta mise est perdue. Si le jeu n’a donné aucune médaille ce jour-là, tu es remboursé. '
+        + 'Au plus {plafond} par jour sur les défis, dans ton plafond du jour. Pas de défi sur un jeu trop peu joué.', { plafond: kz(df.plafond) })
+      + '</div></details>';
+    if (!df.jeux.length) return h + '<p class="vide" style="padding-left:0">' + T('paris.aucunJeuDefi', 'Aucun jeu n’a assez tourné ces 30 jours pour un défi.') + '</p></div>';
     if (!jeuDefi || !df.jeux.some(function (j) { return j.cle === jeuDefi; })) {
       var mien = df.mesDefis[0];
       jeuDefi = mien && df.jeux.some(function (j) { return j.cle === mien.jeu; }) ? mien.jeu : df.jeux[0].cle;
@@ -497,16 +561,24 @@
         + (engage ? ' <span class="pt">●</span>' : '') + '</button>';
     }).join('') + '</div>';
     var j = df.jeux.filter(function (x) { return x.cle === jeuDefi; })[0];
+    // Mes 30 derniers jours sur le jeu : deux comptes dans la même phrase, chacun
+    // avec son pluriel, puis les précisions, chacune entière.
     h += '<div class="stats">' + (j.joues
-      ? 'Toi à ' + esc(j.nom) + ', ces 30 jours : ' + j.podiums + ' médaille' + (j.podiums > 1 ? 's' : '') + ' en ' + j.joues + ' jour' + (j.joues > 1 ? 's' : '') + ' joué' + (j.joues > 1 ? 's' : '')
-        + (j.argents ? ' · ' + j.argents + ' argent ou or' : '') + (j.ors ? ' · ' + j.ors + ' en or' : '') + (j.decouverte ? ' — peu de jours : la cote d’un joueur moyen, au plus' : '')
-      : 'Tu n’es pas venu à ' + esc(j.nom) + ' ces 30 jours : la cote d’un joueur moyen du jeu.') + '</div>';
+      ? T('paris.defiStats', 'Toi à {jeu}, ces 30 jours : {medailles} en {jours}', {
+        jeu: esc(j.nom),
+        medailles: T.n('paris.nMedailles', j.podiums, { one: '{n} médaille', other: '{n} médailles' }),
+        jours: T.n('paris.nJoursJoues', j.joues, { one: '{n} jour joué', other: '{n} jours joués' }),
+      })
+        + (j.argents ? ' · ' + T('paris.nArgentOuOr', '{n} argent ou or', { n: j.argents }) : '')
+        + (j.ors ? ' · ' + T('paris.nEnOr', '{n} en or', { n: j.ors }) : '')
+        + (j.decouverte ? ' — ' + T('paris.peuDeJours', 'peu de jours : la cote d’un joueur moyen, au plus') : '')
+      : T('paris.pasVenuJeu', 'Tu n’es pas venu à {jeu} ces 30 jours : la cote d’un joueur moyen du jeu.', { jeu: esc(j.nom) })) + '</div>';
     h += '<div class="trois">' + ['bronze', 'argent', 'or'].map(function (couleur) {
       var type = 'defi_' + couleur;
       var p = df.mesDefis.filter(function (x) { return x.jeu === j.cle && x.type === type; })[0];
       var choisi = ticket && ticket.sorte === 'd' && ticket.jeu === j.cle && ticket.type === type;
       return '<button class="c ' + couleur + (choisi ? ' choisi' : '') + '" data-defi="' + type + '" data-jeu="' + esc(j.cle) + '"><b>' + cote(j.cotes[couleur])
-        + '</b><span>' + jeton(couleur) + DEFI_QUOI[couleur] + '</span><i>' + (p ? kz(p.mise) + ' misés' : '&nbsp;') + '</i></button>';
+        + '</b><span>' + jeton(couleur) + DEFI_QUOI[couleur] + '</span><i>' + (p ? kzMises(p.mise) : '&nbsp;') + '</i></button>';
     }).join('') + '</div>';
     if (ticket && ticket.sorte === 'd' && ticket.jeu === j.cle) h += ticketHtml(ticket);
     return h + '</div>';
@@ -520,33 +592,42 @@
     var parDefi = df.plafond - (df.dejaMise || 0) <= resteDuJour();
     ticket = {
       sorte: 'd', jeu: j.cle, type: type, mise: ticket && ticket.mise, reste: resteDefi(),
-      plein: parDefi ? 'Tu as misé ton maximum de ' + kz(df.plafond) + ' sur les défis de demain.' : 'Tu as misé ton maximum de ' + kz(etatC.plafond) + ' pour demain.',
-      titre: jeton(couleur) + ' Défi : je décroche ' + DEFI_QUOI[couleur] + ' à ' + esc(j.nom) + ', demain'
-        + ' <small style="font-weight:normal;color:#6c8f3a">— cote fixe ' + cote(c) + '</small>',
+      plein: parDefi ? T('paris.maxDefis', 'Tu as misé ton maximum de {plafond} sur les défis de demain.', { plafond: kz(df.plafond) })
+        : maxDemain(),
+      titre: jeton(couleur) + ' ' + T('paris.ticketDefi', 'Défi : je décroche {quoi} à {jeu}, demain', { quoi: DEFI_QUOI[couleur], jeu: esc(j.nom) })
+        + ' <small style="font-weight:normal;color:#6c8f3a">' + T('paris.coteFixeTiret', '— cote fixe {cote}', { cote: cote(c) }) + '</small>',
       gainHtml: function (mise) {
-        if (!(mise >= 1)) return '<small>Indique une mise d’au moins 1 kikooz.</small>';
-        return 'Réussi, tu reçois <b>' + kz(retour(mise, c)) + '</b> <small>(' + cote(c) + ', figée à la mise) — raté, ta mise est perdue.</small>';
+        if (!(mise >= 1)) return '<small>' + MISE_MINI + '</small>';
+        return T('paris.gainDefi', 'Réussi, tu reçois <b>{gain}</b> <small>({cote}, figée à la mise) — raté, ta mise est perdue.</small>',
+          { gain: kz(retour(mise, c)), cote: cote(c) });
       },
     };
   }
+  // « Tu as misé ton maximum de 50 kikooz pour demain. »
+  function maxDemain() {
+    return T('paris.maxDemain', 'Tu as misé ton maximum de {plafond} pour demain.', { plafond: kz(etatC.plafond) });
+  }
+  // Le pari refusé : le `message` du serveur s'il en écrit un, sinon le nôtre.
+  function pariRefuse(r) { return r.message || T('paris.pariNonEnregistre', 'Le pari n’a pas pu être enregistré.'); }
+  var SERVEUR_MUET = T('paris.serveurNeRepondPas', 'Le serveur ne répond pas.');
   function parierDefi() {
     var t = ticket;
     if (!t || t.envoi) return;
-    if (!(t.mise >= 1)) { t.erreur = 'Indique une mise d’au moins 1 kikooz.'; rendreChallenge(); return; }
+    if (!(t.mise >= 1)) { t.erreur = MISE_MINI; rendreChallenge(); return; }
     t.envoi = true; t.erreur = null; rendreChallenge();
     fetch('/api/paris/challenge', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sid: sid, jeu: t.jeu, type: t.type, mise: t.mise }),
     }).then(json).then(function (r) {
       t.envoi = false;
-      if (!r.ok) { t.erreur = r.message || 'Le pari n’a pas pu être enregistré.'; rendreChallenge(); return; }
+      if (!r.ok) { t.erreur = pariRefuse(r); rendreChallenge(); return; }
       var j = etatC.defi.jeux.filter(function (x) { return x.cle === t.jeu; })[0];
-      toast = { vue: 'challenge', texte: 'Défi relevé ! ' + kz(t.mise) + ' : ' + DEFI_QUOI[DEFI[t.type]] + ' à ' + (j ? j.nom : t.jeu)
-        + ' — ' + kz(r.retour) + ' pour toi si tu y arrives.' };
+      toast = { vue: 'challenge', texte: T('paris.defiReleve', 'Défi relevé ! {mise} : {quoi} à {jeu} — {retour} pour toi si tu y arrives.',
+        { mise: kz(t.mise), quoi: DEFI_QUOI[DEFI[t.type]], jeu: j ? j.nom : t.jeu, retour: kz(r.retour) }) };
       ticket = null;
       majSolde(r.solde);
       return chargerChallenge();
-    }).catch(function () { t.envoi = false; t.erreur = 'Le serveur ne répond pas.'; rendreChallenge(); });
+    }).catch(function () { t.envoi = false; t.erreur = SERVEUR_MUET; rendreChallenge(); });
   }
   function trouverCandidat(cleJeu, pseudo) {
     var j = etatC.jeux.filter(function (x) { return x.cle === cleJeu; })[0];
@@ -570,19 +651,26 @@
     var t = trouverCandidat(cleJeu, pseudo);
     if (!t || !t.c) return;
     var c = t.c, j = t.j;
-    var quoi = type === 'or' ? 'en or' : 'médaillé';
+    var or = type === 'or';
     var pt = c.pot[type] || {};
+    var qui = { nom: esc(c.nom), jeu: esc(j.nom) };
     ticket = {
       sorte: 'c', jeu: j.cle, choix: c.pseudo, type: type, mise: ticket && ticket.mise,
-      reste: resteDuJour(), plein: 'Tu as misé ton maximum de ' + kz(etatC.plafond) + ' pour demain.',
-      titre: iconePari(type) + ' ' + esc(c.nom) + ' ' + quoi + ' à ' + esc(j.nom) + ', demain'
-        + ' <small style="font-weight:normal;color:#6c8f3a">— pot ' + (type === 'or' ? '« or »' : '« médaillé »') + ' : ' + kz(j.pots[type])
-        + (pt.mises ? ', dont ' + kz(pt.mises) + ' sur ' + esc(c.nom) : ', personne sur ' + esc(c.nom) + ' pour l’instant') + '</small>',
+      reste: resteDuJour(), plein: maxDemain(),
+      titre: iconePari(type) + ' ' + (or ? T('paris.ticketOr', '{nom} en or à {jeu}, demain', qui)
+        : T('paris.ticketMedaille', '{nom} médaillé à {jeu}, demain', qui))
+        + ' <small style="font-weight:normal;color:#6c8f3a">'
+        + (or ? T('paris.potOrTiret', '— pot « or » : {pot}', { pot: kz(j.pots[type]) })
+          : T('paris.potMedailleTiret', '— pot « médaillé » : {pot}', { pot: kz(j.pots[type]) }))
+        + (pt.mises ? T('paris.dontSur', ', dont {mises} sur {nom}', { mises: kz(pt.mises), nom: esc(c.nom) })
+          : T('paris.personneSur', ', personne sur {nom} pour l’instant', { nom: esc(c.nom) })) + '</small>',
       gainHtml: function (mise) {
-        if (!(mise >= 1)) return '<small>Indique une mise d’au moins 1 kikooz.</small>';
+        if (!(mise >= 1)) return '<small>' + MISE_MINI + '</small>';
         var r = estimation(j, type, c.pseudo, mise);
-        return 'S’' + (type === 'or' ? 'il gagne' : 'il est médaillé') + ', tu reçois ' + (type === 'or' ? '≈ ' : 'jusqu’à ≈ ') + '<b>' + kz(r) + '</b> '
-          + '<small>si le pot en restait là — il grossit jusqu’à minuit' + (type === 'or' ? '' : ', et se partage avec ceux qui ont misé sur les autres médaillés') + '</small>';
+        return or
+          ? T('paris.gainOr', 'S’il gagne, tu reçois ≈ <b>{gain}</b> <small>si le pot en restait là — il grossit jusqu’à minuit</small>', { gain: kz(r) })
+          : T('paris.gainMedaille', 'S’il est médaillé, tu reçois jusqu’à ≈ <b>{gain}</b> <small>si le pot en restait là — il grossit jusqu’à minuit, '
+            + 'et se partage avec ceux qui ont misé sur les autres médaillés</small>', { gain: kz(r) });
       },
     };
   }
@@ -633,34 +721,36 @@
     fetch('/api/paris/challenge/joueur?sid=' + encodeURIComponent(sid) + '&jeu=' + encodeURIComponent(cleJeu) + '&choix=' + encodeURIComponent(pseudo), { cache: 'no-store' })
       .then(json)
       .then(function (r) {
-        if (!r.ok) { trouve[cleJeu] = { erreur: r.message || 'Joueur introuvable.' }; ticket = null; rendreChallenge(); return; }
+        if (!r.ok) { trouve[cleJeu] = { erreur: r.message || T('paris.joueurIntrouvable', 'Joueur introuvable.') }; ticket = null; rendreChallenge(); return; }
         trouve[cleJeu] = r;
         ouvrirTicketChallenge(cleJeu, r.pseudo, 'podium');
         rendreChallenge();
       })
-      .catch(function () { trouve[cleJeu] = { erreur: 'Le serveur ne répond pas.' }; rendreChallenge(); });
+      .catch(function () { trouve[cleJeu] = { erreur: SERVEUR_MUET }; rendreChallenge(); });
   }
   function parierChallenge() {
     var t = ticket;
     if (t && t.sorte === 'd') return parierDefi();
     if (!t || t.envoi) return;
-    if (!(t.mise >= 1)) { t.erreur = 'Indique une mise d’au moins 1 kikooz.'; rendreChallenge(); return; }
+    if (!(t.mise >= 1)) { t.erreur = MISE_MINI; rendreChallenge(); return; }
     t.envoi = true; t.erreur = null; rendreChallenge();
     fetch('/api/paris/challenge', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sid: sid, jeu: t.jeu, type: t.type, choix: t.choix, mise: t.mise }),
     }).then(json).then(function (r) {
       t.envoi = false;
-      if (!r.ok) { t.erreur = r.message || 'Le pari n’a pas pu être enregistré.'; rendreChallenge(); return; }
+      if (!r.ok) { t.erreur = pariRefuse(r); rendreChallenge(); return; }
       var c = trouverCandidat(t.jeu, t.choix);
-      toast = { vue: 'challenge', texte: 'C’est parié ! ' + kz(t.mise) + ' sur ' + (c && c.c ? c.c.nom : t.choix)
-        + (t.type === 'or' ? ' en or' : ' médaillé') + ' — pot de ' + kz(r.pot) + ' : ≈ ' + kz(r.estime) + ' pour toi s’il en restait là.' };
+      var parie = { mise: kz(t.mise), nom: c && c.c ? c.c.nom : t.choix, pot: kz(r.pot), estime: kz(r.estime) };
+      toast = { vue: 'challenge', texte: t.type === 'or'
+        ? T('paris.pariOrFait', 'C’est parié ! {mise} sur {nom} en or — pot de {pot} : ≈ {estime} pour toi s’il en restait là.', parie)
+        : T('paris.pariMedailleFait', 'C’est parié ! {mise} sur {nom} médaillé — pot de {pot} : ≈ {estime} pour toi s’il en restait là.', parie) };
       // Le joueur cherché passe dans la liste (on a misé sur lui).
       delete trouve[t.jeu];
       ticket = null;
       majSolde(r.solde);
       return chargerChallenge();
-    }).catch(function () { t.envoi = false; t.erreur = 'Le serveur ne répond pas.'; rendreChallenge(); });
+    }).catch(function () { t.envoi = false; t.erreur = SERVEUR_MUET; rendreChallenge(); });
   }
 
   // ── LES TOURNOIS ───────────────────────────────────────────────────────
@@ -669,7 +759,7 @@
     return fetch('/api/paris?sid=' + encodeURIComponent(sid), { cache: 'no-store' })
       .then(json)
       .then(function (d) { etatT = d; majSolde(d.solde); rendreTournois(); })
-      .catch(function () { zoneT.innerHTML = '<p class="vide">Le serveur ne répond pas. Réessaie dans un instant.</p>'; });
+      .catch(function () { zoneT.innerHTML = MUET; });
   }
   function carteJoueur(t, m, j, ouvert) {
     var mises = j.mises || { mises: 0, parieurs: 0, cote: null };
@@ -683,27 +773,43 @@
       + '<span class="n">' + (gagnant ? TROPHEE + ' ' : '') + esc(j.nom) + '</span>'
       // La cote FIXE du joueur (coteTournoi.js) : basse pour le favori, haute pour l'outsider.
       + (j.cote ? '<span class="x">' + cote(j.cote) + '</span>' : '<span class="x rien">—</span>')
-      + '<span class="d">' + (j.p != null ? j.p + ' % de chances' : '') + (mises.parieurs ? ' · ' + mises.parieurs + ' parieur' + (mises.parieurs > 1 ? 's' : '') : '') + '</span>'
+      + '<span class="d">' + (j.p != null ? T('paris.pctChances', '{p} % de chances', { p: j.p }) : '')
+      + (mises.parieurs ? ' · ' + T.n('paris.nParieurs', mises.parieurs, { one: '{n} parieur', other: '{n} parieurs' }) : '') + '</span>'
       + '</' + tag + '>';
+  }
+  /*
+   * LA FIN DES MISES D'UN MATCH EN COURS : « samedi 28 à 14:05 » en français
+   * (le navigateur, en fr-FR, comme avant), « Saturday the 28th at 14:05 » en
+   * anglais (une fonction du dictionnaire, qui reçoit la date).
+   */
+  function finDesMises(q) {
+    var d = new Date(q);
+    return T('paris.finDesMises', d.toLocaleString('fr-FR', { weekday: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }), { d: d });
   }
   function blocMatch(t, m, ouvert) {
     var sel = ticket && ticket.sorte === 't' && ticket.match === m.id;
+    // Le nom du tour (« Finale »…) vient du serveur, la poule aussi ; le
+    // client n'écrit que le « — poule ».
     var h = '<div class="match' + (sel ? ' sel' : '') + '">'
-      + '<div class="tour"><span>' + esc(m.tour) + (m.poule ? ' — poule ' + esc(m.poule) : '') + '</span>' + (m.pot ? '<span class="pot">misé : ' + kz(m.pot) + '</span>' : '') + '</div>'
-      + '<div class="duo">' + carteJoueur(t, m, m.j1, ouvert) + '<span class="contre">contre</span>' + carteJoueur(t, m, m.j2, ouvert) + '</div>';
+      + '<div class="tour"><span>' + esc(m.tour) + (m.poule ? T('paris.poule', ' — poule {poule}', { poule: esc(m.poule) }) : '') + '</span>'
+      + (m.pot ? '<span class="pot">' + T('paris.miseSurMatch', 'misé : {montant}', { montant: kz(m.pot) }) + '</span>' : '') + '</div>'
+      + '<div class="duo">' + carteJoueur(t, m, m.j1, ouvert) + '<span class="contre">' + T('paris.contre', 'contre') + '</span>' + carteJoueur(t, m, m.j2, ouvert) + '</div>';
     if (m.mien) {
       var nomChoix = m.mien.choix === m.j1.pseudo.toLowerCase() ? m.j1.nom : m.j2.nom;
-      if (m.mien.statut === 'gagne') h += '<div class="mien gagne">Gagné : ta mise de ' + kz(m.mien.mise) + ' sur ' + esc(nomChoix) + ' t’a rapporté ' + kz(m.mien.gain) + '.</div>';
-      else if (m.mien.statut === 'perdu') h += '<div class="mien perdu">Perdu : ta mise de ' + kz(m.mien.mise) + ' sur ' + esc(nomChoix) + '.</div>';
-      else if (m.mien.statut === 'rembourse') h += '<div class="mien rembourse">Remboursé : ' + kz(m.mien.gain) + ' (match annulé ou joueur remplacé).</div>';
-      else h += '<div class="mien">Ta mise : ' + kz(m.mien.mise) + ' sur ' + esc(nomChoix)
-        + (m.mien.retour ? ' à ' + cote(m.mien.cote) + ' : ' + kz(m.mien.retour) + ' pour toi s’il gagne.' : ' (pari mutuel).') + '</div>';
+      var mien = { mise: kz(m.mien.mise), nom: esc(nomChoix), gain: kz(m.mien.gain) };
+      if (m.mien.statut === 'gagne') h += '<div class="mien gagne">' + T('paris.matchGagne', 'Gagné : ta mise de {mise} sur {nom} t’a rapporté {gain}.', mien) + '</div>';
+      else if (m.mien.statut === 'perdu') h += '<div class="mien perdu">' + T('paris.matchPerdu', 'Perdu : ta mise de {mise} sur {nom}.', mien) + '</div>';
+      else if (m.mien.statut === 'rembourse') h += '<div class="mien rembourse">' + T('paris.matchRembourse', 'Remboursé : {gain} (match annulé ou joueur remplacé).', mien) + '</div>';
+      else h += '<div class="mien">' + (m.mien.retour
+        ? T('paris.taMiseCote', 'Ta mise : {mise} sur {nom} à {cote} : {retour} pour toi s’il gagne.',
+          { mise: mien.mise, nom: mien.nom, cote: cote(m.mien.cote), retour: kz(m.mien.retour) })
+        : T('paris.taMiseMutuel', 'Ta mise : {mise} sur {nom} (pari mutuel).', mien)) + '</div>';
     }
-    if (ouvert && m.interdit) h += '<div class="note">C’est ton match : tu ne peux pas parier dessus. Bonne chance !</div>';
-    else if (!ouvert && !m.vainqueur) h += '<div class="note">Le match a commencé : les mises sont fermées.</div>';
+    if (ouvert && m.interdit) h += '<div class="note">' + T('paris.tonMatch', 'C’est ton match : tu ne peux pas parier dessus. Bonne chance !') + '</div>';
+    else if (!ouvert && !m.vainqueur) h += '<div class="note">' + T('paris.matchCommence', 'Le match a commencé : les mises sont fermées.') + '</div>';
     if (ouvert && m.misesJusqua) {
-      h += '<div class="note">Le match est en cours : mises ouvertes jusqu’au <b>'
-        + esc(new Date(m.misesJusqua).toLocaleString('fr-FR', { weekday: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })) + '</b>.</div>';
+      h += '<div class="note">' + T('paris.misesOuvertesJusqua', 'Le match est en cours : mises ouvertes jusqu’au <b>{date}</b>.',
+        { date: esc(finDesMises(m.misesJusqua)) }) + '</div>';
     }
     if (sel) h += ticketHtml(ticket);
     return h + '</div>';
@@ -714,9 +820,9 @@
     var n = 0;
     (d.tournois || []).forEach(function (t) { n += t.ouverts.length; });
     var onglet = document.querySelector('.onglets [data-vue=tournois]');
-    onglet.innerHTML = 'Tournois' + (n ? '<i>' + n + '</i>' : '');
+    onglet.innerHTML = T('paris.ongletTournois', 'Tournois') + (n ? '<i>' + n + '</i>' : '');
     if (!d.tournois || !d.tournois.length) {
-      zoneT.innerHTML = '<p class="vide">Aucun tournoi n’a de Prunostics ouverts en ce moment : reviens au prochain !</p>';
+      zoneT.innerHTML = '<p class="vide">' + T('paris.aucunTournoi', 'Aucun tournoi n’a de Prunostics ouverts en ce moment : reviens au prochain !') + '</p>';
       return;
     }
     var h = '';
@@ -724,15 +830,17 @@
     if (toast && toast.vue === 'tournois') h += '<div class="toast" style="margin-top:10px">✓ ' + esc(toast.texte) + '</div>';
     d.tournois.forEach(function (t) {
       h += '<div class="bandeau">' + esc(t.nom) + ' <small>' + esc(t.jeu) + '</small></div>'
-        + '<details class="regle" style="margin-top:6px"><summary>Comment ça marche ?</summary><div>'
-        + 'Touche le joueur que tu vois gagner, choisis ta mise sur le ticket. Chaque joueur a sa <b>cote</b> (×), tirée de ses scores récents : '
-        + 'le favori rapporte peu, l’outsider beaucoup. La cote est <b>figée au moment où tu paries</b> : s’il gagne, tu reçois ta mise × la cote ; '
-        + 's’il perd, ta mise est perdue. Mise maximale : ' + kz(t.plafond) + ' par match. On ne parie pas sur ses propres matchs.</div></details>';
-      h += '<h3>Matchs ouverts aux paris</h3>';
+        + '<details class="regle" style="margin-top:6px"><summary>' + T('paris.commentCaMarche', 'Comment ça marche ?') + '</summary><div>'
+        + T('paris.regleTournoi',
+          'Touche le joueur que tu vois gagner, choisis ta mise sur le ticket. Chaque joueur a sa <b>cote</b> (×), tirée de ses scores récents : '
+          + 'le favori rapporte peu, l’outsider beaucoup. La cote est <b>figée au moment où tu paries</b> : s’il gagne, tu reçois ta mise × la cote ; '
+          + 's’il perd, ta mise est perdue. Mise maximale : {plafond} par match. On ne parie pas sur ses propres matchs.', { plafond: kz(t.plafond) })
+        + '</div></details>';
+      h += '<h3>' + T('paris.matchsOuverts', 'Matchs ouverts aux paris') + '</h3>';
       h += t.ouverts.length ? t.ouverts.map(function (m) { return blocMatch(t, m, true); }).join('')
-        : '<p class="vide">Pas de match ouvert : les prochains le seront dès que leurs deux joueurs seront connus.</p>';
-      if (t.enCours.length) h += '<h3>Matchs en cours</h3>' + t.enCours.map(function (m) { return blocMatch(t, m, false); }).join('');
-      if (t.regles.length) h += '<h3>Résultats</h3>' + t.regles.map(function (m) { return blocMatch(t, m, false); }).join('');
+        : '<p class="vide">' + T('paris.pasDeMatchOuvert', 'Pas de match ouvert : les prochains le seront dès que leurs deux joueurs seront connus.') + '</p>';
+      if (t.enCours.length) h += '<h3>' + T('paris.matchsEnCours', 'Matchs en cours') + '</h3>' + t.enCours.map(function (m) { return blocMatch(t, m, false); }).join('');
+      if (t.regles.length) h += '<h3>' + T('paris.resultats', 'Résultats') + '</h3>' + t.regles.map(function (m) { return blocMatch(t, m, false); }).join('');
     });
     zoneT.innerHTML = h;
   }
@@ -745,19 +853,21 @@
     var surLui = (j.mises && j.mises.mises) || 0;
     ticket = {
       sorte: 't', match: m.id, choix: pseudo, mise: ticket && ticket.mise, reste: Math.max(0, t.plafond - deja),
-      plein: 'Tu as misé le plafond de ' + kz(t.plafond) + ' sur ce match.',
-      titre: TROPHEE + ' ' + esc(j.nom) + ' gagne — ' + esc(m.j1.nom) + ' contre ' + esc(m.j2.nom) + (deja ? ' <small style="font-weight:normal;color:#6c8f3a">(tu y as déjà ' + kz(deja) + ')</small>' : ''),
+      plein: T('paris.plafondMatch', 'Tu as misé le plafond de {plafond} sur ce match.', { plafond: kz(t.plafond) }),
+      titre: TROPHEE + ' ' + T('paris.ticketTournoi', '{nom} gagne — {j1} contre {j2}', { nom: esc(j.nom), j1: esc(m.j1.nom), j2: esc(m.j2.nom) })
+        + (deja ? ' <small style="font-weight:normal;color:#6c8f3a">' + T('paris.dejaMise', '(tu y as déjà {mise})', { mise: kz(deja) }) + '</small>' : ''),
       // Cote fixe : la mise × la cote, au kikooz inférieur (comme le serveur).
       // Un ancien pari mutuel sur ce match garde sa règle : on l'estime au pot.
       gainHtml: function (mise) {
-        if (!(mise >= 1)) return '<small>Indique une mise d’au moins 1 kikooz.</small>';
+        if (!(mise >= 1)) return '<small>' + MISE_MINI + '</small>';
         if (m.mien && m.mien.statut === 'ouvert' && m.mien.retour == null) {
           var pot = (Number(m.pot) || 0) + mise, sur = surLui + mise, moi = deja + mise;
-          return 'S’il gagne, tu reçois environ <b>' + kz(Math.floor(pot * moi / sur)) + '</b> <small>(pari mutuel)</small>';
+          return T('paris.gainMutuel', 'S’il gagne, tu reçois environ <b>{gain}</b> <small>(pari mutuel)</small>', { gain: kz(Math.floor(pot * moi / sur)) });
         }
-        if (!j.cote) return '<small>Pas de cote pour ce joueur.</small>';
+        if (!j.cote) return '<small>' + T('paris.pasDeCote', 'Pas de cote pour ce joueur.') + '</small>';
         var r = Math.floor(mise * j.cote + 1e-9);
-        return 'S’il gagne, tu reçois <b>' + kz(r) + '</b> <small>(' + kz(mise) + ' × ' + cote(j.cote) + ', cote figée à la mise)</small>';
+        return T('paris.gainTournoi', 'S’il gagne, tu reçois <b>{gain}</b> <small>({mise} × {cote}, cote figée à la mise)</small>',
+          { gain: kz(r), mise: kz(mise), cote: cote(j.cote) });
       },
     };
   }
@@ -782,100 +892,136 @@
   function parierTournoi() {
     var t = ticket;
     if (!t || t.envoi) return;
-    if (!(t.mise >= 1)) { t.erreur = 'Indique une mise d’au moins 1 kikooz.'; rendreTournois(); return; }
+    if (!(t.mise >= 1)) { t.erreur = MISE_MINI; rendreTournois(); return; }
     t.envoi = true; t.erreur = null; rendreTournois();
     fetch('/api/paris', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sid: sid, match: t.match, choix: t.choix, mise: t.mise }),
     }).then(json).then(function (r) {
       t.envoi = false;
-      if (!r.ok) { t.erreur = r.message || 'Le pari n’a pas pu être enregistré.'; rendreTournois(); return; }
-      toast = { vue: 'tournois', texte: 'C’est parié ! ' + kz(r.mise) + ' au total sur ce match' + (r.retour ? ' : ' + kz(r.retour) + ' pour toi s’il gagne.' : '.') };
+      if (!r.ok) { t.erreur = pariRefuse(r); rendreTournois(); return; }
+      toast = { vue: 'tournois', texte: r.retour
+        ? T('paris.pariMatchCote', 'C’est parié ! {mise} au total sur ce match : {retour} pour toi s’il gagne.', { mise: kz(r.mise), retour: kz(r.retour) })
+        : T('paris.pariMatch', 'C’est parié ! {mise} au total sur ce match.', { mise: kz(r.mise) }) };
       ticket = null;
       return chargerTournois();
-    }).catch(function () { t.envoi = false; t.erreur = 'Le serveur ne répond pas.'; rendreTournois(); });
+    }).catch(function () { t.envoi = false; t.erreur = SERVEUR_MUET; rendreTournois(); });
   }
 
   // ── LE REGISTRE ────────────────────────────────────────────────────────
   // Mes paris, tournois et Challenge, avec mon bilan ; et les gros coups du
   // parc, ceux que Dimitri annonce sur le forum.
   var zoneR = $('#vue-registre');
-  var STATUTS = { gagne: 'gagné', perdu: 'perdu', rembourse: 'remboursé', ouvert: 'en jeu' };
-  function date(q) { return new Date(q).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }); }
+  var STATUTS = {
+    gagne: T('paris.statutGagne', 'gagné'), perdu: T('paris.statutPerdu', 'perdu'),
+    rembourse: T('paris.statutRembourse', 'remboursé'), ouvert: T('paris.statutOuvert', 'en jeu'),
+  };
+  // « 28 nov. » en français (le navigateur en fr-FR, comme avant), « Nov 28 »
+  // en anglais (une fonction du dictionnaire, qui reçoit la date).
+  function date(q) {
+    var d = new Date(q);
+    return T('paris.dateCourte', d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }), { d: d });
+  }
+  // Les en-têtes communs aux tableaux de paris.
+  function entetesParis() {
+    return '<th>' + T('paris.pari', 'Pari') + '</th><th>' + T('paris.mise', 'Mise') + '</th><th>' + T('paris.cote', 'Cote') + '</th>'
+      + '<th>' + T('paris.resultat', 'Résultat') + '</th>';
+  }
+  var MUTUEL = '<small>' + T('paris.mutuel', 'mutuel') + '</small>';
+  // Le bénéfice signé : « +12 », « −3 » (le signe moins vient du nombre).
+  function signe(n) { return (n > 0 ? '+' : '') + nombre(n); }
   function chargerRegistre() {
     return fetch('/api/paris/registre?sid=' + encodeURIComponent(sid), { cache: 'no-store' })
       .then(json).then(rendreRegistre)
-      .catch(function () { zoneR.innerHTML = '<p class="vide">Le serveur ne répond pas. Réessaie dans un instant.</p>'; });
+      .catch(function () { zoneR.innerHTML = MUET; });
   }
   var classementEntier = false, dernierRegistre = null;
   function lienParieur(nom, pseudo) {
-    return '<a href="#" class="qui" data-parieur="' + esc(pseudo) + '" title="Voir ses paris réglés">' + esc(nom) + '</a>';
+    return '<a href="#" class="qui" data-parieur="' + esc(pseudo) + '" title="' + T('paris.voirSesParis', 'Voir ses paris réglés') + '">' + esc(nom) + '</a>';
   }
   function rendreRegistre(d) {
     dernierRegistre = d;
     var h = '';
-    // Le Prunostiqueur du mois.
+    // Le Prunostiqueur du mois. Le nom du mois (`lisible`) est écrit par le
+    // serveur, sans code à côté : il reste tel qu'il arrive.
     var s = d.mois;
     if (s) {
-      h += '<div class="regbloc"><h3>' + TROPHEE + ' Prunostiqueur du mois <small style="font-weight:normal;color:#6c8f3a">— ' + esc(s.lisible)
-        + ', bénéfice net, ' + s.minParis + ' paris réglés au moins</small></h3>';
-      if (s.passee) h += '<p class="decouv" style="margin:0 0 6px">Le mois dernier : <b>' + esc(s.passee.nom) + '</b> (+' + kz(s.passee.net) + '), sacré par Dimitri.</p>';
-      h += '<p class="decouv" style="margin:0 0 6px">Cagnotte en jeu : <b>' + kz(s.cagnotte || 0) + '</b>' + (s.plafondCagnotte ? ' (au plus ' + kz(s.plafondCagnotte) + ')' : '')
-        + ' — les mises des pronos que personne n’a vus venir. Le Prunostiqueur du mois la remporte, avec le titre.</p>';
+      h += '<div class="regbloc"><h3>' + TROPHEE + ' ' + T('paris.prunostiqueurDuMois', 'Prunostiqueur du mois')
+        + ' <small style="font-weight:normal;color:#6c8f3a">'
+        + T('paris.regleDuMois', '— {mois}, bénéfice net, {min} paris réglés au moins', { mois: esc(s.lisible), min: s.minParis }) + '</small></h3>';
+      if (s.passee) {
+        h += '<p class="decouv" style="margin:0 0 6px">' + T('paris.moisDernier', 'Le mois dernier : <b>{nom}</b> (+{net}), sacré par Dimitri.',
+          { nom: esc(s.passee.nom), net: kz(s.passee.net) }) + '</p>';
+      }
+      h += '<p class="decouv" style="margin:0 0 6px">' + T('paris.cagnotteEnJeu', 'Cagnotte en jeu : <b>{cagnotte}</b>{plafond}'
+        + ' — les mises des pronos que personne n’a vus venir. Le Prunostiqueur du mois la remporte, avec le titre.', {
+        cagnotte: kz(s.cagnotte || 0),
+        plafond: s.plafondCagnotte ? T('paris.auPlus', ' (au plus {montant})', { montant: kz(s.plafondCagnotte) }) : '',
+      }) + '</p>';
       if (s.classement.length) {
         var montres = classementEntier ? s.classement : s.classement.slice(0, 10);
         h += '<table class="reg"><tbody>' + montres.map(function (c) {
           return '<tr' + (c.soi ? ' style="background:#FFF6F4"' : '') + '><td class="n" style="width:24px">' + (c.rang === 1 ? jeton('or') : c.rang === 2 ? jeton('argent') : c.rang === 3 ? jeton('bronze') : c.rang) + '</td>'
-            + '<td>' + lienParieur(c.nom, c.pseudo) + (c.soi ? ' <small>(toi)</small>' : '') + ' <small style="color:#6c8f3a">' + c.gagnes + ' gagné' + (c.gagnes > 1 ? 's' : '') + ' sur ' + c.paris + '</small></td>'
-            + '<td class="n"><b class="' + (c.net >= 0 ? 'gagne' : 'perdu') + '">' + (c.net > 0 ? '+' : '') + nombre(c.net) + '</b></td></tr>';
+            + '<td>' + lienParieur(c.nom, c.pseudo) + (c.soi ? ' <small>' + T('paris.toi', '(toi)') + '</small>' : '') + ' <small style="color:#6c8f3a">'
+            + T.n('paris.gagnesSur', c.gagnes, { one: '{n} gagné sur {paris}', other: '{n} gagnés sur {paris}' }, { paris: c.paris }) + '</small></td>'
+            + '<td class="n"><b class="' + (c.net >= 0 ? 'gagne' : 'perdu') + '">' + signe(c.net) + '</b></td></tr>';
         }).join('') + '</tbody></table>';
         if (s.classement.length > 10) {
           h += '<button class="tout" data-classement="' + (classementEntier ? 'haut' : 'tout') + '">'
-            + (classementEntier ? 'Ne montrer que les dix premiers' : 'Voir tout le classement (' + s.classement.length + ' prunostiqueurs)') + '</button>';
+            + (classementEntier ? T('paris.dixPremiers', 'Ne montrer que les dix premiers')
+              : T('paris.toutLeClassement', 'Voir tout le classement ({n} prunostiqueurs)', { n: s.classement.length })) + '</button>';
         }
-        if (d.moi && !s.moi) h += '<p class="decouv" style="margin:6px 0 0">Pas encore classé ce mois-ci : il te faut ' + s.minParis + ' paris réglés.</p>';
-        else if (s.moi && s.moi.rang > 10) h += '<p class="decouv" style="margin:6px 0 0">Toi : ' + s.moi.rang + 'e (' + (s.moi.net > 0 ? '+' : '') + nombre(s.moi.net) + ').</p>';
+        if (d.moi && !s.moi) h += '<p class="decouv" style="margin:6px 0 0">' + T('paris.pasEncoreClasse', 'Pas encore classé ce mois-ci : il te faut {n} paris réglés.', { n: s.minParis }) + '</p>';
+        else if (s.moi && s.moi.rang > 10) {
+          h += '<p class="decouv" style="margin:6px 0 0">' + T('paris.toiRang', 'Toi : {rang} ({net}).', { rang: ordinal(s.moi.rang), net: signe(s.moi.net) }) + '</p>';
+        }
       } else {
-        h += '<p class="vide" style="padding-left:0">Personne n’est encore classé ce mois-ci : ' + s.minParis + ' paris réglés pour entrer dans la course.</p>';
+        h += '<p class="vide" style="padding-left:0">' + T('paris.personneClasse', 'Personne n’est encore classé ce mois-ci : {n} paris réglés pour entrer dans la course.', { n: s.minParis }) + '</p>';
       }
       h += '</div>';
     }
     if (!d.moi) {
-      h += '<p class="connexion">Pour voir tes paris, <a href="/light.html">connecte-toi au parc</a>.</p>';
+      h += '<p class="connexion">' + T('paris.connexionRegistre', 'Pour voir tes paris, <a href="/light.html">connecte-toi au parc</a>.') + '</p>';
     } else {
       var b = d.bilan;
       h += '<div class="bilan">'
-        + '<div><b>' + b.paris + '</b><span>paris (' + b.gagnes + ' gagnés, ' + b.perdus + ' perdus)</span></div>'
-        + '<div><b>' + nombre(b.mises) + '</b><span>kikooz misés</span></div>'
-        + '<div><b>' + nombre(b.gains) + '</b><span>kikooz reçus</span></div>'
-        + '<div><b class="' + (b.net >= 0 ? 'plus' : 'moins') + '">' + (b.net > 0 ? '+' : '') + nombre(b.net) + '</b><span>bilan'
-        + (b.enJeu ? ' · ' + kz(b.enJeu) + ' en jeu' : '') + '</span></div></div>';
+        + '<div><b>' + b.paris + '</b><span>' + T('paris.bilanParis', 'paris ({gagnes} gagnés, {perdus} perdus)', { gagnes: b.gagnes, perdus: b.perdus }) + '</span></div>'
+        + '<div><b>' + nombre(b.mises) + '</b><span>' + T('paris.kikoozMises', 'kikooz misés') + '</span></div>'
+        + '<div><b>' + nombre(b.gains) + '</b><span>' + T('paris.kikoozRecus', 'kikooz reçus') + '</span></div>'
+        + '<div><b class="' + (b.net >= 0 ? 'plus' : 'moins') + '">' + signe(b.net) + '</b><span>' + T('paris.bilan', 'bilan')
+        + (b.enJeu ? ' · ' + T('paris.enJeu', '{montant} en jeu', { montant: kz(b.enJeu) }) : '') + '</span></div></div>';
       h += '<div class="regbloc">';
       if (d.lignes.length) {
-        h += '<h3>Mes paris</h3><table class="reg"><thead><tr><th class="q-date">Date</th><th>Pari</th><th>Mise</th><th>Cote</th><th>Résultat</th></tr></thead><tbody>';
+        h += '<h3>' + T('paris.mesParis', 'Mes paris') + '</h3><table class="reg"><thead><tr><th class="q-date">Date</th>' + entetesParis() + '</tr></thead><tbody>';
         d.lignes.forEach(function (l) {
-          // Gagné : le bénéfice, et ce qui est revenu (mise comprise).
-          var res = l.statut === 'gagne' ? '<b>+' + nombre(l.gain - l.mise) + '</b> <small>(' + nombre(l.gain) + ' reçus)</small>'
+          // Gagné : le bénéfice, et ce qui est revenu (mise comprise). La
+          // description du pari (`quoi`) est écrite par le serveur.
+          var res = l.statut === 'gagne' ? '<b>+' + nombre(l.gain - l.mise) + '</b> <small>' + T('paris.recus', '({montant} reçus)', { montant: nombre(l.gain) }) + '</small>'
             : l.statut === 'perdu' ? '<small>−' + nombre(l.mise) + '</small>'
-            : l.statut === 'rembourse' ? '<small>' + nombre(l.gain) + ' rendus</small>' : '';
+            : l.statut === 'rembourse' ? '<small>' + T('paris.rendus', '{montant} rendus', { montant: nombre(l.gain) }) + '</small>' : '';
           h += '<tr><td class="q-date">' + esc(date(l.quand)) + '</td><td>' + (l.sorte === 'challenge' ? iconePari(l.type) : TROPHEE) + ' ' + esc(l.quoi) + '</td>'
-            + '<td class="n">' + nombre(l.mise) + '</td><td class="n">' + (l.cote ? cote(l.cote) : '<small>mutuel</small>') + '</td>'
+            + '<td class="n">' + nombre(l.mise) + '</td><td class="n">' + (l.cote ? cote(l.cote) : MUTUEL) + '</td>'
             + '<td><span class="st ' + l.statut + '">' + STATUTS[l.statut] + '</span>' + (res ? ' ' + res : '') + '</td></tr>';
         });
         h += '</tbody></table>';
       } else {
-        h += '<p class="vide" style="padding-left:0">Tu n’as encore rien parié. Tes paris s’inscriront ici, gagnés ou perdus.</p>';
+        h += '<p class="vide" style="padding-left:0">' + T('paris.rienParie', 'Tu n’as encore rien parié. Tes paris s’inscriront ici, gagnés ou perdus.') + '</p>';
       }
       h += '</div>';
     }
-    h += '<div class="regbloc"><h3>Les gros coups du parc <small style="font-weight:normal;color:#6c8f3a">— 30 derniers jours, ' + kz(d.seuil || 100) + ' de bénéfice ou plus</small></h3>';
+    h += '<div class="regbloc"><h3>' + T('paris.grosCoups', 'Les gros coups du parc') + ' <small style="font-weight:normal;color:#6c8f3a">'
+      + T('paris.grosCoupsSeuil', '— 30 derniers jours, {seuil} de bénéfice ou plus', { seuil: kz(d.seuil || 100) }) + '</small></h3>';
     if (d.grosCoups && d.grosCoups.length) {
       d.grosCoups.forEach(function (c) {
-        h += '<div class="coup">' + (c.pseudo ? lienParieur(c.parieur, c.pseudo) : '<b>' + esc(c.parieur) + '</b>') + ' a misé ' + kz(c.mise) + ' sur ' + esc(c.quoi)
-          + (c.cote ? ', à ' + cote(c.cote) : '') + ' : <b>' + kz(c.gain) + '</b> empochés. <span class="q">' + esc(date(c.quand)) + '</span></div>';
+        // `quoi` (ce sur quoi il a misé) vient du serveur.
+        h += '<div class="coup">' + T('paris.grosCoup', '{qui} a misé {mise} sur {quoi}{cote} : <b>{gain}</b> empochés.', {
+          qui: c.pseudo ? lienParieur(c.parieur, c.pseudo) : '<b>' + esc(c.parieur) + '</b>',
+          mise: kz(c.mise), quoi: esc(c.quoi), gain: kz(c.gain),
+          cote: c.cote ? T('paris.virguleACote', ', à {cote}', { cote: cote(c.cote) }) : '',
+        }) + ' <span class="q">' + esc(date(c.quand)) + '</span></div>';
       });
     } else {
-      h += '<p class="vide" style="padding-left:0">Pas encore de gros coup : Dimitri attend le premier avec impatience.</p>';
+      h += '<p class="vide" style="padding-left:0">' + T('paris.pasDeGrosCoup', 'Pas encore de gros coup : Dimitri attend le premier avec impatience.') + '</p>';
     }
     zoneR.innerHTML = h + '</div>';
   }
@@ -886,64 +1032,74 @@
   // se montrent jamais : on ne recopie pas les pronos du jour.
   var zoneP = $('#vue-parc');
   var parc = { jour: null, parieur: null };
+  // Un pari réglé, décrit par le client à partir de ses champs : le joueur,
+  // le jeu (`jeu`, son nom) et le type ; pour un tournoi, l'affiche du match
+  // (`affiche`, écrite par le serveur).
   function decrirePari(l) {
-    if (l.sorte === 'challenge') return iconePari(l.type) + ' ' + esc(l.choix) + ' ' + quoiType(l.type) + ' à ' + esc(l.jeu || '') + (DEFI[l.type] ? ' (défi)' : '');
-    return TROPHEE + ' la victoire de ' + esc(l.choix) + (l.affiche ? ' <small>(' + esc(l.affiche) + ')</small>' : '');
+    if (l.sorte === 'challenge') {
+      var p = { choix: esc(l.choix), jeu: esc(l.jeu || '') };
+      var quoi = DEFI[l.type] ? T('paris.decrireDefi', '{choix} décroche {quoi} à {jeu} (défi)', { choix: p.choix, jeu: p.jeu, quoi: DEFI_QUOI[DEFI[l.type]] })
+        : l.type === 'or' ? T('paris.decrireOr', '{choix} en or à {jeu}', p) : T('paris.decrireMedaille', '{choix} médaillé à {jeu}', p);
+      return iconePari(l.type) + ' ' + quoi;
+    }
+    return TROPHEE + ' ' + T('paris.victoireDe', 'la victoire de {choix}', { choix: esc(l.choix) }) + (l.affiche ? ' <small>(' + esc(l.affiche) + ')</small>' : '');
   }
   function resultatPari(l) {
     var res = l.statut === 'gagne' ? '<b>+' + nombre(l.gain - l.mise) + '</b>'
       : l.statut === 'perdu' ? '<small>−' + nombre(l.mise) + '</small>'
-      : l.statut === 'rembourse' ? '<small>rendu</small>' : '';
+      : l.statut === 'rembourse' ? '<small>' + T('paris.rendu', 'rendu') + '</small>' : '';
     return '<span class="st ' + l.statut + '">' + STATUTS[l.statut] + '</span> ' + res;
   }
   function chargerParc() {
     var url = parc.parieur ? '/api/paris/parieur?u=' + encodeURIComponent(parc.parieur)
       : '/api/paris/parc' + (parc.jour ? '?jour=' + encodeURIComponent(parc.jour) : '');
     return fetch(url, { cache: 'no-store' }).then(json).then(rendreParc)
-      .catch(function () { zoneP.innerHTML = '<p class="vide">Le serveur ne répond pas. Réessaie dans un instant.</p>'; });
+      .catch(function () { zoneP.innerHTML = MUET; });
   }
   function rendreParc(d) {
-    if (!d || !d.ok) { zoneP.innerHTML = '<p class="vide">' + esc((d && d.message) || 'Introuvable.') + '</p>'; return; }
+    if (!d || !d.ok) { zoneP.innerHTML = '<p class="vide">' + esc((d && d.message) || T('paris.introuvable', 'Introuvable.')) + '</p>'; return; }
     var h = '';
     if (parc.parieur) {
       var b = d.bilan;
-      h += '<div class="navjour"><button data-parc-retour>‹ Le parc, jour par jour</button><b>Les paris de ' + esc(d.nom) + '</b><span></span></div>';
-      h += '<p class="decouv" style="margin:0 12px 4px">Ses paris réglés des 30 derniers jours (ceux en jeu restent secrets).</p>';
+      h += '<div class="navjour"><button data-parc-retour>' + T('paris.parcJourParJour', '‹ Le parc, jour par jour') + '</button>'
+        + '<b>' + T('paris.lesParisDe', 'Les paris de {nom}', { nom: esc(d.nom) }) + '</b><span></span></div>';
+      h += '<p class="decouv" style="margin:0 12px 4px">' + T('paris.sesParisRegles', 'Ses paris réglés des 30 derniers jours (ceux en jeu restent secrets).') + '</p>';
       h += '<div class="bilan">'
-        + '<div><b>' + b.paris + '</b><span>paris réglés (' + b.gagnes + ' gagnés)</span></div>'
-        + '<div><b>' + nombre(b.mises) + '</b><span>kikooz misés</span></div>'
-        + '<div><b>' + nombre(b.gains) + '</b><span>kikooz reçus</span></div>'
-        + '<div><b class="' + (b.net >= 0 ? 'plus' : 'moins') + '">' + (b.net > 0 ? '+' : '') + nombre(b.net) + '</b><span>bilan</span></div></div>';
+        + '<div><b>' + b.paris + '</b><span>' + T('paris.parisRegles', 'paris réglés ({gagnes} gagnés)', { gagnes: b.gagnes }) + '</span></div>'
+        + '<div><b>' + nombre(b.mises) + '</b><span>' + T('paris.kikoozMises', 'kikooz misés') + '</span></div>'
+        + '<div><b>' + nombre(b.gains) + '</b><span>' + T('paris.kikoozRecus', 'kikooz reçus') + '</span></div>'
+        + '<div><b class="' + (b.net >= 0 ? 'plus' : 'moins') + '">' + signe(b.net) + '</b><span>' + T('paris.bilan', 'bilan') + '</span></div></div>';
       h += '<div class="regbloc">';
       if (d.lignes.length) {
-        h += '<table class="reg"><thead><tr><th class="q-date">Réglé le</th><th>Pari</th><th>Mise</th><th>Cote</th><th>Résultat</th></tr></thead><tbody>'
+        h += '<table class="reg"><thead><tr><th class="q-date">' + T('paris.regleLe', 'Réglé le') + '</th>' + entetesParis() + '</tr></thead><tbody>'
           + d.lignes.map(function (l) {
             return '<tr><td class="q-date">' + esc(date(l.quand)) + '</td><td>' + decrirePari(l) + '</td><td class="n">' + nombre(l.mise) + '</td>'
-              + '<td class="n">' + (l.cote ? cote(l.cote) : '<small>mutuel</small>') + '</td><td>' + resultatPari(l) + '</td></tr>';
+              + '<td class="n">' + (l.cote ? cote(l.cote) : MUTUEL) + '</td><td>' + resultatPari(l) + '</td></tr>';
           }).join('') + '</tbody></table>';
-      } else h += '<p class="vide" style="padding-left:0">Aucun pari réglé ces 30 derniers jours.</p>';
+      } else h += '<p class="vide" style="padding-left:0">' + T('paris.aucunPariTrenteJours', 'Aucun pari réglé ces 30 derniers jours.') + '</p>';
       zoneP.innerHTML = h + '</div>';
       return;
     }
     parc.jour = d.jour;
-    h += '<div class="navjour"><button data-parc-jour="' + esc(d.precedent) + '">‹ veille</button><b>' + esc(d.lisible) + '</b>'
-      + '<button data-parc-jour="' + esc(d.suivant || '') + '"' + (d.suivant ? '' : ' disabled') + '>lendemain ›</button></div>';
-    h += '<p class="decouv" style="margin:0 12px 4px">Les paris d’un jour se dévoilent une fois réglés : le Challenge de ce jour, et les matchs de tournoi réglés ce jour-là. Touche un nom pour voir tous ses paris.</p>';
+    h += '<div class="navjour"><button data-parc-jour="' + esc(d.precedent) + '">' + T('paris.veille', '‹ veille') + '</button><b>' + esc(jourLisible(d.lisible, d.jour)) + '</b>'
+      + '<button data-parc-jour="' + esc(d.suivant || '') + '"' + (d.suivant ? '' : ' disabled') + '>' + T('paris.lendemain', 'lendemain ›') + '</button></div>';
+    h += '<p class="decouv" style="margin:0 12px 4px">' + T('paris.parcAide', 'Les paris d’un jour se dévoilent une fois réglés : le Challenge de ce jour, et les matchs de tournoi réglés ce jour-là. Touche un nom pour voir tous ses paris.') + '</p>';
     h += '<div class="regbloc">';
     if (d.bilan.length) {
-      h += '<h3>Le bilan du jour</h3><table class="reg"><thead><tr><th></th><th>Prunostiqueur</th><th>Gagnés</th><th>Misé</th><th>Bilan</th></tr></thead><tbody>'
+      h += '<h3>' + T('paris.bilanDuJour', 'Le bilan du jour') + '</h3><table class="reg"><thead><tr><th></th><th>' + T('paris.prunostiqueur', 'Prunostiqueur') + '</th>'
+        + '<th>' + T('paris.gagnes', 'Gagnés') + '</th><th>' + T('paris.miseCourt', 'Misé') + '</th><th>' + T('paris.bilanTitre', 'Bilan') + '</th></tr></thead><tbody>'
         + d.bilan.map(function (b, i) {
           return '<tr><td class="n" style="width:20px">' + (i + 1) + '</td><td>' + lienParieur(b.nom, b.pseudo) + '</td><td class="n">' + b.gagnes + '/' + b.paris + '</td>'
-            + '<td class="n">' + nombre(b.mises) + '</td><td class="n"><span class="net ' + (b.net >= 0 ? 'plus' : 'moins') + '">' + (b.net > 0 ? '+' : '') + nombre(b.net) + '</span></td></tr>';
+            + '<td class="n">' + nombre(b.mises) + '</td><td class="n"><span class="net ' + (b.net >= 0 ? 'plus' : 'moins') + '">' + signe(b.net) + '</span></td></tr>';
         }).join('') + '</tbody></table>';
     }
     if (d.lignes.length) {
-      h += '<h3>Tous les paris</h3><table class="reg"><thead><tr><th>Qui</th><th>Pari</th><th>Mise</th><th>Cote</th><th>Résultat</th></tr></thead><tbody>'
+      h += '<h3>' + T('paris.tousLesParis', 'Tous les paris') + '</h3><table class="reg"><thead><tr><th>' + T('paris.qui', 'Qui') + '</th>' + entetesParis() + '</tr></thead><tbody>'
         + d.lignes.map(function (l) {
           return '<tr><td>' + lienParieur(l.parieur, l.pseudo) + '</td><td>' + decrirePari(l) + '</td><td class="n">' + nombre(l.mise) + '</td>'
-            + '<td class="n">' + (l.cote ? cote(l.cote) : '<small>mutuel</small>') + '</td><td>' + resultatPari(l) + '</td></tr>';
+            + '<td class="n">' + (l.cote ? cote(l.cote) : MUTUEL) + '</td><td>' + resultatPari(l) + '</td></tr>';
         }).join('') + '</tbody></table>';
-    } else h += '<p class="vide" style="padding-left:0">Aucun pari réglé ce jour-là.</p>';
+    } else h += '<p class="vide" style="padding-left:0">' + T('paris.aucunPariCeJour', 'Aucun pari réglé ce jour-là.') + '</p>';
     zoneP.innerHTML = h + '</div>';
   }
   document.addEventListener('click', function (ev) {
@@ -972,8 +1128,9 @@
     zoneP.hidden = v !== 'parc';
     if (v === 'challenge') rendreChallenge();
     if (v === 'tournois') rendreTournois();
-    if (v === 'registre') { if (!zoneR.innerHTML) zoneR.innerHTML = '<p class="vide">Chargement…</p>'; chargerRegistre(); }
-    if (v === 'parc') { zoneP.innerHTML = '<p class="vide">Chargement…</p>'; chargerParc(); }
+    var chargement = '<p class="vide">' + T('paris.chargement', 'Chargement…') + '</p>';
+    if (v === 'registre') { if (!zoneR.innerHTML) zoneR.innerHTML = chargement; chargerRegistre(); }
+    if (v === 'parc') { zoneP.innerHTML = chargement; chargerParc(); }
   }
   document.querySelector('.onglets').addEventListener('click', function (ev) {
     var b = ev.target.closest('button[data-vue]');
