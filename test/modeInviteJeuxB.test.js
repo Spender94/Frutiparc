@@ -499,7 +499,9 @@ test('MiniPixiz en invité : la fiche d\'habitué, tous les lieux, aucun sid, le
     await attendre(500);
     assert.deepStrictEqual(await page.evaluate(() => window.__panneaux), [], 'rien pendant le fondu et le Game Over');
     let p = await attendrePanneau(page);
-    assert.deepStrictEqual(p.appels, [{ titre: undefined, score: 1, libelle: 'Niveau atteint' }]);
+    // Le panneau porte son anglais à côté du français (libelleEn, titreEn).
+    assert.deepStrictEqual(p.appels, [{ titre: undefined, titreEn: undefined, score: 1, libelle: 'Niveau atteint',
+      libelleEn: 'Level reached' }]);
     assert.ok(await page.evaluate(() => document.getElementById('menu').classList.contains('on')), 'sur la clairière');
     await capturer(page, 'minipixiz');
     await page.click('#fp-invite .fpi-non');
@@ -508,9 +510,9 @@ test('MiniPixiz en invité : la fiche d\'habitué, tous les lieux, aucun sid, le
     // LE DONJON, L'ARC-EN-CIEL, L'ARBRE CREUX : par la clairière, comme au
     // doigt ; chacun perdu par son moteur, chacun son panneau (second rideau).
     const attendus = {
-      Donjon: { titre: undefined, score: '1 / 10', libelle: 'Étage atteint' },
-      ArcEnCiel: { titre: undefined },
-      Arbre: { score: 0, libelle: 'Ton score' },
+      Donjon: { titre: undefined, titreEn: undefined, score: '1 / 10', libelle: 'Étage atteint', libelleEn: 'Floor reached' },
+      ArcEnCiel: { titre: undefined, titreEn: undefined },
+      Arbre: { score: 0, libelle: 'Ton score', libelleEn: 'Your score' },
     };
     for (const [va, nom, classe] of [['dungeon', 'dungeon', 'Donjon'], ['rainbow', 'rainbow', 'ArcEnCiel'], ['tree', 'tree', 'Arbre']]) {
       await choisir(va, nom);
