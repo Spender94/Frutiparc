@@ -183,7 +183,8 @@ test('l’explosion, les particules, l’éclair et le bandeau sont ceux du fich
   // Le bandeau : la plaque #358 (celle du titre du menu) et Impact 16 crème.
   assert.match(UI, /const BANDEAU = \[\[-27, 0\], \[-20\.65, 0\.234\], \[-15\.2, 0\.4375\],/);
   assert.match(UI, /const plaque = A\.img\('menuTitre'\);/);
-  assert.match(UI, /\{ size: 16, color: '#ffe8b7', font: 'impact', baseline: 'alphabetic' \}/);
+  // (un nom de pouvoir traduit plus long que la plaque s'y resserre : maxW)
+  assert.match(UI, /\{ size: 16, color: '#ffe8b7', font: 'impact', baseline: 'alphabetic', maxW: 188 \}/);
   assert.match(JEU, /attachFx\('defense', this\.pos_x \+ width \/ 2, D\.SPECIAL_Y, \{ totalFrames: 9, text: txt \+ ' !' \}\)/);
   // Le score flottant : trente images, plaque noire à 35 %, DooM 13.
   assert.match(UI, /const SCORE_POP = \[0, -0\.1, -0\.45, -1\.05, -1\.85, -2\.95, -4\.2, -5\.75, -7\.5, -9\.5, -11\.7, -14\.15,/);
