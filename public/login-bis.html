@@ -383,164 +383,324 @@
       #jeu-invite .ji-note { display: none; }
     }
 
-    /* ────────── Mobile : la home était 100% desktop (logo absolu, grilles
-       2 colonnes, largeurs/hauteurs fixes). Ici tout s'empile, et chaque bloc
-       prend l'allure d'une appli : une scène fruitée en haut, une carte de
-       connexion aux champs hauts, deux vrais boutons, l'accueil en carte, et
-       les jeux en grille de vignettes nommées. ───── */
-    @media (max-width: 760px) {
+    /* ────────── L'ACCUEIL DU TÉLÉPHONE (≤ 760 px) ──────────────────────────
+       Le BUREAU garde l'accueil d'époque au pixel près : rien de ce qui suit ne
+       le touche (tout est sous la requête média, et les éléments `.m-only`
+       n'y paraissent pas). Les téléphones n'existaient pas pour cet accueil-là :
+       on s'y permet une vraie page d'accueil, dans les codes du parc — le vert,
+       les cartes blanches arrondies, le rose des boutons, le logo et la grappe
+       de fruits, les icônes du bureau Frutiz, les frutibouilles, et la fonte
+       ronde de Frutisnake (Alba) pour les titres. Elle suit la devise :
+
+         · la SCÈNE   — logo, devise, grappe de fruits, « Jouer maintenant » ;
+         · DES JEUX   — les jeux en carrousel, à jouer en invité d'un doigt ;
+         · DU CHAT    — un salon qui vit tout seul, frutibouilles animées ;
+         · DES FRUITS — une frutibouille tirée au sort, puis l'inscription.
+
+       La connexion, l'inscription et le code oublié montent en FEUILLES du bas
+       de l'écran, sur un voile (l'attribut data-feuille du <body>). Les messages
+       (#status) deviennent une bulle en haut de l'écran.
+
+       « Téléphone » : moins de 760 px de large, ou un écran tactile de moins de
+       500 px de haut — le même téléphone tenu à l'horizontale, qui retombait
+       sinon sur la page du bureau, pied de page fixe en travers de l'écran. La
+       même requête est reprise par le script (ecranEtroit). ─────────────── */
+    .m-only { display: none; }
+    @font-face { font-family: 'Alba'; src: url('/snake3/fontes/alba.woff') format('woff'); font-display: swap; }
+    @keyframes m-flotte { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+    @keyframes m-pouls { 0%, 100% { box-shadow: 0 0 0 3px rgba(60,194,60,.25); } 50% { box-shadow: 0 0 0 6px rgba(60,194,60,.08); } }
+    @keyframes m-monte { from { transform: translateY(100%); } to { transform: none; } }
+    @keyframes m-tombe { from { transform: translateY(-140%); } to { transform: none; } }
+    @keyframes m-entre { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+    @media (max-width: 760px), (pointer: coarse) and (max-height: 500px) {
       html, body { overflow-x: hidden; }
-      body {
-        padding: 0 0 24px;
-        /* Le ciel et les arbres de bg.gif, en haut, derrière le logo et la
-           carte — et non étirés sur toute la page, où ils se pixelisaient. */
-        background: #b9ea76;
-        background-image: linear-gradient(180deg, rgba(185,234,118,0) 0, rgba(185,234,118,0) 330px, #b9ea76 430px),
-          url('/images/bg.gif');
-        background-size: 100% 100%, 210% auto;
-        background-position: 0 0, 62% 0;
-        background-repeat: no-repeat, no-repeat;
+      body { display: block; padding: 0; background: #b9ea76; }
+      body[data-feuille] { overflow: hidden; }
+      .landing.m-only { display: block; }
+      button { -webkit-tap-highlight-color: transparent; }
+
+      /* Ce que la page du téléphone remplace : la liste des jeux et la carte de
+         bienvenue d'époque. Le formulaire d'inscription, lui, reste — il monte
+         en feuille (plus bas) ; d'où les boîtes « transparentes » autour. */
+      .layout, .main, .welcome-left { display: contents; }
+      .layout > .games, .main > div:last-child, #welcome-text,
+      html[lang] .main .welcome-title, html[lang] .main .welcome-title-txt { display: none !important; }
+
+      /* ── La scène ── */
+      .m-hero {
+        position: relative; overflow: hidden; text-align: center;
+        padding: 56px 18px 30px;
+        /* Le ciel de bg.gif derrière le logo, les deux arbres de part et
+           d'autre — en haut seulement, puis le vert du parc (étirée sur toute la
+           page, l'image se pixelisait). Le logo a été dessiné pour ce ciel : son
+           liseré clair s'y fond, quand il faisait une boîte blanche sur un arbre. */
+        background: url('/images/bg.gif') 35% 0 / auto var(--m-decor) no-repeat;
+      }
+      /* La hauteur du décor : celle de l'image à 260 % de la largeur d'un
+         téléphone en portrait, bornée pour l'écran large de l'horizontale. Le
+         bas de l'image se fond dans le vert : le fondu finit où elle s'arrête. */
+      .m-hero { --m-decor: clamp(290px, 88.5vw, 400px); }
+      .m-hero::after {
+        content: ''; position: absolute; left: 0; right: 0; top: calc(var(--m-decor) - 130px); height: 130px; z-index: 0;
+        background: linear-gradient(rgba(185,234,118,0), #b9ea76); pointer-events: none;
+      }
+      .m-hero > * { position: relative; z-index: 1; }
+      .langues { position: absolute; top: 12px; left: 12px; right: auto; font-size: 12px; z-index: 6; }
+      .langues a { display: inline-block; padding: 6px 10px; margin: 0 4px 0 0; border-radius: 14px; }
+      .m-hero .m-connexion {
+        position: absolute; top: 10px; right: 12px; z-index: 6;
+        font: bold 13px Verdana, Geneva, sans-serif; color: #335511;
+        background: #fff; border: 2px solid #94DB39; border-radius: 16px; padding: 7px 14px;
+        box-shadow: 0 2px 0 rgba(44,74,15,.2); cursor: pointer;
+      }
+      .m-logo { display: block; width: 236px; height: auto; margin: 0 auto; filter: drop-shadow(0 6px 10px rgba(44,74,15,.22)); }
+      .m-grappe { display: block; width: 196px; height: auto; margin: 10px auto -4px; animation: m-flotte 4.5s ease-in-out infinite; }
+      .m-devise {
+        margin: 12px 0 10px; font: 400 31px/1.05 'Alba', 'Arial Rounded MT Bold', 'Trebuchet MS', sans-serif;
+        color: #f05a8c; letter-spacing: .5px; -webkit-text-stroke: 1.6px #a8174a; paint-order: stroke fill;
+        text-shadow: 2px 2px 0 #fff, 3px 3px 0 #a8174a; transform: rotate(-2deg);
+      }
+      .m-devise br { display: block; }
+      .m-accroche { max-width: 340px; margin: 0 auto 18px; font-size: 15px; line-height: 1.45; color: #2e3a1d; }
+      .m-actions { display: flex; flex-direction: column; gap: 12px; max-width: 340px; margin: 0 auto; }
+      .m-btn {
+        display: block; width: 100%; border-radius: 28px; padding: 15px 20px 14px; cursor: pointer;
+        font: 400 20px/1 'Alba', 'Trebuchet MS', Verdana, sans-serif; letter-spacing: .6px;
+      }
+      .m-btn:active { transform: translateY(2px); }
+      .m-btn-rose {
+        color: #fff; background: linear-gradient(#ff8fb8, #e2367a); border: 2px solid #a8174a;
+        box-shadow: 0 4px 0 #a8174a, 0 10px 20px rgba(168,23,74,.22); text-shadow: 0 1px 0 #a8174a;
+      }
+      .m-btn-rose:active { box-shadow: 0 2px 0 #a8174a; }
+      .m-btn-jouer::before { content: '\25B6\00A0'; font: 14px/1 Verdana, sans-serif; vertical-align: 2px; }
+      .m-btn-vert { color: #4f7d1e; background: #fff; border: 2px solid #94DB39; box-shadow: 0 4px 0 #73B01E; }
+      .m-btn-vert:active { box-shadow: 0 2px 0 #73B01E; }
+      .m-enligne { margin: 16px 0 0; font-size: 13px; font-weight: bold; color: #335511; }
+      .m-enligne i {
+        display: inline-block; width: 9px; height: 9px; margin-right: 8px; border-radius: 50%;
+        background: #3cc23c; animation: m-pouls 1.8s ease-in-out infinite;
       }
 
-      /* La scène : le logo, grand et centré, puis la carte de connexion. */
-      .topbar {
-        width: calc(100% - 28px); height: auto; min-height: 0;
-        margin: 128px 14px 0; padding: 18px 16px 16px;
+      /* ── Les cartes des trois parties ── */
+      .m-carte {
+        margin: 0 max(12px, calc((100% - 560px) / 2)) 16px; padding: 22px 16px 18px; border-radius: 22px; background: #fff;
+        box-shadow: 0 8px 22px rgba(44,74,15,.16);
+      }
+      .m-titre {
+        display: flex; align-items: center; justify-content: center; gap: 10px; margin: 0;
+        font: 400 30px/1 'Alba', 'Trebuchet MS', sans-serif; color: #84c22d; letter-spacing: .5px;
+        -webkit-text-stroke: 1.2px #4f7d1e; paint-order: stroke fill; text-shadow: 2px 2px 0 #E8F8D3;
+      }
+      .m-titre img { width: 42px; height: 42px; }
+      .m-sous { margin: 10px 4px 16px; text-align: center; font-size: 14px; line-height: 1.45; color: #5A7D33; }
+
+      /* Des jeux : un carrousel qui déborde jusqu'aux bords de la carte. */
+      .m-carrousel {
+        display: flex; gap: 12px; overflow-x: auto; overscroll-behavior-x: contain;
+        scroll-snap-type: x mandatory; scroll-padding: 0 16px; scrollbar-width: none;
+        margin: 0 -16px; padding: 4px 16px 12px;
+      }
+      .m-carrousel::-webkit-scrollbar { display: none; }
+      .m-jeu {
+        flex: 0 0 144px; scroll-snap-align: start; padding: 0; border: 0; background: none;
+        font: inherit; color: inherit; text-align: left; cursor: pointer;
+      }
+      .m-jeu-image {
+        position: relative; display: block; width: 144px; height: 144px; overflow: hidden;
+        border-radius: 20px; border: 3px solid #E8F8D3; background: #E8F8D3;
+        box-shadow: 0 4px 10px rgba(44,74,15,.18);
+      }
+      .m-jeu-image img { display: block; width: 100%; height: 100%; object-fit: cover; }
+      .m-jeu:active .m-jeu-image { transform: scale(.97); }
+      .m-jeu-jouer {
+        position: absolute; right: 8px; bottom: 8px; width: 36px; height: 36px; border-radius: 50%;
+        background: linear-gradient(#ff8fb8, #e2367a); border: 2px solid #fff; color: #fff;
+        font: 13px/32px Verdana, sans-serif; text-align: center; box-shadow: 0 2px 6px rgba(0,0,0,.3);
+      }
+      .m-jeu-badge {
+        position: absolute; left: 7px; top: 7px; padding: 4px 8px; border-radius: 10px;
+        background: #fff; color: #a8174a; font: bold 10px/1 Verdana, sans-serif; box-shadow: 0 1px 4px rgba(0,0,0,.2);
+      }
+      .m-jeu-genre {
+        display: block; margin: 9px 0 2px 2px; font-size: 10px; font-weight: bold; letter-spacing: .6px;
+        text-transform: uppercase; color: #84b935;
+      }
+      .m-jeu-nom { display: block; margin-left: 2px; font-size: 15px; font-weight: bold; color: #2C4A0F; }
+      .m-jeu-accroche { display: block; margin: 3px 0 0 2px; font-size: 12px; line-height: 1.35; color: #5A7D33; }
+
+      /* Du chat : la fenêtre d'un salon, comme au bureau. */
+      .m-salon { padding: 8px; border: 3px solid #444; border-radius: 16px; background: #fff; box-shadow: 0 5px 0 #DDDDDD; }
+      .m-salon-barre { display: flex; align-items: center; gap: 6px; margin: 0 2px 8px; font: bold 15px Verdana, Geneva, sans-serif; color: #444; }
+      .m-salon-barre img { width: 22px; height: auto; }
+      .m-ecrans { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 8px; }
+      .m-ecran { min-width: 0; text-align: center; }
+      .m-ecran-cadre {
+        position: relative; display: block; aspect-ratio: 1 / 1; border-radius: 12px;
+        background: url('/fb/cadre_bouille.svg') center / 100% 100% no-repeat;
+        transition: transform .25s ease, filter .25s ease;
+      }
+      .m-ecran-cadre canvas { position: absolute; left: 3%; top: 3%; width: 94% !important; height: 94% !important; }
+      .m-ecran.parle .m-ecran-cadre { transform: translateY(-4px); filter: drop-shadow(0 4px 4px rgba(44,74,15,.3)); }
+      .m-ecran-nom { display: block; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: bold 10px Verdana, sans-serif; }
+      .m-fil {
+        display: flex; flex-direction: column; justify-content: flex-end; height: 138px; overflow: hidden;
+        padding: 6px 9px; border: 3px solid #b5e57a; border-radius: 12px;
+        background: linear-gradient(#dcf9b3, #c8f08f); font: 12.5px/1.45 Verdana, Geneva, sans-serif;
+      }
+      .m-ligne { flex: none; animation: m-entre .35s ease-out; overflow-wrap: anywhere; }
+      .m-ligne .h { opacity: .75; }
+      .m-ligne.emote { font-style: italic; }
+      .m-atouts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 16px 0 0; padding: 0; list-style: none; }
+      .m-atouts li { padding: 10px 4px 9px; border-radius: 14px; background: #E8F8D3; text-align: center; font-size: 12px; font-weight: bold; color: #4f7d1e; }
+      .m-atouts img { display: block; width: auto; height: 42px; margin: 0 auto 6px; }
+
+      /* Des fruits : une frutibouille, une autre, encore une autre… */
+      .m-atelier { display: flex; flex-direction: column; align-items: center; gap: 14px; margin: 0 0 20px; }
+      .m-tete {
+        position: relative; width: 172px; height: 172px; padding: 0; border: 0; border-radius: 28px; cursor: pointer;
+        background: url('/fb/cadre_bouille.svg') center / 100% 100% no-repeat;
+        filter: drop-shadow(0 6px 10px rgba(44,74,15,.2));
+      }
+      .m-tete canvas { position: absolute; left: 4%; top: 4%; width: 92% !important; height: 92% !important; }
+      .m-autre {
+        padding: 9px 18px; border: 2px solid #94DB39; border-radius: 18px; background: #E8F8D3; cursor: pointer;
+        font: bold 14px Verdana, Geneva, sans-serif; color: #335511;
+      }
+      .m-autre::before { content: '\21BB\00A0'; }
+      .m-fruits .m-btn { max-width: 340px; margin: 0 auto; }
+      .m-deja { margin: 16px 0 0; text-align: center; font-size: 14px; color: #5A7D33; }
+      .m-deja a { font-weight: bold; color: #335511; }
+
+      /* Les parties paraissent en glissant vers le haut (si le visiteur ne
+         demande pas moins d'animations : la classe n'est alors pas posée). */
+      .m-anime .m-carte { opacity: 0; transform: translateY(18px); transition: opacity .5s ease, transform .5s ease; }
+      .m-anime .m-carte.vu { opacity: 1; transform: none; }
+
+      /* ── Les feuilles : connexion (la barre d'époque), inscription, oubli ── */
+      .voile.m-only {
+        display: block; position: fixed; inset: 0; z-index: 1090; background: rgba(30,52,8,.55);
+        opacity: 0; pointer-events: none; transition: opacity .2s ease;
+      }
+      body[data-feuille] .voile { opacity: 1; pointer-events: auto; }
+      .topbar { display: none; }
+      body[data-feuille="connexion"] .topbar { display: flex; }
+      .topbar, #register-form, #forgot-box {
+        position: fixed !important; bottom: 0; z-index: 1100;
+        left: max(0px, calc((100% - 600px) / 2)); right: max(0px, calc((100% - 600px) / 2));
         flex-direction: column; align-items: stretch;
-        border-radius: 18px;
-        background: rgba(255,255,255,.96);
-        box-shadow: 0 12px 28px rgba(44,74,15,.22);
+        width: auto !important; max-width: none !important; height: auto; min-height: 0; max-height: 92vh;
+        margin: 0 !important; overflow-y: auto; overscroll-behavior: contain;
+        padding: 10px 18px calc(20px + env(safe-area-inset-bottom)) !important;
+        border: 0 !important; border-radius: 24px 24px 0 0 !important; background: #fff !important;
+        box-shadow: 0 -10px 30px rgba(0,0,0,.25); text-align: left;
+        animation: m-monte .3s cubic-bezier(.2,.8,.3,1);
       }
-      .logo {
-        position: absolute; left: 50%; top: -112px; transform: translateX(-50%);
-        width: 204px; filter: drop-shadow(0 6px 10px rgba(44,74,15,.25));
+      /* Une colonne flex de hauteur bornée fait RÉTRÉCIR ses enfants pour
+         tenir : les champs s'écrasaient. Ils gardent leur taille, et c'est la
+         feuille qui défile si le clavier lui prend de la place. */
+      .topbar > *, #register-form > *, #forgot-box > * { flex-shrink: 0; }
+      /* La poignée, toujours en premier (l'en-tête de l'inscription est
+         remonté par `order` : elle passe avant lui). */
+      .topbar::before, #register-form::before, #forgot-box::before {
+        content: ''; display: block; flex: none; order: -2; width: 44px; height: 5px; margin: 0 auto 12px;
+        border-radius: 3px; background: #d6dccd;
       }
+      .topbar .logo { display: none; }
+      .feuille-tete.m-only { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 2px 12px; }
+      #register-form .feuille-tete { order: -1; }
+      .feuille-tete strong {
+        font: 400 25px/1.1 'Alba', 'Trebuchet MS', sans-serif; color: #84c22d; letter-spacing: .4px;
+        -webkit-text-stroke: 1px #4f7d1e; paint-order: stroke fill;
+      }
+      .feuille-fermer {
+        flex: none; width: 38px; height: 38px; border-radius: 50%; border: 2px solid #ADE76B; background: #fff;
+        color: #335511; font: bold 16px/1 Verdana, sans-serif; cursor: pointer;
+      }
+      .feuille-oubli.m-only { display: block; margin: 14px 0 0; text-align: center; font-size: 14px; color: #4f7d1e; }
 
-      /* Le formulaire empilé : le libellé (NOM / CODE) au-dessus de son champ. */
+      /* Le formulaire de connexion : le libellé d'époque (NOM / CODE) au-dessus
+         de son champ, des champs hauts, deux vrais boutons. */
       .login-form { flex-wrap: wrap; gap: 6px; font-size: 14px; align-items: center; }
       .login-form > label { flex: 1 1 100%; margin: 8px 0 0 4px; }
       .login-form > label:first-of-type { margin-top: 0; }
       .label-img { height: 17px; }
-      /* Les champs de texte (pas la case à cocher : voir plus bas). */
-      .login-form > input:not([type="checkbox"]) {
-        flex: 1 1 100%; min-width: 0; width: auto; height: 46px;
-        padding: 0 14px; border-radius: 12px;
-        border: 2px solid #cfe9a3; background: #f4fbe8;
-        font-size: 16px; /* ≥16px = pas de zoom auto iOS au focus */
+      /* (Les champs de la connexion vivent dans une RANGÉE qui passe à la
+         ligne — d'où le 100 % ; ceux de l'inscription dans une COLONNE, où une
+         base de 100 % viserait la hauteur et les écraserait.) */
+      .login-form > input:not([type="checkbox"]) { flex: 1 1 100%; }
+      .register-simple input, #forgot-email, #register-form #reg-email { flex: none; }
+      .login-form > input:not([type="checkbox"]), .register-simple input, #forgot-email {
+        min-width: 0; width: 100% !important; height: 48px !important;
+        padding: 0 14px !important; border-radius: 12px !important;
+        border: 2px solid #cfe9a3 !important; background: #f4fbe8 !important;
+        font-size: 16px !important; /* ≥ 16 px : pas de zoom automatique d'iOS au focus */
         color: #3b5a16;
       }
-      .login-form > input:not([type="checkbox"]):focus {
-        border-color: #8fc73a; background: #fff;
+      .login-form > input:not([type="checkbox"]):focus, .register-simple input:focus, #forgot-email:focus {
+        outline: none; border-color: #8fc73a !important; background: #fff !important;
         box-shadow: 0 0 0 3px rgba(143,199,58,.25);
       }
-
-      /* MODE FRUTIZ : une ligne à part, la case devient un vrai interrupteur
-         — la case de 14 px prenait la hauteur des champs et finissait en
-         grande barre vide. */
+      /* MODE FRUTIZ : une ligne à part, la case devient un interrupteur — qui
+         refuse toujours de s'allumer, comme la case d'époque. */
       .login-form > label.mode-inline {
         flex: 1 1 100%; justify-content: space-between; flex-direction: row-reverse;
-        margin: 12px 2px 4px; padding: 0 4px;
-        font-size: 14px; letter-spacing: 0; color: #4f7d1e;
+        margin: 12px 2px 4px; padding: 0 4px; font-size: 14px; letter-spacing: 0; color: #4f7d1e;
       }
       .mode-check-wrap { width: 48px; height: 28px; }
       .mode-inline input[type="checkbox"] {
         width: 48px; min-width: 48px; height: 28px; margin: 0;
-        border: 2px solid #cfe9a3; background: #eef7df; border-radius: 14px;
-        transition: background .2s, border-color .2s;
+        border: 2px solid #cfe9a3; background: #eef7df; border-radius: 14px; transition: background .2s, border-color .2s;
       }
       .mode-inline input[type="checkbox"]::after {
-        content: ''; position: absolute; top: 2px; left: 2px;
-        width: 20px; height: 20px; border-radius: 50%;
-        background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.25);
-        transition: transform .2s;
+        content: ''; position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%;
+        background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: transform .2s;
       }
       .mode-inline input[type="checkbox"]:checked { background: #8fc73a; border-color: #7bb12c; }
       .mode-inline input[type="checkbox"]:checked::after { transform: translateX(20px); }
-      /* L'anneau rouge qui se dessine au clic suit la taille de l'interrupteur. */
       .mode-ring { inset: -6px; width: 60px; height: 40px; }
       .mode-ring circle { display: none; }
-
-      /* Deux vrais boutons, pleine largeur : OK en rose, l'inscription en
-         contour vert — plus de lien souligné perdu sous le bouton. */
       .btn { padding: 0 14px; font-size: 16px; line-height: 1; }
-      .btn-primary {
-        flex: 1 1 100%; height: 50px; margin-top: 10px; border-radius: 14px;
-        background: linear-gradient(180deg, #ffb6be, #f18e9a); border-color: #e78690;
-        box-shadow: 0 4px 0 #d9707c; font-size: 18px; letter-spacing: 1px;
+      .btn-primary, #forgot-submit {
+        flex: 1 1 100%; height: 52px; margin-top: 12px; border-radius: 26px; color: #fff;
+        background: linear-gradient(#ff8fb8, #e2367a); border: 2px solid #a8174a; box-shadow: 0 4px 0 #a8174a;
+        font: 400 20px/1 'Alba', 'Trebuchet MS', Verdana, sans-serif; letter-spacing: 1px; text-shadow: 0 1px 0 #a8174a;
       }
-      .btn-primary:active { transform: translateY(2px); box-shadow: 0 2px 0 #d9707c; }
+      .btn-primary:active, #forgot-submit:active { transform: translateY(2px); box-shadow: 0 2px 0 #a8174a; }
       .btn-secondary {
-        flex: 1 1 100%; height: 46px; margin: 8px 0 0; padding: 0 14px; border-radius: 14px;
-        border: 2px solid #8fc73a; color: #4f7d1e; background: #fff;
-        text-decoration: none; font-size: 15px;
+        flex: 1 1 100%; height: 48px; margin: 10px 0 0; padding: 0 14px; border-radius: 24px;
+        border: 2px solid #94DB39; color: #4f7d1e; background: #fff; text-decoration: none; font-size: 15px;
       }
       .btn-secondary:active { background: #f1f9e4; }
-
-      /* Inscription : le formulaire vit DANS la carte d'accueil (plus dans
-         une barre du haut) — les règles de barre d'autrefois ne s'y
-         appliquent pas ; mêmes champs, mêmes boutons que la connexion. */
-      #register-form {
-        width: auto; min-height: 0; margin: 0; padding: 0;
-        background: none; box-shadow: none; border-radius: 0;
-      }
-      #register-form input, #register-form #reg-email { flex: none; width: 100%; }
-      .register-simple input { height: 46px; padding: 0 14px; border-radius: 12px; border: 2px solid #cfe9a3; background: #f4fbe8; font-size: 16px; }
-      .register-simple input:focus { border-color: #8fc73a; background: #fff; box-shadow: 0 0 0 3px rgba(143,199,58,.25); }
+      .register-simple { max-width: none; }
       .register-simple label { font-size: 13px; margin: 10px 0 4px 4px; }
       .register-actions { margin-top: 16px; }
-      .register-actions .btn-primary, .register-actions .btn-secondary { margin-top: 0; flex: 1 1 0; height: 48px; }
+      .register-actions .btn-primary, .register-actions .btn-secondary { flex: 1 1 0; margin-top: 0; }
+      #forgot-form > div:first-of-type { gap: 10px !important; }
+      #forgot-form .btn { flex: 1 1 0; margin-top: 0; }
+      #forgot-box strong { font: 400 24px/1.1 'Alba', 'Trebuchet MS', sans-serif; color: #84c22d !important; -webkit-text-stroke: 1px #4f7d1e; paint-order: stroke fill; }
+      #forgot-box p { font-size: 14px !important; line-height: 1.45; }
 
-      /* L'accueil : une colonne — la carte de bienvenue d'abord, les jeux ensuite. */
-      .layout { width: calc(100% - 28px); margin: 16px 14px 0; grid-template-columns: 1fr; gap: 14px; }
-      .main {
-        order: 1; height: auto; grid-template-columns: 1fr; gap: 10px;
-        padding: 18px 16px 14px; border-radius: 18px; text-align: center;
-        box-shadow: 0 8px 22px rgba(44,74,15,.16);
+      /* Les messages : une bulle en haut de l'écran, par-dessus les feuilles. */
+      .status {
+        position: fixed; top: calc(10px + env(safe-area-inset-top)); z-index: 1200;
+        left: max(12px, calc((100% - 576px) / 2)); right: max(12px, calc((100% - 576px) / 2));
+        width: auto; min-height: 0; margin: 0; padding: 12px 16px; border-radius: 16px; background: #fff;
+        box-shadow: 0 8px 24px rgba(0,0,0,.22); font-size: 14px; line-height: 1.4; animation: m-tombe .25s ease-out;
       }
-      .main h1 { font-size: 20px; }
-      .main p { text-align: left; margin: 8px 0; font-size: 14px; line-height: 1.45; }
-      .welcome-title { max-width: 100%; height: auto; margin: 0 auto 4px; }
-      .welcome {
-        height: auto; width: 62%; max-width: 230px; max-height: none;
-        padding-right: 0; justify-self: center; margin: 0 auto;
-      }
-      .cta { justify-content: center; gap: 10px; margin-top: 14px; }
-      .cta img { height: auto; width: 46%; max-width: 160px; }
-      .cta img:active { transform: translateY(1px); }
-      .register-simple { max-width: none; text-align: left; }
-
-      /* Les jeux : une grille de vignettes carrées, nommées. Le survol du
-         bureau (une vignette qui s'ouvre, les autres qui se tassent) n'a pas
-         de sens au doigt : toutes les mêmes, toujours. */
-      .games {
-        order: 2; height: auto; max-height: none; overflow: visible;
-        padding: 14px 12px 12px; border-radius: 18px;
-        box-shadow: 0 8px 22px rgba(44,74,15,.16);
-      }
-      .games h3 { font-size: 14px; color: #4f7d1e; margin-bottom: 10px; }
-      .games-list { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px 6px; }
-      .game-card, .game-card.active, .game-card.compact {
-        width: auto; height: auto; border: 0; border-radius: 0; background: none;
-        overflow: visible; cursor: default; transition: none;
-        display: flex; flex-direction: column; align-items: center; gap: 4px;
-      }
-      .game-card img {
-        width: 100%; aspect-ratio: 1 / 1; height: auto; object-fit: cover;
-        border-radius: 12px; border: 2px solid #dfe9cf; box-shadow: 0 2px 4px rgba(44,74,15,.12);
-      }
-      .game-card .game-name {
-        display: block; font-size: 9.5px; line-height: 1.15; color: #4f7d1e; font-weight: 700;
-        text-align: center; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-      }
-
-      .status { width: calc(100% - 28px); margin: 10px 14px 0; font-size: 13px; }
+      .status:empty { display: none; }
       .loading { width: calc(100% - 28px); margin: 120px 14px 0; border-radius: 18px; }
 
-      /* Footer dans le flux : plus de barre fixe qui recouvre le contenu. */
-      footer { position: static; margin-top: 22px; width: 100%; }
-      .footer-top { padding: 10px 12px; font-size: 12px; line-height: 1.6; }
-      .footer-bottom { font-size: 10px; line-height: 1.45; padding: 8px 12px; }
-      #forgot-box { margin: 10px 14px 0; max-width: none; }
+      /* Le pied de page, dans le flux : plus de barre fixe qui recouvre la page. */
+      footer { position: static; width: 100%; margin-top: 8px; }
+      .footer-top { padding: 14px 12px; font-size: 13px; line-height: 1.7; }
+      .footer-bottom { padding: 10px 14px calc(12px + env(safe-area-inset-bottom)); font-size: 10.5px; line-height: 1.5; }
+    }
+    @media (max-width: 760px) and (prefers-reduced-motion: reduce),
+           (pointer: coarse) and (max-height: 500px) and (prefers-reduced-motion: reduce) {
+      .m-grappe, .m-enligne i { animation: none; }
+      .topbar, #register-form, #forgot-box, .status, .m-ligne { animation: none !important; }
     }
   </style>
 </head>
@@ -556,6 +716,8 @@
   </nav>
   <header class="topbar" id="topbar">
     <img class="logo" src="/images/logo.png" alt="Frutiparc" />
+    <!-- Sur téléphone, cette barre devient une feuille : son en-tête. -->
+    <div class="feuille-tete m-only"><strong data-i18n="accueil.m.bonRetour">Content de te revoir !</strong><button type="button" class="feuille-fermer" data-m-fermer aria-label="Fermer" data-i18n-attr="aria-label:commun.fermer">✕</button></div>
     <form id="login-form" class="login-form" autocomplete="on">
       <label for="username"><img class="label-img img-fr" src="/images/nom.png" alt="Nom" /><span class="label-txt txt-en">NAME</span></label>
       <input id="username" name="username" minlength="3" maxlength="20" required />
@@ -565,7 +727,61 @@
       <button class="btn btn-primary" type="submit">OK</button>
       <button class="btn btn-secondary" type="button" id="register-toggle" data-i18n="accueil.inscrireGratuit">S'inscrire gratuitement</button>
     </form>
+    <a href="#" class="feuille-oubli m-only" data-m-oubli data-i18n="accueil.m.codeOublie">Code secret oublié ?</a>
   </header>
+
+  <!--
+    L'ACCUEIL DU TÉLÉPHONE (voir « L'ACCUEIL DU TÉLÉPHONE » dans le CSS). Absent
+    du bureau, qui garde l'accueil d'époque. La devise du parc en fait le plan :
+    la scène, puis des jeux, du chat, et des fruits.
+  -->
+  <main class="landing m-only" id="landing">
+    <section class="m-hero">
+      <button type="button" class="m-connexion" data-m-connexion data-i18n="accueil.m.seConnecter">Se connecter</button>
+      <img loading="lazy" decoding="async" class="m-logo" src="/images/m/logo.webp" width="236" height="105" alt="Frutiparc" />
+      <img loading="lazy" decoding="async" class="m-grappe" src="/images/m/fruits.webp" width="196" height="195" alt="" />
+      <h1 class="m-devise" data-i18n-html="accueil.m.devise">Des fruits, des jeux,<br>du chat !</h1>
+      <p class="m-accroche" data-i18n-html="accueil.m.accroche">Le parc fruité de 2002 est de retour. Joue <strong>gratuitement</strong>, tout de suite, sans même t'inscrire.</p>
+      <div class="m-actions">
+        <button type="button" class="m-btn m-btn-rose m-btn-jouer" id="m-jouer" data-i18n="accueil.m.jouer">Jouer maintenant</button>
+        <button type="button" class="m-btn m-btn-vert" data-m-inscription data-i18n="accueil.m.creerCompte">Créer mon compte</button>
+      </div>
+      <p class="m-enligne hidden" id="m-enligne"><i aria-hidden="true"></i><span></span></p>
+    </section>
+
+    <section class="m-carte m-jeux" id="m-jeux" aria-labelledby="m-titre-jeux">
+      <h2 class="m-titre" id="m-titre-jeux"><img loading="lazy" decoding="async" src="/fb/signe_kiwi.png" alt="" /><span data-i18n="accueil.m.titreJeux">Des jeux</span></h2>
+      <p class="m-sous" data-i18n="accueil.m.sousJeux">Complets et gratuits. Touche un jeu pour y jouer tout de suite, sans inscription.</p>
+      <div class="m-carrousel" id="m-carrousel" role="group" aria-labelledby="m-titre-jeux"></div>
+    </section>
+
+    <section class="m-carte m-chat" id="m-chat" aria-labelledby="m-titre-chat">
+      <h2 class="m-titre" id="m-titre-chat"><img loading="lazy" decoding="async" src="/fb/signe_cerise.png" alt="" /><span data-i18n="accueil.m.titreChat">Du chat</span></h2>
+      <p class="m-sous" data-i18n="accueil.m.sousChat">Des salons où l'on papote, se lance des défis et fait des bulles de chewing-gum, avec sa frutibouille.</p>
+      <!-- Un salon qui vit tout seul (voir salonDeDemo) : décor, pas contenu. -->
+      <div class="m-salon" aria-hidden="true">
+        <div class="m-salon-barre"><img loading="lazy" decoding="async" src="/fb/icone_salon.png" alt="" /><span data-i18n="accueil.m.salon">Salon Pomme</span></div>
+        <div class="m-ecrans" id="m-ecrans"></div>
+        <div class="m-fil" id="m-fil"></div>
+      </div>
+      <ul class="m-atouts">
+        <li><img loading="lazy" decoding="async" src="/fb/icone_messagerie.svg" alt="" /><span data-i18n="accueil.m.atoutMessagerie">Messagerie</span></li>
+        <li><img loading="lazy" decoding="async" src="/fb/icone_forum.png" alt="" /><span data-i18n="accueil.m.atoutForums">Forums</span></li>
+        <li><img loading="lazy" decoding="async" src="/fb/icone_scores.png" alt="" /><span data-i18n="accueil.m.atoutClassements">Classements</span></li>
+      </ul>
+    </section>
+
+    <section class="m-carte m-fruits" id="m-fruits" aria-labelledby="m-titre-fruits">
+      <h2 class="m-titre" id="m-titre-fruits"><img loading="lazy" decoding="async" src="/fb/signe_fraise.png" alt="" /><span data-i18n="accueil.m.titreFruits">Des fruits</span></h2>
+      <p class="m-sous" data-i18n="accueil.m.sousFruits">Ta frutibouille t'attend : yeux, coiffure, couleurs, accessoires… compose la tête qui te ressemble.</p>
+      <div class="m-atelier">
+        <button type="button" class="m-tete" id="m-tete" aria-label="Faire réagir la frutibouille" data-i18n-attr="aria-label:accueil.m.faireReagir"></button>
+        <button type="button" class="m-autre" id="m-autre" data-i18n="accueil.m.uneAutre">Une autre !</button>
+      </div>
+      <button type="button" class="m-btn m-btn-rose" data-m-inscription data-i18n="accueil.m.creerCompte">Créer mon compte</button>
+      <p class="m-deja"><span data-i18n="accueil.m.dejaFrutiz">Déjà frutiz ?</span> <a href="#" data-m-connexion data-i18n="accueil.m.seConnecter">Se connecter</a></p>
+    </section>
+  </main>
 
   <!-- Le formulaire d'inscription est désormais dans le bloc central (#main-content). -->
 
@@ -614,6 +830,7 @@
             <button class="btn btn-primary" type="submit" data-i18n="commun.valider">Valider</button>
             <button class="btn btn-secondary" type="button" id="register-cancel" data-i18n="commun.annuler">Annuler</button>
           </div>
+          <div class="feuille-tete m-only"><strong data-i18n="accueil.m.creeTonCompte">Crée ton compte</strong><button type="button" class="feuille-fermer" data-m-fermer aria-label="Fermer" data-i18n-attr="aria-label:commun.fermer">✕</button></div>
         </form>
       </div>
 
@@ -630,6 +847,8 @@
   </section>
 
   <div class="status" id="status" aria-live="polite"></div>
+  <!-- Sous les feuilles du téléphone ; le toucher les referme. -->
+  <div class="voile m-only" id="voile"></div>
 
   <!-- Le jeu essayé en invité (ouvrirJeu) : une fenêtre sur l'accueil. -->
   <div id="jeu-invite" class="hidden" role="dialog" aria-modal="true" aria-labelledby="ji-titre">
@@ -703,6 +922,9 @@
     const modeRingWrap = document.getElementById('mode-ring-wrap');
 
     let selectedGame = null;
+    // L'accueil du téléphone (la requête du CSS, mot pour mot) : voir plus bas.
+    const ecranEtroit = window.matchMedia('(max-width: 760px), (pointer: coarse) and (max-height: 500px)');
+    function enMobile() { return ecranEtroit.matches; }
 
     // ── Parrainage : jeton d'appareil (persistant, anti multi-compte) + capture
     // d'un éventuel ?parrain=<pseudo> dans l'URL (lien de parrainage). ──
@@ -725,16 +947,26 @@
       if (txt) txt.classList.toggle('hidden', !!show);
       registerForm.classList.toggle('hidden', !show);
       if (show) {
-        setStatus(T('accueil.creeCompte', 'Crée ton compte pour rejoindre Frutiparc !'));
+        setStatus(enMobile() ? '' : T('accueil.creeCompte', 'Crée ton compte pour rejoindre Frutiparc !'));
         const u = document.getElementById('reg-username'); if (u) u.focus();
       } else {
         setStatus('');
       }
+      // Sur téléphone, le formulaire monte en feuille (data-feuille, voir le CSS).
+      if (show) feuille('inscription');
+      else if (document.body.dataset.feuille === 'inscription') feuille('');
     }
 
+    let bulleStatut = null;
     function setStatus(text, error = false) {
       statusEl.textContent = text || '';
       statusEl.style.color = error ? '#b31111' : '#334a14';
+      // Sur téléphone, le message est une bulle en haut de l'écran : elle
+      // s'efface d'elle-même (une erreur reste un peu plus longtemps).
+      clearTimeout(bulleStatut);
+      if (text && enMobile()) {
+        bulleStatut = setTimeout(() => { if (statusEl.textContent === text) statusEl.textContent = ''; }, error ? 7000 : 4500);
+      }
     }
 
     async function postJson(url, body) {
@@ -755,6 +987,8 @@
       topbar.classList.toggle('hidden', visible);
       registerForm.classList.add('hidden');
       mainContent.classList.toggle('hidden', visible);
+      document.getElementById('landing').classList.toggle('hidden', visible);
+      if (visible) feuille('');
       setStatus(visible ? T('accueil.connexionEnCours', 'Connexion en cours…') : '');
     }
 
@@ -831,7 +1065,12 @@
       try {
         await postJson('/api/auth/register', body);
         showRegister(false);
-        setStatus(T('accueil.compteCree', 'Compte créé ! Tu peux maintenant te connecter en haut de page.'), false);
+        if (enMobile()) {
+          ouvrirConnexion(body.username);
+          setStatus(T('accueil.m.compteCree', 'Compte créé ! Entre ton code secret pour entrer dans le parc.'), false);
+        } else {
+          setStatus(T('accueil.compteCree', 'Compte créé ! Tu peux maintenant te connecter en haut de page.'), false);
+        }
         registerForm.reset();
       } catch (error) {
         setStatus(error.message || T('accueil.inscriptionImpossible', 'Inscription impossible.'), true);
@@ -890,6 +1129,7 @@
     if (forgotLink) {
       forgotLink.addEventListener('click', (e) => {
         e.preventDefault();
+        if (enMobile()) { ouvrirOubli(); return; }
         forgotBox.classList.toggle('hidden');
         if (!forgotBox.classList.contains('hidden')) {
           forgotBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -899,6 +1139,7 @@
       document.getElementById('forgot-cancel').addEventListener('click', () => {
         forgotBox.classList.add('hidden');
         forgotMsg.textContent = '';
+        if (document.body.dataset.feuille === 'oubli') feuille('');
       });
       forgotForm.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -975,7 +1216,7 @@
     function inscriptionDepuisJeu() {
       fermerJeu();
       showRegister(true);
-      registerForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (!enMobile()) registerForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
 
     document.getElementById('ji-fermer').addEventListener('click', fermerJeu);
@@ -1013,6 +1254,290 @@
     document.title = T('accueil.titrePage', document.title);
 
     renderGames();
+
+    /* ══════════════════════════════════════════════════════════════════════
+       L'ACCUEIL DU TÉLÉPHONE (le CSS dit à quoi il ressemble). Tout ce qui
+       suit ne sert qu'en dessous de 760 px : au bureau, ces éléments sont
+       masqués, et rien n'est téléchargé pour eux (le moteur des bouilles, le
+       nombre de frutiz en ligne).
+       ══════════════════════════════════════════════════════════════════════ */
+    const moinsDAnimations = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    /* ── LES FEUILLES. Connexion, inscription, code oublié montent du bas de
+       l'écran ; l'attribut data-feuille du <body> dit laquelle est ouverte. ── */
+    function feuille(nom) {
+      if (nom) document.body.dataset.feuille = nom;
+      else delete document.body.dataset.feuille;
+    }
+    function ouvrirConnexion(pseudo) {
+      if (!registerForm.classList.contains('hidden')) showRegister(false);
+      forgotBox.classList.add('hidden');
+      feuille('connexion');
+      if (pseudo) document.getElementById('username').value = pseudo;
+      // Le focus DANS le geste du doigt : iOS n'ouvre le clavier qu'à ce prix.
+      try { document.getElementById(pseudo ? 'password' : 'username').focus(); } catch (e) { /* rien */ }
+    }
+    function ouvrirOubli() {
+      if (!registerForm.classList.contains('hidden')) showRegister(false);
+      forgotBox.classList.remove('hidden');
+      feuille('oubli');
+      try { document.getElementById('forgot-email').focus(); } catch (e) { /* rien */ }
+    }
+    function fermerFeuille() {
+      const f = document.body.dataset.feuille;
+      if (f === 'inscription') showRegister(false);
+      if (f === 'oubli') { forgotBox.classList.add('hidden'); forgotMsg.textContent = ''; }
+      feuille('');
+      if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+    }
+    document.getElementById('voile').addEventListener('click', fermerFeuille);
+    document.querySelectorAll('[data-m-fermer]').forEach((b) => b.addEventListener('click', fermerFeuille));
+    document.querySelectorAll('[data-m-connexion]').forEach((b) => b.addEventListener('click', (e) => { e.preventDefault(); ouvrirConnexion(); }));
+    document.querySelectorAll('[data-m-inscription]').forEach((b) => b.addEventListener('click', () => showRegister(true)));
+    document.querySelectorAll('[data-m-oubli]').forEach((a) => a.addEventListener('click', (e) => { e.preventDefault(); ouvrirOubli(); }));
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && document.body.dataset.feuille) fermerFeuille(); });
+    statusEl.addEventListener('click', () => { if (enMobile()) setStatus(''); });
+    document.getElementById('m-jouer').addEventListener('click', () => {
+      document.getElementById('m-jeux').scrollIntoView({ behavior: moinsDAnimations ? 'auto' : 'smooth', block: 'start' });
+    });
+
+    /* ── DES JEUX. Les mêmes jeux que la liste du bureau (et Mini-Fever, qui
+       n'a jamais eu sa vignette d'accueil), avec ce qu'il faut pour donner
+       envie : le genre et une phrase. Les images sont les vignettes d'époque
+       agrandies pour les écrans de téléphone (scripts/accueil-mobile-images.js). */
+    const FICHES = {
+      bk: ['accueil.m.genreCourse', 'Course', 'accueil.m.accBk', 'Des courses de kiwis à toute allure.'],
+      frutisnake: ['accueil.m.genreArcade', 'Arcade', 'accueil.m.accSnake', 'Croque les fruits sans te mordre la queue.'],
+      swapou: ['accueil.m.genreReflexion', 'Réflexion', 'accueil.m.accSwapou', 'Échange, aligne, enchaîne les combos.'],
+      mb: ['accueil.m.genreAdresse', 'Adresse', 'accueil.m.accMb', 'Guide la bille dans des labyrinthes infernaux.'],
+      kaluga: ['accueil.m.genreAdresse', 'Adresse', 'accueil.m.accKaluga', 'Des épreuves loufoques, une pomme et du doigté.'],
+      mpixiz: ['accueil.m.genreReflexion', 'Réflexion', 'accueil.m.accPixiz', 'Des blocs qui tombent, une fée contre les démons.'],
+      mwave: ['accueil.m.genreTir', 'Tir', 'accueil.m.accWave', 'Tire, esquive et lâche la bombe.'],
+      jamajama: ['accueil.m.genrePlateformes', 'Plateformes', 'accueil.m.accJama', 'Mène Tiki le petit fantôme jusqu\'à la sortie.'],
+      minifever: ['accueil.m.genreArcade', 'Arcade', 'accueil.m.accFever', 'Une avalanche de mini-épreuves.'],
+      fb: ['accueil.m.genreStrategie', 'Stratégie', 'accueil.m.accBandas', 'Le duel de stratégie face aux autres frutiz.'],
+      grapiz: ['accueil.m.genreStrategie', 'Stratégie', 'accueil.m.accGrapiz', 'Un jeu de pions où chaque coup compte.'],
+    };
+    const ORDRE_MOBILE = ['bk', 'frutisnake', 'swapou', 'mb', 'kaluga', 'mpixiz', 'mwave', 'jamajama', 'minifever', 'fb', 'grapiz'];
+    const MINIFEVER = { id: 'minifever', name: 'Mini-Fever', image: 'fd_minifever.svg', page: '/minifever/' };
+
+    function batirCarrousel() {
+      const hote = document.getElementById('m-carrousel');
+      ORDRE_MOBILE.forEach((id) => {
+        const game = id === 'minifever' ? MINIFEVER : games.find((g) => g.id === id);
+        const fiche = FICHES[id];
+        if (!game || !fiche) return;
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'm-jeu';
+        b.setAttribute('aria-label', game.enLigne
+          ? T('accueil.jeuEnLigneLabel', '{jeu} (jeu en ligne)', { jeu: game.name })
+          : T('accueil.essayerLabel', 'Essayer {jeu}', { jeu: game.name }));
+        const cadre = document.createElement('span');
+        cadre.className = 'm-jeu-image';
+        const img = document.createElement('img');
+        img.loading = 'lazy'; img.decoding = 'async'; img.alt = '';
+        img.src = id === 'minifever' ? '/fb/fd_minifever.svg' : '/images/m/' + game.image.replace(/\.png$/, '.webp');
+        img.onerror = () => { img.onerror = null; img.src = `${ASSET_BASE}/${game.image}`; };
+        cadre.appendChild(img);
+        if (game.enLigne) {
+          const badge = document.createElement('span');
+          badge.className = 'm-jeu-badge';
+          badge.textContent = T('accueil.m.enLigneBadge', 'En ligne');
+          cadre.appendChild(badge);
+        }
+        const jouer = document.createElement('span');
+        jouer.className = 'm-jeu-jouer'; jouer.textContent = '▶'; jouer.setAttribute('aria-hidden', 'true');
+        cadre.appendChild(jouer);
+        const genre = document.createElement('span');
+        genre.className = 'm-jeu-genre'; genre.textContent = T(fiche[0], fiche[1]);
+        const nom = document.createElement('span');
+        nom.className = 'm-jeu-nom'; nom.textContent = game.name;
+        const accroche = document.createElement('span');
+        accroche.className = 'm-jeu-accroche'; accroche.textContent = T(fiche[2], fiche[3]);
+        b.append(cadre, genre, nom, accroche);
+        b.addEventListener('click', () => ouvrirJeu(game));
+        hote.appendChild(b);
+      });
+    }
+
+    /* ── LE MOTEUR DES BOUILLES (public/js/bouille-*.js), chargé seulement
+       quand le salon ou l'atelier approchent de l'écran : un visiteur qui ne
+       descend pas ne le paie pas. `async = false` : téléchargés ensemble,
+       exécutés dans l'ordre. ── */
+    let moteurBouilles = null;
+    function chargerBouilles() {
+      if (!moteurBouilles) {
+        moteurBouilles = new Promise((ok, ko) => {
+          const noms = ['bouille-swf', 'bouille-avm', 'bouille-moteur', 'bouille-variante', 'bouille-vignette'];
+          noms.forEach((n, i) => {
+            const el = document.createElement('script');
+            el.src = '/js/' + n + '.js';
+            el.async = false;
+            el.onerror = ko;
+            if (i === noms.length - 1) el.onload = () => (window.FPBouilleVignette ? ok(window.FPBouilleVignette) : ko());
+            document.head.appendChild(el);
+          });
+        });
+      }
+      return moteurBouilles;
+    }
+
+    /* ── DU CHAT : un salon de démonstration qui vit tout seul. Les frutiz
+       sont FICTIFS (le casting de la bande-annonce, des bouilles inventées) ;
+       chaque réplique fait parler ou réagir la bouille de son auteur, avec
+       les émotes et leurs légendes du vrai chat. ── */
+    const CASTING = [
+      { nom: 'Kiwinette', bouille: '0003090h010q0u08000C020e', couleur: '#d9590b' },
+      { nom: 'Prunox', bouille: '00040912020c0r030x0c0K0l', couleur: '#4b2fa8' },
+      { nom: 'Fraizou', bouille: '0006071101090900000c0F02', couleur: '#a3236c' },
+      { nom: 'Banagaga', bouille: '0006030V01090q0e00040f0v', couleur: '#8a6a14' },
+    ];
+    // [qui, animation (1 parle, 2 rire, 3 mdr, 7 sifflote, 8 gum), réplique ou émote]
+    const SCENARIO = [
+      [0, 1, () => T('accueil.m.chat1', 'Coucou tout le monde !!!')],
+      [3, 1, () => T('accueil.m.chat2', 'Salut Kiwinette !')],
+      [1, 1, () => T('accueil.m.chat3', 'Record battu sur Swapou : {score} points !', { score: T.nombre(52340) })],
+      [2, 1, () => T('accueil.m.chat4', 'QUOI ?! C’était MON record !')],
+      [3, 3, null, () => T('accueil.m.emoteMdr', 'éclate de rire')],
+      [0, 1, () => T('accueil.m.chat5', 'Revanche à Burning Kiwi ?')],
+      [1, 7, null, () => T('accueil.m.emoteSifflote', 'sifflote')],
+      [2, 8, null, () => T('accueil.m.emoteGum', 'fait une bulle de chewing-gum')],
+      [3, 1, () => T('accueil.m.chat6', 'Allez, tout le monde sur la piste !')],
+      [0, 2, null, () => T('accueil.m.emoteRire', 'rigole')],
+    ];
+    const salon = { pas: 0, minuterie: null, visible: false, ecrans: [] };
+
+    function batirSalon() {
+      const hote = document.getElementById('m-ecrans');
+      CASTING.forEach((c) => {
+        const e = document.createElement('div');
+        e.className = 'm-ecran';
+        const cadre = document.createElement('span');
+        cadre.className = 'm-ecran-cadre';
+        const nom = document.createElement('span');
+        nom.className = 'm-ecran-nom'; nom.textContent = c.nom; nom.style.color = c.couleur;
+        e.append(cadre, nom);
+        hote.appendChild(e);
+        salon.ecrans.push(e);
+      });
+      // Trois répliques d'emblée : le salon n'est jamais vide quand on arrive.
+      for (let i = 0; i < 3; i++) repliqueSuivante(false);
+    }
+    function repliqueSuivante(anime) {
+      const fil = document.getElementById('m-fil');
+      const [qui, anim, dire, emote] = SCENARIO[salon.pas % SCENARIO.length];
+      salon.pas++;
+      const c = CASTING[qui];
+      const ligne = document.createElement('div');
+      ligne.className = 'm-ligne' + (dire ? '' : ' emote');
+      if (!anime) ligne.style.animation = 'none';
+      ligne.style.color = c.couleur;
+      const h = document.createElement('span');
+      h.className = 'h'; h.textContent = '[' + T.date(new Date(), 'heure') + '] ';
+      const n = document.createElement('b');
+      n.textContent = c.nom + (dire ? T('accueil.m.deuxPoints', ' : ') : ' ');
+      const t = document.createElement('span');
+      t.textContent = dire ? dire() : emote();
+      ligne.append(h, n, t);
+      fil.appendChild(ligne);
+      while (fil.children.length > 7) fil.removeChild(fil.firstChild);
+      if (!anime) return;
+      salon.ecrans.forEach((e, i) => e.classList.toggle('parle', i === qui));
+      const canevas = salon.ecrans[qui].querySelector('canvas');
+      if (canevas && window.FPBouilleVignette) {
+        FPBouilleVignette.jouer(canevas, undefined, anim);
+        // « Parle » tourne en boucle (comme au chat) : on la rend au repos.
+        if (anim === 1) setTimeout(() => { try { FPBouilleVignette.stopper(canevas); } catch (e) { /* rien */ } }, 1500);
+      }
+    }
+    function animerSalon() {
+      const doitTourner = salon.visible && !document.hidden;
+      if (doitTourner && !salon.minuterie) salon.minuterie = setInterval(() => repliqueSuivante(true), 2600);
+      if (!doitTourner && salon.minuterie) { clearInterval(salon.minuterie); salon.minuterie = null; }
+    }
+    function bouillesDuSalon(V) {
+      salon.ecrans.forEach((e, i) => {
+        e.querySelector('.m-ecran-cadre').innerHTML = V.html(CASTING[i].bouille, { marge: V.MARGE_ECRAN });
+      });
+      V.brancher(document.getElementById('m-ecrans'));
+    }
+
+    /* ── DES FRUITS : une frutibouille tirée au sort dans la famille d'époque
+       (bornes relevées sur famille0.swf), sans accessoire. Les coiffures 1 à 3
+       (le sac et ses bonnets) sont écartées : elles cachent le visage. ── */
+    const BOUILLE_DEPART = '0001090J020c0405000h060P';   // Citronade, du casting
+    const REACTIONS = [2, 3, 4, 5, 7, 8, 10];               // rire, mdr, langue, rougir, sifflote, gum, miam
+    function tirerBouille() {
+      const h = (max) => Math.floor(Math.random() * (max + 1));
+      const e = (v) => window.FPBouilleMoteur.encode62(v, 2);
+      let cheveux;
+      do { cheveux = h(66); } while (cheveux >= 1 && cheveux <= 3);
+      return '00' + e(h(62)) + e(h(31)) + e(cheveux) + e(h(34)) + e(h(52)) + e(h(52)) + '000000000000';
+    }
+    function reagir(canevas) {
+      if (!canevas || !window.FPBouilleVignette) return;
+      FPBouilleVignette.jouer(canevas, undefined, REACTIONS[Math.floor(Math.random() * REACTIONS.length)]);
+    }
+    function atelier(V) {
+      const tete = document.getElementById('m-tete');
+      tete.innerHTML = V.html(BOUILLE_DEPART, { marge: V.MARGE_ECRAN });
+      V.brancher(tete);
+      tete.addEventListener('click', () => reagir(tete.querySelector('canvas')));
+      document.getElementById('m-autre').addEventListener('click', () => {
+        const c = tete.querySelector('canvas');
+        if (!c || !window.FPBouilleMoteur) return;
+        V.rafraichir(c, tirerBouille());
+        if (Math.random() < .5) setTimeout(() => reagir(c), 200);
+      });
+    }
+
+    /* ── LE TOUT, une seule fois, dès que l'écran est celui d'un téléphone
+       (y compris un navigateur de bureau qu'on rétrécit). ── */
+    let mobilePret = false;
+    function preparerMobile() {
+      if (mobilePret || !enMobile()) return;
+      mobilePret = true;
+      batirCarrousel();
+      batirSalon();
+      // Combien de frutiz sont là : dit seulement s'il y a du monde.
+      fetch('/api/online-count').then((r) => r.json()).then((d) => {
+        if (!d || !(d.count >= 3)) return;
+        const badge = document.getElementById('m-enligne');
+        badge.querySelector('span').textContent = T.n('accueil.m.frutizEnLigne', d.count,
+          { one: '{n} frutiz en ligne', other: '{n} frutiz en ligne' });
+        badge.classList.remove('hidden');
+      }).catch(() => {});
+      if (!('IntersectionObserver' in window)) {
+        chargerBouilles().then((V) => { bouillesDuSalon(V); atelier(V); }).catch(() => {});
+        salon.visible = true; animerSalon();
+        return;
+      }
+      // Les cartes glissent en paraissant.
+      if (!moinsDAnimations) {
+        document.documentElement.classList.add('m-anime');
+        const apparition = new IntersectionObserver((entrees) => entrees.forEach((en) => {
+          if (en.isIntersecting) { en.target.classList.add('vu'); apparition.unobserve(en.target); }
+        }), { rootMargin: '0px 0px -8% 0px' });
+        document.querySelectorAll('.m-carte').forEach((c) => apparition.observe(c));
+      }
+      // Le moteur des bouilles, quand le salon ou l'atelier approchent.
+      const approche = new IntersectionObserver((entrees) => {
+        if (!entrees.some((en) => en.isIntersecting)) return;
+        approche.disconnect();
+        chargerBouilles().then((V) => { bouillesDuSalon(V); atelier(V); }).catch(() => {});
+      }, { rootMargin: '500px 0px' });
+      approche.observe(document.getElementById('m-chat'));
+      approche.observe(document.getElementById('m-fruits'));
+      // Le salon ne parle que quand on le regarde.
+      new IntersectionObserver((entrees) => {
+        salon.visible = entrees[entrees.length - 1].isIntersecting;
+        animerSalon();
+      }).observe(document.getElementById('m-chat'));
+      document.addEventListener('visibilitychange', animerSalon);
+    }
+    preparerMobile();
+    ecranEtroit.addEventListener('change', preparerMobile);
 
     // `/?inscription=1` : le panneau d'un jeu ouvert seul (hors de l'accueil)
     // mène ici, formulaire d'inscription ouvert.
