@@ -43,7 +43,9 @@ test('l’écran de chargement est celui du fichier : le motif et « chargement.
   // hauteur 30, ligne de base en (6,25 ; 465,9) — le caractère #24 est posé en
   // (19,1 ; 440,9), sa matrice le décale de −12,85 et son style porte dy = 25.
   assert.match(PAGE, /ctx\.font = '30px "PT Banana Split", Verdana, sans-serif';/);
-  assert.match(PAGE, /ctx\.fillText\('chargement\.\.\.', 6\.25, 465\.9\);/);
+  // (le texte passe par T() — « loading... » en anglais —, le français en repli)
+  assert.match(PAGE, /var texteAttente = window\.T \? T\('swapou\.chargement', 'chargement\.\.\.'\) : 'chargement\.\.\.';/);
+  assert.match(PAGE, /ctx\.fillText\(texteAttente, 6\.25, 465\.9\);/);
   assert.match(PAGE, /ctx\.fillStyle = '#FFFFFF';/);
   // Le fond : bitmap #18 (105 × 480 = images/bg.jpg) en remplissage RÉPÉTÉ
   // sur 700 × 480, et le vert de scène du SetBackgroundColor derrière.

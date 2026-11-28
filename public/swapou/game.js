@@ -15,6 +15,18 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
   const A = SwapouAssets;
   const D = U.D;
   const random = U.random;
+  // Les textes : T() de /js/i18n.js, français en repli (cf. ui.js, « LES
+  // LANGUES »). Rien de ce qui suit ne lit un texte pour décider d'un coup :
+  // le rejeu du serveur, sans i18n.js, joue la même partie.
+  const tr = U.tr;
+
+  /* LES NOMS DES POUVOIRS, À L'AFFICHAGE. engine.js garde les noms d'origine
+   * (le moteur ne dessine rien) ; on les traduit ici, d'un bloc, au moment de
+   * les montrer. Les jeux de mots (« PETIT PEPIN », « MOISE », « COLORANT
+   * E21 ») restent en français pour l'instant : le dictionnaire n'en donne
+   * pas, ils retombent sur l'original. */
+  const nomAttaque = (id) => tr.table('swapou.attaques', E.ATTACK_NAMES)[id];
+  const nomDefense = (id) => tr.table('swapou.defenses', E.DEFENSE_NAMES)[id];
 
   SW.E = E; SW.U = U; SW.A = A; SW.D = D;
 
@@ -223,7 +235,7 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
   SW.dessinerAstuce = function (ctx, player) {
     if (!SW.astuceVisible(player)) return;
     const i = player.animator.getInfos();
-    U.text(ctx, 'Touche encore pour valider', i.px + player.level.getWidth() * i.sx / 2, i.py + 55,
+    U.text(ctx, tr('swapou.toucheEncore', 'Touche encore pour valider'), i.px + player.level.getWidth() * i.sx / 2, i.py + 55,
       { size: 17, font: 'impact', color: '#ffffff', stroke: '#2a4a10', strokeWidth: 4 });
   };
 
@@ -552,10 +564,11 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
       // `nonClasse` : la partie n'a pas passé la vérification ; `enVerification` :
       // le rejeu tarde, le score sera classé à sa fin. Le serveur donne le
       // message.
+      // (`j.message` est écrit par le serveur, déjà dans la langue du joueur)
       if (j && j.ok && j.iaNonClasse)
-        SW.Manager.scoreSaved(score, oldRecord, 0, 0, 'partie jouée avec l\'IA : score non classé');
+        SW.Manager.scoreSaved(score, oldRecord, 0, 0, tr('swapou.iaNonClasse', 'partie jouée avec l\'IA : score non classé'));
       else if (j && (j.nonClasse || j.enVerification))
-        SW.Manager.scoreSaved(score, oldRecord, 0, 0, j.message || 'Partie non classée.');
+        SW.Manager.scoreSaved(score, oldRecord, 0, 0, j.message || tr('swapou.nonClasse', 'Partie non classée.'));
       else if (j && j.ok)
         SW.Manager.scoreSaved(score, j.oldScore || 0, j.oldPos || 0, j.newPos || 0);
       else
@@ -1035,7 +1048,7 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
         this.extraFruits.push(mc);
       }
     }
-    this.specialName = E.DEFENSE_NAMES[0];
+    this.specialName = nomDefense(0);
     this.specialTimer = D.SPECIAL_TIMER;
     this.setCallback(this.ecarteurMain, { timer: timer, left: left, right: right, expl: expl, fruits: fruits });
   };
@@ -1066,7 +1079,7 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
           }
       }
     }
-    this.specialName = E.DEFENSE_NAMES[1];
+    this.specialName = nomDefense(1);
     this.specialTimer = D.SPECIAL_TIMER;
     this.setCallback(this.egaliseurMain, { rems: rems, adds: adds, fruits: fruits, falls: falls, ups: ups });
   };
@@ -1076,7 +1089,7 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
       cuts[i].spr.timer = 2 * i;
       this.extraFruits.push(cuts[i]);
     }
-    this.specialName = E.DEFENSE_NAMES[2];
+    this.specialName = nomDefense(2);
     this.specialTimer = D.SPECIAL_TIMER;
     this.setCallback(this.coupeurMain, { cuts: cuts, fruits: fruits });
   };
@@ -1086,7 +1099,7 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
       cuts[i].spr.timer = 3 * Math.abs(cuts.length / 2 - i);
       this.extraFruits.push(cuts[i]);
     }
-    this.specialName = E.DEFENSE_NAMES[3];
+    this.specialName = nomDefense(3);
     this.specialTimer = D.SPECIAL_TIMER;
     this.setCallback(this.pete1LigneMain, { cuts: cuts, fruits: fruits });
   };
@@ -1097,7 +1110,7 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
       // skin figé jusqu'au flash de conversion
       converts[i].spr.overrideImg = converts[i].spr.preImg || null;
     }
-    this.specialName = E.DEFENSE_NAMES[4] + String(dst);
+    this.specialName = nomDefense(4) + String(dst);
     this.specialTimer = D.SPECIAL_TIMER;
     this.setCallback(this.convertisseurMain, { converts: converts, src: src, dst: dst, fruits: fruits });
   };
@@ -1109,14 +1122,14 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
       mc.spr.timer += (D.DOCWIDTH - mc.spr.x) / D.FRUIT_WIDTH;
       mc.spr.overrideImg = mc.spr.preImg || null;
     }
-    this.specialName = E.DEFENSE_NAMES[5];
+    this.specialName = nomDefense(5);
     this.specialTimer = D.SPECIAL_TIMER;
     this.setCallback(this.peteArmuresMain, { mcs: mcs, fruits: fruits });
   };
 
   Animator.prototype.combos2 = function (mcs, arms) {
     this.explode(mcs, arms, 0);
-    this.specialName = E.DEFENSE_NAMES[6];
+    this.specialName = nomDefense(6);
     this.specialTimer = D.SPECIAL_TIMER;
     this.setCallback(this.explodeMain, undefined);
   };
@@ -1607,10 +1620,29 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     [0, 1], [-6.25, 1], [-25.05, 1], [-56.4, 1], [-100.3, 1], [-156.7, 1],
   ];
 
+  /* LES NOMS DANS LA LANGUE DU JOUEUR : `swapou.combos` (Challenge) et
+   * `swapou.combosClassique`, une liste de LIGNES par palier, de même forme
+   * que les noms ci-dessus (tr.grille : une ligne absente garde son français,
+   * un palier garde son nombre de lignes). Une ligne traduite se pose au
+   * repère de la ligne d'origine, dans le même corps ; plus longue que la
+   * place qui reste dans l'encart, elle s'y resserre. Les jeux de mots
+   * (« kiwi-ti-kiwi », « orange folie's », « cocktail swapolotof ») restent
+   * en français pour l'instant. */
+  const lignesDe = (table) => table.map((e) => e.slice(3).map((l) => l[0]));
+  const CN_LIGNES = { challenge: lignesDe(CN_CHALLENGE), classic: lignesDe(CN_CLASSIC) };
+  const cnTraduits = {};
+  function lignesTraduites(classic) {
+    const k = classic ? 'classic' : 'challenge';
+    if (!cnTraduits[k]) cnTraduits[k] = tr.grille(classic ? 'swapou.combosClassique' : 'swapou.combos', CN_LIGNES[k]);
+    return cnTraduits[k];
+  }
+  const CN_BORD_DROIT = CN_ENCART.x + CN_ENCART.w - 10;
+
   function dessinerAnnonce(ctx, cn) {
     const table = cn.classic ? CN_CLASSIC : CN_CHALLENGE;
     const e = table[cn.idx];
     if (!e) return;
+    const lignes = lignesTraduites(cn.classic)[cn.idx] || [];
     const f = Math.max(0, Math.min(CN_IMAGES.length - 1, Math.floor(cn.frame) - 1));
     const [dy, ech] = CN_IMAGES[f];
     ctx.save();
@@ -1622,8 +1654,10 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     if (vignette) ctx.drawImage(vignette, e[1], e[2], 85, 100);
     for (let i = 3; i < e.length; i++) {
       // Les repères du fichier donnent la LIGNE DE BASE, pas le milieu.
-      U.text(ctx, e[i][0], e[i][1], e[i][2],
-        { size: e[i][3], color: '#ffffff', align: 'left', baseline: 'alphabetic', font: 'banana' });
+      const texte = lignes[i - 3] != null ? lignes[i - 3] : e[i][0];
+      U.text(ctx, texte, e[i][1], e[i][2],
+        { size: e[i][3], color: '#ffffff', align: 'left', baseline: 'alphabetic', font: 'banana',
+          maxW: CN_BORD_DROIT - e[i][1] });
     }
     ctx.restore();
   }
@@ -2044,7 +2078,7 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
   Player.prototype.attack = function (p, sync) {
     const attackId = E.ATTACK_PLAYERS[this.id];
     this.star_counter -= E.ATTACK_STARS[this.id];
-    this.animator.showAttack(E.ATTACK_NAMES[attackId]);
+    this.animator.showAttack(nomAttaque(attackId));
     if (attackId === 5) this.next_combo_double = true;
     return p.attacked(attackId, sync);
   };
@@ -2611,8 +2645,8 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
       // Sous le parchemin du score — ou, quand le pack « coups » pose ses
       // deux parchemins à cet endroit, sous le dernier (sinon le mot tombait
       // en travers du cadran COUPS).
-      const mention = SW.Data.essai ? 'PARTIE D’ESSAI'
-        : (this.game && this.game.horsClassement) ? 'HORS CLASSEMENT' : '';
+      const mention = SW.Data.essai ? tr('swapou.mentionEssai', 'PARTIE D’ESSAI')
+        : (this.game && this.game.horsClassement) ? tr('swapou.mentionHorsClassement', 'HORS CLASSEMENT') : '';
       if (mention) {
         const yMention = this.etoilesEnabled() ? 250 : this.movesEnabled() ? 168 : 112;
         U.text(ctx, mention, 74, yMention, { size: 11, color: '#fff1c9', align: 'center', baseline: 'alphabetic' });
@@ -2623,13 +2657,13 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     // accorde l'option au joueur.
     if (this.movesEnabled()) {
       const n = (this.game && this.game.nmoves) || 0;
-      U.text(ctx, 'COUPS', 88, 22 + COUPS_DY, { size: 9, color: '#8a6a37', align: 'center' });
+      U.text(ctx, tr('swapou.coups', 'COUPS'), 88, 22 + COUPS_DY, { size: 9, color: '#8a6a37', align: 'center' });
       U.text(ctx, String(n), 88, 42 + COUPS_DY, { size: 20, color: '#5a3a10', align: 'center' });
     }
     // …et les fruits qui restent avant la prochaine étoile de pouvoir.
     if (this.etoilesEnabled()) {
       const e = (this.game && this.game.star_counter) || 0;
-      U.text(ctx, 'ÉTOILE', 88, 22 + ETOILE_DY, { size: 9, color: '#8a6a37', align: 'center' });
+      U.text(ctx, tr('swapou.etoile', 'ÉTOILE'), 88, 22 + ETOILE_DY, { size: 9, color: '#8a6a37', align: 'center' });
       U.text(ctx, String(e), 88, 42 + ETOILE_DY, { size: 20, color: '#5a3a10', align: 'center' });
     }
     if (!this.classicModeOn) drawLeaves(ctx, D.LEAVES_X, D.LEAVES_Y);
@@ -2946,12 +2980,15 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     U.roundRect(ctx, b.x + 0.5, b.y + 0.5, b.w - 1, b.h - 1, 5);
     ctx.stroke();
     ctx.restore();
-    U.text(ctx, 'JOUER', b.x + b.w / 2, b.y + b.h / 2 + 1,
-      { size: 11, color: pret ? '#3a2200' : '#8a7a5a' });
+    U.text(ctx, tr('swapou.ia.jouer', 'JOUER'), b.x + b.w / 2, b.y + b.h / 2 + 1,
+      { size: 11, color: pret ? '#3a2200' : '#8a7a5a', maxW: b.w - 6 });
   };
 
   const IA_COULEURS = { combo: '#5ee06a', preparation: '#5fb8ff', attente: '#e0d8a0', defense: '#ff9d3f' };
-  const IA_NOMS = { combo: 'COMBO', preparation: 'COUP SILENCIEUX', attente: 'SANS COMBO', defense: 'DÉFENSE' };
+  // (traduits d'un bloc, comme les autres grands tableaux : swapou.ia.noms)
+  const IA_NOMS_FR = { combo: 'COMBO', preparation: 'COUP SILENCIEUX', attente: 'SANS COMBO', defense: 'DÉFENSE' };
+  let iaNoms = null;
+  const IA_NOMS = () => iaNoms || (iaNoms = tr.table('swapou.ia.noms', IA_NOMS_FR));
   // Le panneau : la zone libre du panneau de gauche, entre le parchemin des
   // coups (qui finit vers y = 158) et le visage (qui commence à 357), à
   // gauche de l'icône de défense (x = 106) et de la colonne d'étoiles.
@@ -3023,11 +3060,11 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     ctx.stroke();
     ctx.restore();
     const x = P.x + 6, tx = P.x + P.w / 2;
-    U.text(ctx, 'IA', x, P.y + 12, { size: 10, color: '#ffd23f', align: 'left' });
+    U.text(ctx, tr('swapou.ia.titre', 'IA'), x, P.y + 12, { size: 10, color: '#ffd23f', align: 'left' });
     const m = c && c.meilleur;
     this.dessinerBouton(ctx);
     if (this.enCours && !m) {
-      U.text(ctx, 'réflexion…', tx, P.y + 40, { size: 10, color: '#d8ccb0', bold: false });
+      U.text(ctx, tr('swapou.ia.reflexion', 'réflexion…'), tx, P.y + 40, { size: 10, color: '#d8ccb0', bold: false });
       return;
     }
     if (!m) return;
@@ -3035,40 +3072,43 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     // plutôt que par un « DÉFENSE » qui ne dit ni quoi ni combien.
     const id = SW.Data.players[0];
     const titre = m.nature === 'defense'
-      ? E.DEFENSE_NAMES[E.DEFENSE_PLAYERS[id]].trim() + ' ' + E.DEFENSE_STARS[id] + '★'
-      : (IA_NOMS[m.nature] || '');
-    U.text(ctx, titre, tx, P.y + 28, { size: 9, color: IA_COULEURS[m.nature] || '#fff' });
+      ? nomDefense(E.DEFENSE_PLAYERS[id]).trim() + ' ' + E.DEFENSE_STARS[id] + '★'
+      : (IA_NOMS()[m.nature] || '');
+    // Les lignes du panneau tiennent dans sa largeur (un texte traduit plus
+    // long s'y resserre).
+    const large = P.w - 8;
+    U.text(ctx, titre, tx, P.y + 28, { size: 9, color: IA_COULEURS[m.nature] || '#fff', maxW: large });
     const g = m.gain || {};
     let l1 = '', l2 = '';
     if (m.nature === 'combo') {
       l1 = '+' + g.score;
-      l2 = g.pieces + ' fruits · ' + g.phases + ' phase' + (g.phases > 1 ? 's' : '');
+      l2 = tr.n('swapou.ia.fruitsPhases', g.phases, { one: '{p} fruits · {n} phase', other: '{p} fruits · {n} phases' }, { p: g.pieces });
     } else if (m.nature === 'preparation') {
-      l1 = m.suite ? 'prépare ' + m.suite.score : 'range';
-      l2 = m.suite ? (m.suite.pieces + ' fruits · ' + m.suite.phases + ' ph.') : '';
+      l1 = m.suite ? tr('swapou.ia.prepare', 'prépare {s}', { s: m.suite.score }) : tr('swapou.ia.range', 'range');
+      l2 = m.suite ? tr('swapou.ia.fruitsPh', '{p} fruits · {n} ph.', { p: m.suite.pieces, n: m.suite.phases }) : '';
     } else if (m.nature === 'defense') {
-      l1 = g.score > 0 ? '+' + g.score : 'pouvoir';
-      l2 = g.cracked > 0 ? g.cracked + ' armure' + (g.cracked > 1 ? 's' : '') : '';
+      l1 = g.score > 0 ? '+' + g.score : tr('swapou.ia.pouvoir', 'pouvoir');
+      l2 = g.cracked > 0 ? tr.n('swapou.ia.armures', g.cracked, { one: '{n} armure', other: '{n} armures' }) : '';
     } else {
-      l1 = 'aucun combo';
-      l2 = m.suite ? 'suite : ' + m.suite.score : '';
+      l1 = tr('swapou.ia.aucunCombo', 'aucun combo');
+      l2 = m.suite ? tr('swapou.ia.suite', 'suite : {s}', { s: m.suite.score }) : '';
     }
-    U.text(ctx, l1, tx, P.y + 48, { size: 15, color: '#fff' });
-    if (l2) U.text(ctx, l2, tx, P.y + 64, { size: 8, color: '#d8ccb0', bold: false });
+    U.text(ctx, l1, tx, P.y + 48, { size: 15, color: '#fff', maxW: large });
+    if (l2) U.text(ctx, l2, tx, P.y + 64, { size: 8, color: '#d8ccb0', bold: false, maxW: large });
     // Pourquoi MAINTENANT : une défense à plateau bas surprend, sauf si la
     // banque est pleine — la prochaine étoile serait perdue.
     const indice = m.nature === 'defense' && (m.pleine || m.crise);
     if (indice)
-      U.text(ctx, m.pleine ? 'banque pleine : à dépenser' : 'plateau au plafond', tx, P.y + 74,
-        { size: 7, color: '#ffd23f', bold: false });
+      U.text(ctx, m.pleine ? tr('swapou.ia.banquePleine', 'banque pleine : à dépenser') : tr('swapou.ia.auPlafond', 'plateau au plafond'), tx, P.y + 74,
+        { size: 7, color: '#ffd23f', bold: false, maxW: large });
     // les deux suivants, en petit : de quoi comparer (un peu plus bas quand
     // l'indice occupe la ligne au-dessus)
     let y = P.y + (indice ? 87 : 82);
     for (let i = 1; i < Math.min(3, c.coups.length); i++) {
       const a = c.coups[i];
       const s = (i + 1) + '. ' + (a.nature === 'combo' ? '+' + a.gain.score
-        : a.nature === 'preparation' ? 'prép. ' + (a.suite ? a.suite.score : '')
-          : a.nature === 'defense' ? 'défense' : 'sans combo');
+        : a.nature === 'preparation' ? tr('swapou.ia.prep', 'prép. {s}', { s: a.suite ? a.suite.score : '' })
+          : a.nature === 'defense' ? tr('swapou.ia.defense', 'défense') : tr('swapou.ia.sansCombo', 'sans combo'));
       U.text(ctx, s, x, y, { size: 8, color: IA_COULEURS[a.nature] || '#ccc', align: 'left', bold: false });
       y += 12;
     }
@@ -3294,7 +3334,7 @@ var SW = {}; // var : attaché au global (accessible aux tests headless via vm)
     if (this.ncoups > E.CLASSIC_LEVELS[this.level]) {
       this.ncoups = 0;
       this.level++;
-      this.lup = 'Niveau ' + this.level;
+      this.lup = tr('swapou.niveau', 'Niveau {n}', { n: this.level });
     }
     if (this.lup != null && !this.lock) {
       this.lupShow = 70;

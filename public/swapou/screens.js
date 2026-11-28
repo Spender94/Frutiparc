@@ -11,6 +11,10 @@
   const D = U.D;
   const DATA = SwapouData;
   const random = U.random;
+  // Les textes : T() de /js/i18n.js, français en repli (cf. ui.js, « LES
+  // LANGUES »). Les noms des persos et les jeux de mots (« pot au feu ») ne se
+  // traduisent pas.
+  const tr = U.tr;
 
   // ── Menu (Menu.as) ───────────────────────────────────────────────────────
   function Menu() {
@@ -257,82 +261,87 @@
       case -1:
         break;
       case 10:
-        this.attachButton(0, ' jouer ', 20, 'Choisir un mode de jeu');
-        this.attachButton(1, ' options ', 11, 'Paramètres de jeu');
+        this.attachButton(0, tr('swapou.menu.jouer', ' jouer '), 20, tr('swapou.aide.jouer', 'Choisir un mode de jeu'));
+        this.attachButton(1, tr('swapou.menu.options', ' options '), 11, tr('swapou.aide.options', 'Paramètres de jeu'));
         break;
       case 11: {
-        this.attachTitle('Paramètres de jeu');
+        this.attachTitle(tr('swapou.titre.options', 'Paramètres de jeu'));
         const me = this;
-        this.attachSwitch(0, 'son : ' + (A.soundEnabled() ? ' oui ' : ' non '),
-          function () { A.toggleSound(); }, 'Activer ou désactiver les effets sonore');
-        this.attachSwitch(1, 'musique : ' + (A.musicEnabled() ? ' oui ' : ' non '),
-          function () { A.toggleMusic(); }, 'Activer ou désactiver la musique');
-        let label = ' hauts ';
-        if (U.getLod() === D.MEDIUM) label = ' moyens ';
-        if (U.getLod() === D.LOW) label = ' bas ';
-        this.attachSwitch(2, 'details : ' + label, function () {
+        // Un interrupteur = une phrase à trou : « son : {etat} ».
+        const oui = tr('swapou.menu.oui', ' oui '), non = tr('swapou.menu.non', ' non ');
+        this.attachSwitch(0, tr('swapou.menu.son', 'son : {etat}', { etat: A.soundEnabled() ? oui : non }),
+          function () { A.toggleSound(); }, tr('swapou.aide.son', 'Activer ou désactiver les effets sonore'));
+        this.attachSwitch(1, tr('swapou.menu.musique', 'musique : {etat}', { etat: A.musicEnabled() ? oui : non }),
+          function () { A.toggleMusic(); }, tr('swapou.aide.musique', 'Activer ou désactiver la musique'));
+        let label = tr('swapou.menu.detailsHauts', ' hauts ');
+        if (U.getLod() === D.MEDIUM) label = tr('swapou.menu.detailsMoyens', ' moyens ');
+        if (U.getLod() === D.LOW) label = tr('swapou.menu.detailsBas', ' bas ');
+        this.attachSwitch(2, tr('swapou.menu.details', 'details : {etat}', { etat: label }), function () {
           switch (U.getLod()) {
             case D.HIGH: U.setLod(D.MEDIUM); break;
             case D.MEDIUM: U.setLod(D.LOW); break;
             case D.LOW: U.setLod(D.HIGH); break;
           }
-        }, 'Régler le niveau de qualité graphique du jeu');
+        }, tr('swapou.aide.details', 'Régler le niveau de qualité graphique du jeu'));
         // Au doigt : viser puis valider (cf. game.js), ou échanger au relâcher
         // comme avant. Le réglage est celui de l'APPAREIL (localStorage), pas
         // du compte : il ne passe pas par savePrefs. Sans écran tactile, pas
         // de ligne — et « retour » reste à sa place.
         let ligne = 3;
         if (SW.tactilePossible()) {
-          this.attachSwitch(ligne++, 'au doigt : ' + (SW.viserValider ? ' viser ' : ' direct '),
-            function () { SW.setViserValider(!SW.viserValider); },
-            SW.viserValider ? 'Un appui vise la paire, un second appui l\'échange'
-              : 'La paire s\'échange dès qu\'on lève le doigt');
+          this.attachSwitch(ligne++, tr('swapou.menu.doigt', 'au doigt : {etat}',
+            { etat: SW.viserValider ? tr('swapou.menu.doigtViser', ' viser ') : tr('swapou.menu.doigtDirect', ' direct ') }),
+          function () { SW.setViserValider(!SW.viserValider); },
+          SW.viserValider ? tr('swapou.aide.doigtViser', 'Un appui vise la paire, un second appui l\'échange')
+            : tr('swapou.aide.doigtDirect', 'La paire s\'échange dès qu\'on lève le doigt'));
         }
-        this.attachButton(ligne, ' retour ', -2, '');
+        this.attachButton(ligne, tr('swapou.menu.retour', ' retour '), -2, '');
         break;
       }
       case 20: {
-        this.attachTitle(' Modes ');
-        this.attachButton(0, ' challenge ', 30, 'Affrontez les autres Frutiz sur le classement');
-        this.attachButton(1, ' essai ', 70, 'Le Challenge pour s\'entraîner : illimité, hors classement (les pictos comptent)');
-        this.attachButton(2, ' duel ', 40, 'Match amical en Un contre Un');
-        this.attachButton(3, 'pot au feu', 50, 'Progressez et accédez à de nouveaux personnages');
-        const bt = this.attachButton(4, ' classique ', 60, 'La version classique de swapou');
+        this.attachTitle(tr('swapou.titre.modes', ' Modes '));
+        this.attachButton(0, tr('swapou.menu.challenge', ' challenge '), 30, tr('swapou.aide.challenge', 'Affrontez les autres Frutiz sur le classement'));
+        this.attachButton(1, tr('swapou.menu.essai', ' essai '), 70, tr('swapou.aide.essai', 'Le Challenge pour s\'entraîner : illimité, hors classement (les pictos comptent)'));
+        this.attachButton(2, tr('swapou.menu.duel', ' duel '), 40, tr('swapou.aide.duel', 'Match amical en Un contre Un'));
+        // « pot au feu » est un jeu de mots (des légumes, un pot-au-feu) : il
+        // reste en français pour l'instant ; son aide se traduit.
+        this.attachButton(3, 'pot au feu', 50, tr('swapou.aide.potAuFeu', 'Progressez et accédez à de nouveaux personnages'));
+        const bt = this.attachButton(4, tr('swapou.menu.classique', ' classique '), 60, tr('swapou.aide.classique', 'La version classique de swapou'));
         const items = Manager.client.slots[0] && Manager.client.slots[0].$items;
         if (!items || !items[6]) bt.disable();
-        this.attachButton(5, ' retour ', -1, '');
+        this.attachButton(5, tr('swapou.menu.retour', ' retour '), -1, '');
         break;
       }
       case 70:
-        this.attachFaces(0, this.phase + 1, ' Personnage ');
-        this.attachButton(4, ' retour ', -1, '');
+        this.attachFaces(0, this.phase + 1, tr('swapou.titre.personnage', ' Personnage '));
+        this.attachButton(4, tr('swapou.menu.retour', ' retour '), -1, '');
         break;
       case 30:
-        this.attachFaces(0, this.phase + 1, ' Personnage ');
-        this.attachButton(4, ' retour ', -1, '');
+        this.attachFaces(0, this.phase + 1, tr('swapou.titre.personnage', ' Personnage '));
+        this.attachButton(4, tr('swapou.menu.retour', ' retour '), -1, '');
         break;
       case 40:
-        this.attachFaces(0, this.phase + 1, ' Personnage ');
-        this.attachButton(4, ' retour ', -1, '');
+        this.attachFaces(0, this.phase + 1, tr('swapou.titre.personnage', ' Personnage '));
+        this.attachButton(4, tr('swapou.menu.retour', ' retour '), -1, '');
         break;
       case 41:
-        this.attachFaces(1, this.phase + 1, ' Adversaire ');
-        this.attachButton(4, ' retour ', -1, '');
+        this.attachFaces(1, this.phase + 1, tr('swapou.titre.adversaire', ' Adversaire '));
+        this.attachButton(4, tr('swapou.menu.retour', ' retour '), -1, '');
         break;
       case 42: {
         let line = 0;
-        this.attachTitle('Difficulté');
-        this.attachButton(line++, ' enfantin ', this.phase + 1, '');
-        this.attachButton(line++, ' facile ', this.phase + 1, '');
-        this.attachButton(line++, ' moyen ', this.phase + 1, '');
-        this.attachButton(line++, ' difficile ', this.phase + 1, '');
-        this.attachButton(line++, ' sauvage ', this.phase + 1, '');
-        this.attachButton(line++, ' retour ', -1, '');
+        this.attachTitle(tr('swapou.titre.difficulte', 'Difficulté'));
+        this.attachButton(line++, tr('swapou.menu.enfantin', ' enfantin '), this.phase + 1, '');
+        this.attachButton(line++, tr('swapou.menu.facile', ' facile '), this.phase + 1, '');
+        this.attachButton(line++, tr('swapou.menu.moyen', ' moyen '), this.phase + 1, '');
+        this.attachButton(line++, tr('swapou.menu.difficile', ' difficile '), this.phase + 1, '');
+        this.attachButton(line++, tr('swapou.menu.sauvage', ' sauvage '), this.phase + 1, '');
+        this.attachButton(line++, tr('swapou.menu.retour', ' retour '), -1, '');
         break;
       }
       case 50:
-        this.attachFaces(0, this.phase + 1, ' Personnage ');
-        this.attachButton(4, ' retour ', -1, '');
+        this.attachFaces(0, this.phase + 1, tr('swapou.titre.personnage', ' Personnage '));
+        this.attachButton(4, tr('swapou.menu.retour', ' retour '), -1, '');
         break;
     }
   };
@@ -502,8 +511,9 @@
       ctx.globalAlpha = k;
       const img = A.img('menuTitre');
       if (img) ctx.drawImage(img, D.BUTTON_X - 98.95, D.TITLE_Y - 14.15, 197.95, 28.3);
-      // Champ #359 du SWF : Impact 16, ivoire — pas la fonte des boutons.
-      U.text(ctx, t.text, D.BUTTON_X, D.TITLE_Y, { size: 16, color: '#ffe8b7', font: 'impact' });
+      // Champ #359 du SWF : Impact 16, ivoire — pas la fonte des boutons. Un
+      // titre traduit plus long que la plaque s'y resserre.
+      U.text(ctx, t.text, D.BUTTON_X, D.TITLE_Y, { size: 16, color: '#ffe8b7', font: 'impact', maxW: 188 });
       ctx.restore();
     }
     // boutons (arrière puis avant pour l'orbite)
@@ -519,16 +529,16 @@
     // lettres tombent donc au-dessus de cette ligne.
     if (this.barVisible && this.helpText)
       U.text(ctx, this.helpText, D.DOCWIDTH / 2, 17,
-        { size: 18, color: '#b5c77e', font: 'impact' });
+        { size: 18, color: '#b5c77e', font: 'impact', maxW: D.DOCWIDTH - 16 });
     // logo
     if (this.logoVisible || this.logoHide > 0) {
-      const img = A.img('logo');
       ctx.save();
       const wob = 1 - Math.cos(this.wait / 5) * 0.03;
       let a = 1, s = wob;
       if (this.logoHide > 0) { a = this.logoHide / 12; s = wob + (1 - a) * 0.6; }
       ctx.globalAlpha = a;
-      U.drawCentered(ctx, img, D.DOCWIDTH / 2, D.DOCHEIGHT / 2, 0.95 * s);
+      if (!dessinerLogoTraduit(ctx, D.DOCWIDTH / 2, D.DOCHEIGHT / 2, 0.95 * s))
+        U.drawCentered(ctx, A.img('logo'), D.DOCWIDTH / 2, D.DOCHEIGHT / 2, 0.95 * s);
       ctx.restore();
     }
     // versus
@@ -537,9 +547,46 @@
     if (this.netLocked && this.animPhase >= 16) {
       const img = A.img('netBox');
       if (img) U.drawCentered(ctx, img, D.DOCWIDTH / 2, D.DOCHEIGHT / 2, 1);
-      U.text(ctx, 'connexion...', D.DOCWIDTH / 2, D.DOCHEIGHT / 2, { size: 15, color: '#5a3a10' });
+      U.text(ctx, tr('swapou.connexion', 'connexion...'), D.DOCWIDTH / 2, D.DOCHEIGHT / 2, { size: 15, color: '#5a3a10' });
     }
   };
+
+  /* LE LOGO DANS UNE AUTRE LANGUE. logo.png porte, gravé sous « swapou », le
+   * sous-titre « les légumes attaquent ! ». Quand le dictionnaire le traduit,
+   * on pose à sa place le même logo SANS sous-titre (ui/logo-sans-sous-titre.png,
+   * tiré de logo.png par scripts/swapou-logo-sans-sous-titre.js — chargé
+   * seulement dans ce cas, cf. assets.js) et l'on écrit le sous-titre dans la
+   * fonte et l'habit d'origine (U.lettrage, « vert »), en deux morceaux de part
+   * et d'autre de la liane : là où étaient « les légumes » et « attaquent ! »,
+   * sur la même ligne de base, inclinée comme elle de 1,3°. Sans traduction ou
+   * sans l'image, le logo d'origine (faux : on n'a rien dessiné). */
+  const LOGO_SOUS_TITRE = [
+    { cle: 'swapou.logo.sousTitre1', x: 57, y: 130 },   // « les légumes »
+    { cle: 'swapou.logo.sousTitre2', x: 357, y: 155 },  // « attaquent ! »
+  ];
+  const LOGO_PENTE = 1.3 * Math.PI / 180;
+  function dessinerLogoTraduit(ctx, cx, cy, s) {
+    const textes = LOGO_SOUS_TITRE.map(function (m) { return tr(m.cle, ''); });
+    if (!textes[0] || !A.has || !A.has('logoSansSousTitre')) return false;
+    const img = A.img('logoSansSousTitre');
+    const lettres = textes.map(function (t) { return t ? U.lettrage(t, 'vert') : null; });
+    if (!lettres[0]) return false;
+    ctx.save();
+    ctx.translate(cx - img.naturalWidth * s / 2, cy - img.naturalHeight * s / 2);
+    ctx.scale(s, s);
+    ctx.drawImage(img, 0, 0);
+    for (let i = 0; i < LOGO_SOUS_TITRE.length; i++) {
+      const l = lettres[i];
+      if (!l) continue;
+      ctx.save();
+      ctx.translate(LOGO_SOUS_TITRE[i].x, LOGO_SOUS_TITRE[i].y);
+      ctx.rotate(LOGO_PENTE);
+      ctx.drawImage(l.canvas, -l.ox, -l.oy, l.w, l.h);
+      ctx.restore();
+    }
+    ctx.restore();
+    return true;
+  }
 
   Menu.prototype.drawVersus = function (ctx) {
     const v = this.versus;
@@ -564,9 +611,9 @@
     U.drawCentered(ctx, vsImg, cx, cy - 10, 0.9);
     ctx.restore();
     if (v.vs === 3)
-      U.text(ctx, 'GAGNÉ !', cx, cy + 38, { size: 20, color: '#fff04a', stroke: '#7a3000', strokeWidth: 4 });
+      U.text(ctx, tr('swapou.versus.gagne', 'GAGNÉ !'), cx, cy + 38, { size: 20, color: '#fff04a', stroke: '#7a3000', strokeWidth: 4 });
     else if (v.vs === 2)
-      U.text(ctx, 'PERDU...', cx, cy + 38, { size: 20, color: '#cfd8ff', stroke: '#20243a', strokeWidth: 4 });
+      U.text(ctx, tr('swapou.versus.perdu', 'PERDU...'), cx, cy + 38, { size: 20, color: '#cfd8ff', stroke: '#20243a', strokeWidth: 4 });
     ctx.restore();
   };
 
@@ -969,7 +1016,10 @@
     // L'invité n'a pas d'inventaire : rien ne lui est remis, on ne le lui
     // annonce donc pas (le panneau d'inscription dira ce qu'un compte garde).
     if (n === 0 || SW.invite()) return;
-    this.titemText = 'Vous avez gagné ' + ((n === 1) ? 'un nouveau titem' : (n + ' nouveaux titems')) + ' Frutiparc !';
+    this.titemText = tr.n('swapou.titemGagne', n, {
+      one: 'Vous avez gagné un nouveau titem Frutiparc !',
+      other: 'Vous avez gagné {n} nouveaux titems Frutiparc !',
+    });
   };
   GameOver.prototype.setText = function (txt) {
     this.frame = 1;
@@ -1010,8 +1060,9 @@
     if (this.scoreInvite != null && !this.inviteVu && window.FPInvite) {
       this.inviteVu = true;
       const me = this;
+      // (le panneau choisit lui-même entre `libelle` et `libelleEn`)
       const ouvert = window.FPInvite.finDePartie({
-        score: String(this.scoreInvite), libelle: 'Ton score',
+        score: String(this.scoreInvite), libelle: 'Ton score', libelleEn: 'Your score',
         surRejouer: function () { if (Manager.mode === me) Manager.endGame(me.win_flag); },
       });
       if (ouvert) return;
@@ -1039,21 +1090,24 @@
       ctx.fill();
     }
     if (this.frame === 2) {
-      U.text(ctx, 'connexion...', this.boxX, by, { size: 16, color: '#fff3d8', stroke: '#5a3a10', strokeWidth: 3 });
+      U.text(ctx, tr('swapou.connexion', 'connexion...'), this.boxX, by, { size: 16, color: '#fff3d8', stroke: '#5a3a10', strokeWidth: 3 });
     } else if (this.frame === 3) {
       const img = A.img(this.win_flag ? 'endingWin' : 'endingLose');
-      if (img) U.drawCentered(ctx, img, this.boxX, by - 40, 0.9);
-      else U.text(ctx, this.win_flag ? 'GAGNÉ !' : 'PERDU...', this.boxX, by - 40,
-        { size: 26, color: '#fff04a', stroke: '#5a3a10', strokeWidth: 4 });
+      if (!dessinerFinTraduite(ctx, this.win_flag, this.boxX, by - 40, 0.9)) {
+        if (img) U.drawCentered(ctx, img, this.boxX, by - 40, 0.9);
+        else U.text(ctx, this.win_flag ? tr('swapou.versus.gagne', 'GAGNÉ !') : tr('swapou.versus.perdu', 'PERDU...'), this.boxX, by - 40,
+          { size: 26, color: '#fff04a', stroke: '#5a3a10', strokeWidth: 4 });
+      }
     } else if (this.frame === 4) {
       const img = A.img('endingWin');
-      if (img) U.drawCentered(ctx, img, this.boxX, by - 90, 0.75);
+      if (!dessinerFinTraduite(ctx, true, this.boxX, by - 90, 0.75) && img)
+        U.drawCentered(ctx, img, this.boxX, by - 90, 0.75);
       const face = new U.Face(this.unlockedChar);
       face.stateId = 4; // joie
       face.bgId = 3;
       face.draw(ctx, this.boxX - 55, by - 55, 110);
-      U.text(ctx, 'Nouveau personnage débloqué !', this.boxX, by + 85,
-        { size: 14, color: '#fff3d8', stroke: '#5a3a10', strokeWidth: 3 });
+      U.text(ctx, tr('swapou.persoDebloque', 'Nouveau personnage débloqué !'), this.boxX, by + 85,
+        { size: 14, color: '#fff3d8', stroke: '#5a3a10', strokeWidth: 3, maxW: 290 });
     } else {
       const lines = [];
       this.text.split('\n').forEach(function (l) {
@@ -1064,7 +1118,7 @@
           { size: 14, color: '#fff3d8', stroke: '#5a3a10', strokeWidth: 3 });
     }
     if (this.lock_time <= 0 && !this.lock)
-      U.text(ctx, '— cliquez pour continuer —', this.boxX, by + bh / 2 - 24,
+      U.text(ctx, tr('swapou.cliquerPourContinuer', '— cliquez pour continuer —'), this.boxX, by + bh / 2 - 24,
         { size: 11, color: '#ffe9b0', stroke: '#5a3a10', strokeWidth: 2 });
     if (this.titemText) {
       const ty = by + bh / 2 + 26;
@@ -1078,6 +1132,18 @@
     }
     ctx.restore();
   };
+
+  /* « victoire! » et « perdu! » sont gravés dans endingWin.png et
+   * endingLose.png. Quand le dictionnaire les traduit, on les écrit dans la
+   * même lettre (U.lettrage, « or »), centrés là où l'image se posait et à la
+   * même échelle ; sinon, l'image d'origine (faux). */
+  function dessinerFinTraduite(ctx, gagne, cx, cy, s) {
+    const texte = gagne ? tr('swapou.fin.victoire', '') : tr('swapou.fin.perdu', '');
+    const l = texte ? U.lettrage(texte, 'or') : null;
+    if (!l) return false;
+    U.drawLettrage(ctx, l, cx, cy, s);
+    return true;
+  }
 
   // ── Manager (Manager.as) ─────────────────────────────────────────────────
   const Manager = {
@@ -1135,7 +1201,7 @@
       if (!c || !c.demanderPartie) return Promise.resolve(null);
       var menu = Manager.mode;
       var mot = setTimeout(function () {
-        if (Manager.mode === menu && menu && menu.help) menu.help('Connexion au serveur…');
+        if (Manager.mode === menu && menu && menu.help) menu.help(tr('swapou.connexionServeur', 'Connexion au serveur…'));
       }, 1500);
       return c.demanderPartie(essai).then(function (p) {
         clearTimeout(mot);
@@ -1228,8 +1294,8 @@
             g.netLock();
             Manager.client.rendreEssai(score, function (j) {
               g.scoreSaved(score, 0, 0, 0, j && j.verifiee
-                ? 'Partie d\'essai : score non classé.\nSes combos sont comptés.'
-                : 'Partie d\'essai : score non classé.');
+                ? tr('swapou.essaiVerifie', 'Partie d\'essai : score non classé.\nSes combos sont comptés.')
+                : tr('swapou.essaiNonClasse', 'Partie d\'essai : score non classé.'));
             });
             break;
           }
@@ -1401,6 +1467,10 @@
   // + liseré gris, coins arrondis, ombre portée, icône + titre, bouton
   // /fb/bouton_popin.png (Verdana bold #660000). Un seul bouton « Fermer » :
   // le joueur retourne au menu (Classique/Duel/Pot au feu restent libres).
+  // (les textes du panneau viennent du dictionnaire : on les échappe)
+  function echapperHtml(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
   SW.showFdRefus = function (lvText) {
     if (document.getElementById('fd-overlay')) return;
     var wrap = document.createElement('div');
@@ -1413,9 +1483,11 @@
             '<img src="/fb/icone_popin.png" alt="" width="19" height="24" style="display:block">' +
             '<b style="font-size:15px">Challenge</b>' +
           '</div>' +
-          '<p style="font-family:Verdana,Arial,sans-serif;font-size:14px;line-height:1.5;margin:0 0 20px">Nom d\u2019un Pamplefrousse ! Tu as \u00e9puis\u00e9 ton quota de parties Challenge pour aujourd\u2019hui ! Retente ta chance demain ou ach\u00e8te un pass en boutique !</p>' +
+          '<p style="font-family:Verdana,Arial,sans-serif;font-size:14px;line-height:1.5;margin:0 0 20px">' +
+            echapperHtml(tr('swapou.fdEpuise', 'Nom d\u2019un Pamplefrousse ! Tu as \u00e9puis\u00e9 ton quota de parties Challenge pour aujourd\u2019hui ! Retente ta chance demain ou ach\u00e8te un pass en boutique !')) + '</p>' +
           '<div style="text-align:center">' +
-            '<button id="fd-later" style="width:124px;height:30px;border:0;padding:0 0 2px;background:url(/fb/bouton_popin.png) no-repeat center/100% 100%;font-family:Verdana,Arial,sans-serif;font-weight:bold;font-size:13px;color:#660000;cursor:pointer">Fermer</button>' +
+            '<button id="fd-later" style="width:124px;height:30px;border:0;padding:0 0 2px;background:url(/fb/bouton_popin.png) no-repeat center/100% 100%;font-family:Verdana,Arial,sans-serif;font-weight:bold;font-size:13px;color:#660000;cursor:pointer">' +
+            echapperHtml(tr('commun.fermer', 'Fermer')) + '</button>' +
           '</div>' +
         '</div>' +
       '</div>';

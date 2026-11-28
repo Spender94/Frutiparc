@@ -11,10 +11,20 @@
  *   { loop: 'nom' }              — musique d'ambiance (PLAYLOOP)
  *   { stop: true }               — STOPLOOP
  *   { walk: 'scenario'|'poivre'|'wasabii' } — déplacement sur la carte
+ *
+ * LES LANGUES : le français ci-dessous est le texte de référence. L'anglais
+ * vit dans /swapou/lang/en.js, en tableaux DE MÊME FORME (`T.table`, via
+ * SwapouUI.tr) : `swapou.repliques.*` perso par perso, `swapou.scenario`
+ * phase par phase — une chaîne par ligne de texte du scénario, dans l'ordre,
+ * sans les entrées muettes (musique, cinématique, marche). Une ligne absente
+ * retombe sur le français. Les marques `$#` (le héros) et `$*` (son jumeau)
+ * restent dans la traduction : HistoMap.display les remplace.
  */
 'use strict';
 
 const SwapouData = (function () {
+  const tr = SwapouUI.tr;
+  // (T, ici, est la NARRATION du scénario — TXTONLY —, pas le T() des langues.)
   function T(txt) { return { left: undefined, txt: txt, face: 0, state: 0, bg: 0 }; }
   function P(perso, state, bg, txt) { return { left: false, txt: txt, face: perso, state: state, bg: bg }; }
   function HERO(state, bg, txt) { return P(-1, state, bg, txt); }
@@ -280,11 +290,17 @@ const SwapouData = (function () {
     ],
   ];
 
-  const TXT_SCORE_BATTU = 'vous avez battu votre record !';
-  function TXT_VOTRE_SCORE(s) { return 'votre score : ' + s; }
-  function TXT_VOTRE_RECORD(s) { return 'votre record personnel : ' + s; }
-  function TXT_VOTRE_PLACE(p) { return 'votre classement aujourd\'hui : ' + p; }
-  function TXT_PLACE_GAGNEES(p) { return 'vous avez gagné ' + ((p === 1) ? 'une place' : (p + ' places')) + ' dans le classement !'; }
+  const TXT_SCORE_BATTU = tr('swapou.scoreBattu', 'vous avez battu votre record !');
+  function TXT_VOTRE_SCORE(s) { return tr('swapou.votreScore', 'votre score : {s}', { s: s }); }
+  function TXT_VOTRE_RECORD(s) { return tr('swapou.votreRecord', 'votre record personnel : {s}', { s: s }); }
+  function TXT_VOTRE_PLACE(p) { return tr('swapou.votrePlace', 'votre classement aujourd\'hui : {p}', { p: p }); }
+  // (appelé avec un gain d'au moins une place : GameOver.scoreSaved)
+  function TXT_PLACE_GAGNEES(p) {
+    return tr.n('swapou.placesGagnees', p, {
+      one: 'vous avez gagné une place dans le classement !',
+      other: 'vous avez gagné {n} places dans le classement !',
+    });
+  }
 
   const SCENARIO = [
     // phase 0 : la rencontre de Monsieur Sel
@@ -454,6 +470,24 @@ const SwapouData = (function () {
     ],
   ];
 
+  // LE SCÉNARIO DANS LA LANGUE DU JOUEUR : ses lignes de texte, phase par
+  // phase, passent par `swapou.scenario` (tr.grille : une ligne non traduite
+  // garde son français). Les entrées sont recopiées, jamais modifiées : la
+  // structure (qui parle, quelle cinématique, quelle marche) reste celle-ci.
+  const SCENARIO_TEXTES = SCENARIO.map(function (phase) {
+    return phase.filter(function (d) { return d.txt !== undefined; }).map(function (d) { return d.txt; });
+  });
+  const SCENARIO_TRADUIT = (function () {
+    const textes = tr.grille('swapou.scenario', SCENARIO_TEXTES);
+    if (textes === SCENARIO_TEXTES) return SCENARIO;
+    return SCENARIO.map(function (phase, p) {
+      let k = 0;
+      return phase.map(function (d) {
+        return d.txt === undefined ? d : Object.assign({}, d, { txt: textes[p][k++] });
+      });
+    });
+  })();
+
   // cinématique n (CIN) → image de fond ; 5 = composite temple (scene6/*),
   // 9 = le sucre qui tombe à la mer (scene8 animée, screens.js).
   const CIN_SCENES = ['scene1', 'scene2', 'scene3', 'scene4', 'scene5',
@@ -476,12 +510,14 @@ const SwapouData = (function () {
     [226, 186],  // 7 le sucre : la pointe sud de l'étang, au bord de la mer
   ];
 
+  // Les répliques du versus, dans la langue du joueur (tr.grille : même
+  // nombre de répliques par perso, donc même tirage — screens.js).
   return {
-    TAUNT_QUESTION: TAUNT_QUESTION,
-    TAUNT_ANSWER: TAUNT_ANSWER,
-    TAUNT_WINS: TAUNT_WINS,
-    TAUNT_LOOSE: TAUNT_LOOSE,
-    SCENARIO: SCENARIO,
+    TAUNT_QUESTION: tr.grille('swapou.repliques.question', TAUNT_QUESTION),
+    TAUNT_ANSWER: tr.grille('swapou.repliques.reponse', TAUNT_ANSWER),
+    TAUNT_WINS: tr.grille('swapou.repliques.victoire', TAUNT_WINS),
+    TAUNT_LOOSE: tr.grille('swapou.repliques.defaite', TAUNT_LOOSE),
+    SCENARIO: SCENARIO_TRADUIT,
     CIN_SCENES: CIN_SCENES,
     MAP_ETAPES: MAP_ETAPES,
     TXT_SCORE_BATTU: TXT_SCORE_BATTU,

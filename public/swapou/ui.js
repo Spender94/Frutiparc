@@ -220,6 +220,126 @@ const SwapouUI = (function () {
     ctx.drawImage(img, cx - w / 2, cy - h / 2, w, h);
   }
 
+  /* ── LE LETTRAGE DES IMAGES GRAVÉES ────────────────────────────────────────
+   *
+   * Trois textes du jeu sont des BITMAPS : « victoire! » (endingWin.png),
+   * « perdu! » (endingLose.png) et le sous-titre du logo, « les légumes
+   * attaquent ! ». Leur lettre est celle des boutons, « PT Banana Split » —
+   * la fonte embarquée du SWF, chargée avant le démarrage. Dans une autre
+   * langue, on les RÉÉCRIT donc à l'exécution, dans la même fonte et le même
+   * habit, relevé sur les images :
+   *
+   *   or    les fins de partie : contour bordeaux #680400 de 4 px, remplissage
+   *         orange sombre en haut qui s'éclaire en jaune vers le bas, des
+   *         bulles jaunes semées sur le haut des lettres ; la lettre est un peu
+   *         plus large et plus grasse que la fonte nue (étirée de 12 %) ;
+   *   vert  le sous-titre du logo : contour NOIR À 61 % de 4 px, remplissage
+   *         vert-jaune #e7ef00 avec une bande plus sombre aux deux cinquièmes.
+   *
+   * Le rendu est fait une fois par texte, au double de la résolution (net
+   * jusqu'à un écran ×2), puis gardé : la boucle ne fait qu'un drawImage.
+   * Hors navigateur (tests, rejeu du serveur), pas de canevas : null.
+   */
+  const LETTRAGES = {
+    or: {
+      taille: 68, etire: 1.12, graisse: 1.2, contour: '#680400', epais: 4.2, bulles: 9,
+      degrade: [[0, '#e2650a'], [0.38, '#da5303'], [0.68, '#f7a20a'], [1, '#fde614']],
+      reflet: [253, 222, 24],
+    },
+    vert: {
+      taille: 50, etire: 1, graisse: 0, contour: 'rgba(0,0,0,0.61)', epais: 4, bulles: 0,
+      degrade: [[0, '#e9f200'], [0.45, '#bcd300'], [1, '#eef400']],
+      reflet: [250, 255, 190],
+    },
+  };
+  const LETTRAGE_ECHELLE = 2;
+  const lettresFaites = {};
+  function lettrage(texte, nomStyle) {
+    const st = LETTRAGES[nomStyle];
+    if (!st || typeof document === 'undefined' || !document.createElement) return null;
+    const cle = nomStyle + '|' + texte;
+    if (lettresFaites[cle]) return lettresFaites[cle];
+    const k = LETTRAGE_ECHELLE, e = st.etire;
+    const police = (st.taille * k) + 'px "PT Banana Split"';
+    const c = document.createElement('canvas');
+    const g = c.getContext && c.getContext('2d');
+    if (!g) return null;
+    g.font = police;
+    const m = g.measureText(texte);
+    const haut = Math.ceil(m.actualBoundingBoxAscent || st.taille * k * 0.8);
+    const bas = Math.ceil(m.actualBoundingBoxDescent || st.taille * k * 0.25);
+    const gauche = Math.ceil(m.actualBoundingBoxLeft || 0);
+    const large = Math.ceil((m.actualBoundingBoxRight || m.width) + gauche);
+    const marge = Math.ceil((st.epais + st.graisse + 4) * k);
+    c.width = Math.ceil(large * e) + 2 * marge;
+    c.height = haut + bas + 2 * marge;
+    const x0 = marge / e + gauche, y0 = marge + haut;
+    function poser(ctx) {
+      ctx.setTransform(e, 0, 0, 1, 0, 0);
+      ctx.font = police;
+      ctx.textBaseline = 'alphabetic';
+      ctx.textAlign = 'left';
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+    }
+    // Le contour d'abord, épais : sa moitié intérieure disparaîtra sous le
+    // remplissage.
+    poser(g);
+    g.lineWidth = (st.epais + st.graisse) * 2 * k;
+    g.strokeStyle = st.contour;
+    g.strokeText(texte, x0, y0);
+    // Le remplissage sur un calque à part : les bulles n'en sortent pas.
+    const f = document.createElement('canvas');
+    f.width = c.width;
+    f.height = c.height;
+    const fg = f.getContext('2d');
+    poser(fg);
+    const dg = fg.createLinearGradient(0, y0 - haut, 0, y0 + bas);
+    st.degrade.forEach(function (s) { dg.addColorStop(s[0], s[1]); });
+    fg.fillStyle = dg;
+    fg.strokeStyle = dg;
+    if (st.graisse) {
+      fg.lineWidth = st.graisse * 2 * k;
+      fg.strokeText(texte, x0, y0);
+    }
+    fg.fillText(texte, x0, y0);
+    fg.setTransform(1, 0, 0, 1, 0, 0);
+    fg.globalCompositeOperation = 'source-atop';
+    // Les bulles : un tirage FIXE (le même texte a toujours les mêmes).
+    let graine = 7;
+    const alea = function () { graine = (graine * 16807) % 2147483647; return graine / 2147483647; };
+    const nb = Math.round(st.bulles * large / (100 * k));
+    const rv = st.reflet.join(',');
+    for (let i = 0; i < nb; i++) {
+      const bx = marge + alea() * large * e, by = y0 - haut + alea() * (haut + bas) * 0.7;
+      const r = st.taille * k * (0.04 + alea() * 0.05);
+      const rg = fg.createRadialGradient(bx, by, 0, bx, by, r);
+      rg.addColorStop(0, 'rgba(' + rv + ',0.95)');
+      rg.addColorStop(1, 'rgba(' + rv + ',0)');
+      fg.fillStyle = rg;
+      fg.beginPath();
+      fg.arc(bx, by, r, 0, Math.PI * 2);
+      fg.fill();
+    }
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.drawImage(f, 0, 0);
+    // Ce que le dessin doit savoir : la taille logique (la moitié des pixels),
+    // et où tombent le début du texte et sa ligne de base.
+    const l = { canvas: c, w: c.width / k, h: c.height / k, ox: marge / k, oy: y0 / k };
+    // Gardé seulement si la fonte était là (index.html l'attend avant de
+    // démarrer) : un rendu en police de secours se referait au tour suivant.
+    let fontePrete = true;
+    try { fontePrete = !document.fonts || document.fonts.check(police); } catch (err) { /* vieux navigateur */ }
+    if (fontePrete) lettresFaites[cle] = l;
+    return l;
+  }
+  // Le lettrage centré en (cx, cy), comme drawCentered pose une image.
+  function drawLettrage(ctx, l, cx, cy, scale) {
+    if (!l) return;
+    const s = scale == null ? 1 : scale;
+    ctx.drawImage(l.canvas, cx - l.w * s / 2, cy - l.h * s / 2, l.w * s, l.h * s);
+  }
+
   // texte style jeu (Verdana bold + contour sombre optionnel).
   // `opt.font` bascule sur une des fontes embarquées du SWF : « banana » pour
   // les libellés de boutons et de titres, « impact » pour la barre d'aide et
@@ -231,6 +351,13 @@ const SwapouUI = (function () {
     cipher: '"Cipher SW","Courier New",monospace',
     doom: '"DooM SW",Impact,"Arial Narrow",Arial,sans-serif',
   };
+  //
+  // `opt.maxW` : la largeur qu'un texte TRADUIT ne doit pas dépasser. Au-delà,
+  // le canevas le resserre en largeur (le 4e argument de fillText) au lieu de
+  // le laisser déborder de sa plaque ; plus court, il n'est pas touché. En
+  // français, rien ne change, au pixel près : quelques textes d'origine
+  // débordent déjà un peu (« COMBOS CLASSIQUES 2★ » dans le panneau de l'IA),
+  // et on ne les resserre pas.
   function text(ctx, str, x, y, opt) {
     opt = opt || {};
     ctx.save();
@@ -238,16 +365,72 @@ const SwapouUI = (function () {
       + (FONTES[opt.font] || 'Verdana,Arial,sans-serif');
     ctx.textAlign = opt.align || 'center';
     ctx.textBaseline = opt.baseline || 'middle';
+    const serre = opt.maxW > 0 && langueTraduite();
     if (opt.stroke) {
       ctx.lineWidth = opt.strokeWidth || 3;
       ctx.strokeStyle = opt.stroke;
       ctx.lineJoin = 'round';
-      ctx.strokeText(str, x, y);
+      if (serre) ctx.strokeText(str, x, y, opt.maxW);
+      else ctx.strokeText(str, x, y);
     }
     ctx.fillStyle = opt.color || '#fff';
-    ctx.fillText(str, x, y);
+    if (serre) ctx.fillText(str, x, y, opt.maxW);
+    else ctx.fillText(str, x, y);
     ctx.restore();
   }
+
+  /* ── LES LANGUES ───────────────────────────────────────────────────────────
+   *
+   * Les textes du jeu passent par T() (/js/i18n.js) : le FRANÇAIS reste écrit
+   * dans le code, l'anglais vit dans /swapou/lang/en.js (clés `swapou.*`),
+   * chargé par index.html seulement quand la langue est l'anglais.
+   *
+   * Le bac à sable du serveur (swapouRejeu.js, qui rejoue chaque partie avant
+   * de la classer), les tests et les outils (bot.run.js) chargent ces fichiers
+   * SANS i18n.js : `tr` y rend alors le français tel quel, gabarits remplis,
+   * et les grands tableaux restent ceux du code. Les textes ne touchent
+   * jamais aux règles : un tableau traduit garde la longueur du français, un
+   * tirage au sort par indice tombe donc au même rang dans les deux langues.
+   */
+  function remplir(s, p) {
+    if (!p) return s;
+    return String(s).replace(/\{(\w+)\}/g, function (m, k) {
+      return Object.prototype.hasOwnProperty.call(p, k) && p[k] != null ? String(p[k]) : m;
+    });
+  }
+  const i18n = function () { return typeof T === 'function' && T.n && T.table ? T : null; };
+  // La page parle-t-elle une autre langue que le français ? (cf. `maxW`)
+  function langueTraduite() {
+    return typeof FPI18n !== 'undefined' && !!FPI18n && FPI18n.langue !== 'fr';
+  }
+  function tr(cle, fr, p) {
+    const t = i18n();
+    return t ? t(cle, fr, p) : remplir(fr, p);
+  }
+  // Pluriel : formes = { one, other } en français ; `{n}` vaut le nombre.
+  // Sans i18n.js, la règle française (0 et 1 au singulier).
+  tr.n = function (cle, n, formes, p) {
+    const t = i18n();
+    if (t) return t.n(cle, n, formes, p);
+    const q = Object.assign({}, p || {}, { n: n });
+    return remplir(Math.abs(n) < 2 ? formes.one : formes.other, q);
+  };
+  // Un tableau (ou un objet) entier, traduit d'un bloc : T.table.
+  tr.table = function (cle, frTable) {
+    const t = i18n();
+    return t ? t.table(cle, frTable) : frTable;
+  };
+  // Un tableau de TABLEAUX (les répliques, perso par perso ; le scénario,
+  // phase par phase) : chaque chaîne absente de la traduction retombe sur le
+  // français à sa place, et chaque rangée garde la longueur de la sienne.
+  tr.grille = function (cle, frGrille) {
+    const t = tr.table(cle, frGrille);
+    if (t === frGrille) return frGrille;
+    return frGrille.map(function (rangee, i) {
+      const r = Array.isArray(t[i]) ? t[i] : [];
+      return rangee.map(function (fr, j) { return r[j] != null ? r[j] : fr; });
+    });
+  };
 
   // découpe un texte en lignes ≤ maxW
   function wrapText(ctx, str, maxW, font) {
@@ -634,8 +817,9 @@ const SwapouUI = (function () {
         if (plaque && plaque.naturalWidth)
           ctx.drawImage(plaque, -98.95, -14.15, plaque.naturalWidth, plaque.naturalHeight);
         // Le champ (#359) : Impact 16, centré, ligne de base à 4,2 sous l'ancrage.
+        // Un nom de pouvoir traduit plus long que la plaque s'y resserre.
         text(ctx, mc.data.text || '', 0, 4.2,
-          { size: 16, color: '#ffe8b7', font: 'impact', baseline: 'alphabetic' });
+          { size: 16, color: '#ffe8b7', font: 'impact', baseline: 'alphabetic', maxW: 188 });
         break;
       }
       case 'scorePop': {
@@ -1085,6 +1269,9 @@ const SwapouUI = (function () {
   // simple choix de corps ne reproduit pas.
   // Corps et ligne de base calés sur le rendu du SWF, à un pixel près.
   const BT_TEXTE_ETIRE = 1.5512, BT_TEXTE_CORPS = 20, BT_TEXTE_Y = -1.3;
+  // La largeur utile de la plaque : un libellé traduit qui la dépasserait se
+  // resserre au lieu de déborder (cf. `maxW` dans text()).
+  const BT_TEXTE_LARGEUR = BT_L - 14;
 
   // bouton texte du menu (RotatorButton.as)
   function RotatorButton(menu, yLine, label, linkId, help) {
@@ -1138,7 +1325,8 @@ const SwapouUI = (function () {
       // Le libellé est blanc, dans la fonte embarquée « PT Banana Split ».
       c.save();
       c.scale(1, BT_TEXTE_ETIRE);
-      text(c, this.label, 0, BT_TEXTE_Y, { size: BT_TEXTE_CORPS, color: '#ffffff', font: 'banana' });
+      text(c, this.label, 0, BT_TEXTE_Y,
+        { size: BT_TEXTE_CORPS, color: '#ffffff', font: 'banana', maxW: BT_TEXTE_LARGEUR });
       c.restore();
     }.bind(this));
     ctx.restore();
@@ -1445,5 +1633,6 @@ const SwapouUI = (function () {
     Face: Face, drawFaceMedallion: drawFaceMedallion,
     Rotator: Rotator, RotatorButton: RotatorButton, RotatorFace: RotatorFace,
     IconButton: IconButton, Rollover: Rollover,
+    tr: tr, lettrage: lettrage, drawLettrage: drawLettrage,
   };
 })();

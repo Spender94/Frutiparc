@@ -85,12 +85,18 @@
   }
   #rotate-hint .ph { display: inline-block; transform: rotate(90deg); }
 </style>
+<!-- Les langues (docs/I18N.md, « Les jeux ») : i18n.js juste après
+     sid-discret.js, qui reste le premier script, et avant invite.js, dont le
+     panneau lit FPI18n.langue. En anglais, les dictionnaires arrivent pendant
+     l'analyse de la page : les scripts du jeu, plus bas, les trouvent prêts. -->
 <script src="/js/sid-discret.js"></script>
+<script src="/js/i18n.js"></script>
+<script>FPI18n.charger(['commun', 'widgets', '/swapou/lang/{lang}.js']);</script>
 <script src="/js/invite.js"></script>
 </head>
 <body>
 <canvas id="stage" width="700" height="480"></canvas>
-<div id="rotate-hint"><span class="ph">📱</span> Tournez votre téléphone</div>
+<div id="rotate-hint"><span class="ph">📱</span> <span data-i18n="swapou.tournerTelephone">Tournez votre téléphone</span></div>
 
 <script src="engine.js"></script>
 <script src="assets.js"></script>
@@ -103,6 +109,8 @@
   'use strict';
   var canvas = document.getElementById('stage');
   var rotateHint = document.getElementById('rotate-hint');
+  // « Tournez votre téléphone », dans la langue de la page.
+  if (window.FPI18n) FPI18n.appliquer(rotateHint);
 
   // sid : ?sid=… puis session /light en secours (même logique que Grapiz).
   // LE MODE INVITÉ (?invite=1, lancé depuis l'accueil) n'en a AUCUN : ni
@@ -291,7 +299,11 @@
    * On le peint sur le canevas du jeu, donc à la même échelle et dans la
    * même rotation : sur un téléphone tenu à la verticale, l'attente pivote
    * comme le jeu qu'elle annonce.
+   *
+   * En anglais, « loading... » (swapou.chargement), au même endroit : la
+   * fonte a tout l'ASCII.
    */
+  var texteAttente = window.T ? T('swapou.chargement', 'chargement...') : 'chargement...';
   function ecranDeChargement() {
     var ctx = canvas.getContext('2d');
     var fond = new Image();
@@ -314,7 +326,7 @@
       ctx.font = '30px "PT Banana Split", Verdana, sans-serif';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'alphabetic';
-      ctx.fillText('chargement...', 6.25, 465.9);
+      ctx.fillText(texteAttente, 6.25, 465.9);
     }
     peindre();
     return peindre;
