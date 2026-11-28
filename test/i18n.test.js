@@ -56,3 +56,12 @@ test('seules les langues du parc sont reconnues', () => {
   assert.strictEqual(I.valide('de'), '');
   assert.strictEqual(I.langue, 'fr', 'côté serveur, pas de langue courante : français');
 });
+
+test('un tableau entier se traduit d’un bloc, le français en repli élément par élément', () => {
+  I.ajouter('en', { 'essai.liste': ['one', 'two'], 'essai.objet': { a: 'A' }, 'essai.pasTableau': 'x' });
+  assert.deepStrictEqual(I.table('en', 'essai.liste', ['un', 'deux', 'trois']), ['one', 'two', 'trois']);
+  assert.deepStrictEqual(I.table('fr', 'essai.liste', ['un', 'deux', 'trois']), ['un', 'deux', 'trois']);
+  assert.deepStrictEqual(I.table('en', 'essai.objet', { a: 'a', b: 'b' }), { a: 'A', b: 'b' });
+  assert.deepStrictEqual(I.table('en', 'essai.absente', ['un']), ['un']);
+  assert.deepStrictEqual(I.table('en', 'essai.pasTableau', ['un']), ['un']);
+});

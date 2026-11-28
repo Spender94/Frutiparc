@@ -36,6 +36,8 @@
  *   T.date(d, style)            'court' (12/03), 'long' (12 mars 2026),
  *                               'heure' (14:05), 'jourHeure' (12/03 14:05).
  *   T.nombre(n)                 12 345 / 12,345.
+ *   T.table(cle, frTable)       un tableau (ou objet) entier traduit d'un bloc,
+ *                               le français élément par élément en repli.
  *   FPI18n.langue               'fr' ou 'en'.
  *   FPI18n.ajouter(lang, table) ajoute des traductions (les dictionnaires
  *                               /i18n/en/*.js l'appellent).
@@ -170,6 +172,33 @@
     return !!l && brut(l, cle) !== undefined;
   }
 
+  /*
+   * UN TABLEAU ENTIER (les répliques de Swapou, les listes de mots de
+   * MiniPixiz, les noms d'ennemis…) : la traduction est un tableau ou un objet
+   * de MÊME FORME rangé sous une clé. Sans traduction — ou si elle n'a pas la
+   * forme attendue —, le tableau français écrit dans le code. Les éléments
+   * absents d'un tableau traduit plus court retombent un à un sur le français,
+   * pour qu'un tirage au sort par indice tombe toujours sur quelque chose.
+   */
+  function table(l, cle, frTable) {
+    l = valide(l) || 'fr';
+    var t = l === 'fr' ? brut('fr', cle) : brut(l, cle);
+    if (t === undefined || t === null || typeof t !== 'object') return frTable;
+    if (Array.isArray(frTable)) {
+      if (!Array.isArray(t)) return frTable;
+      var r = frTable.slice();
+      for (var i = 0; i < t.length && i < r.length; i++) if (t[i] !== undefined && t[i] !== null) r[i] = t[i];
+      return r;
+    }
+    if (frTable && typeof frTable === 'object') {
+      var o = {};
+      for (var k in frTable) if (Object.prototype.hasOwnProperty.call(frTable, k)) o[k] = frTable[k];
+      for (var k2 in t) if (Object.prototype.hasOwnProperty.call(t, k2)) o[k2] = t[k2];
+      return o;
+    }
+    return t;
+  }
+
   function ajouter(l, table) {
     l = valide(l);
     if (!l || !table) return;
@@ -251,6 +280,7 @@
   T.n = function (cle, n, formes, params) { return pluriel(langue, cle, n, formes, params); };
   T.date = function (d, style) { return date(langue, d, style); };
   T.nombre = function (n) { return nombre(langue, n); };
+  T.table = function (cle, frTable) { return table(langue, cle, frTable); };
 
   return {
     LANGUES: LANGUES,
@@ -262,6 +292,7 @@
     nombre: nombre,
     ajouter: ajouter,
     possede: possede,
+    table: table,
     charger: charger,
     appliquer: appliquer,
     changer: changer,
