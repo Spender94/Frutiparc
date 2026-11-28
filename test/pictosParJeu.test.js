@@ -120,7 +120,8 @@ test('forum : le sélecteur pose un intertitre par jeu, les pictos du jeu en des
     { id: '$sel', name: 'Sel', game: 'Swapou', url: '/api/picto/%24sel' },
     { id: '$x', name: 'x', game: 'Autre', url: '/api/picto/%24x' },
   ];
-  const ctx = { document: dom.document, fetchPictos: async () => pictos };
+  // T() : les textes du sélecteur (/js/i18n.js — côté serveur, le français).
+  const ctx = { document: dom.document, fetchPictos: async () => pictos, T: require('../public/js/i18n.js').T };
   vm.runInNewContext(FORUM.slice(debut, fin) + '\nthis.f = bbTogglePictos;', ctx);
   await ctx.f('editeur', dom.bouton);
   const picker = dom.barre.enfants.find((x) => x.className === 'picto-picker');

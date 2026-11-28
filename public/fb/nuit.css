@@ -448,6 +448,20 @@ a:hover {
   color: hsl(256 13% 84.4%);
   background: hsl(256 30% 10%);
 }
+.pastille-fb {
+  color: hsl(256 13% 84.5%);
+}
+.pastille-fb::before {
+  background: url('/fb/post-nuit.png?v=c000e7d7') no-repeat 0 0;
+}
+.pastille-fb.repondre::before {
+  background-image: url('/fb/reply-nuit.png?v=bec3ee87');
+}
+.pastille-fb .mot {
+  border-color: hsl(256 26% 46.1%);
+  background: linear-gradient(hsl(256 30% 24.4%) 0 1px, hsl(256 30% 19.3%) 1px 2px, hsl(256 30% 20.3%) 2px 3px, hsl(256 30% 20.9%) 3px 4px, hsl(256 30% 21.4%) 4px 5px,
+      hsl(256 30% 21.6%) 5px 20px, hsl(256 30% 21.4%) 20px 21px, hsl(256 30% 20.1%) 21px 22px, hsl(256 30% 20.5%) 22px 23px, hsl(256 30% 21.1%) 23px 24px, hsl(256 30% 21.9%) 24px);
+}
 .reply-blocked {
   background: hsl(256 30% 10%);
   border: 1px solid hsl(325 58% 72.9%);
@@ -825,6 +839,21 @@ img[src$="/fb/trophee.svg"] { content: url("/fb/trophee-nuit.svg?v=162da45b"); f
    sur un carré blanc) et pour les deux pictogrammes au trait
    (`icon_minipost.gif`, `icon_latest_reply.gif`) : plus rien ici ne passe par
    le filtre du châssis. */
+
+/* « NEW » ET « REPLY », LES PASTILLES DE LA VERSION ANGLAISE (`.pastille-fb`,
+   à la place de post.gif et reply.gif). Leur cerise est découpée dans
+   post-nuit.png / reply-nuit.png — la règle engendrée y pointe d'elle-même —,
+   et ces deux dessins la posent sur un PRUNE. Le générateur, lui, ne voit
+   dans le corps de la pastille qu'un fond vert pâle, et le passe au violet du
+   châssis : la cerise flotterait dans une pièce d'une autre couleur. Le corps
+   reprend donc les couleurs des dessins de nuit eux-mêmes, relevées pixel par
+   pixel sur leur colonne 24 : le liseré, le fond, l'ombre du bas, le mot. */
+.pastille-fb { color: #f4f3f6; }
+.pastille-fb .mot {
+  border-color: #a762a0;
+  background: linear-gradient(#763a5d 0 20px, #7b3d63 20px 21px, #82426c 21px 22px, #804169 22px 23px,
+    #7c3e65 23px 24px, #783b5f 24px);
+}
 
 /* LES DEUX BOUTONS DE LA MODALE DE SIGNATURE. Le forum n'habille ses boutons
    que dans `.editor-actions` — la barre verte sous la zone de saisie ; ceux

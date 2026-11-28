@@ -325,7 +325,8 @@ test('aucun caractère posé n’échappe au lecteur (hors un texte)', async () 
 
 test('les noms d’humeurs et d’animations sont ceux déjà affichés par le parc', () => {
   const forum = fs.readFileSync(path.join(ROOT, 'public/fb/index.html'), 'utf8');
-  const bloc = forum.slice(forum.indexOf('const EXPRESSIONS'), forum.indexOf('const EXPRESSIONS') + 400);
+  // (La table porte aussi la clé de traduction de chaque nom : elle est plus longue.)
+  const bloc = forum.slice(forum.indexOf('const EXPRESSIONS'), forum.indexOf('const EXPRESSIONS') + 700);
   Moteur.NOMS_HUMEURS.forEach((nom, i) => {
     assert.ok(bloc.includes("name: '" + nom + "'"), 'le forum nomme l’humeur ' + i + ' « ' + nom + ' »');
   });

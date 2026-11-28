@@ -952,6 +952,57 @@
   .img-btn:hover { text-decoration: none; opacity: 0.85; }
   .img-btn img { display: inline-block; vertical-align: middle; border: none; }
 
+  /* « NOUVEAU » ET « RÉPONDRE », EN ANGLAIS. Les deux boutons d'époque sont
+     des images qui portent leur mot en français (post.gif, reply.gif, et leurs
+     variantes de nuit) : on les garde en français (`.img-fr`), et en anglais
+     une pastille CSS prend leur place (`.txt-en`). <html lang> est posé par
+     /js/i18n.js dès le <head> : le bon des deux paraît au premier affichage.
+
+     La pastille reprend l'image au pixel près là où c'est possible : sa
+     cerise EST celle de l'image — les 24 premiers pixels, cadrés par
+     `::before` —, puis le mot sur le même vert pâle, sous le même liseré, au
+     même gabarit (32 px de haut, le corps sur les 27 du bas, la queue de la
+     cerise qui dépasse). La nuit, la feuille engendrée pointe d'elle-même la
+     cerise sur post-nuit.png / reply-nuit.png ; le corps prend leur prune
+     dans scripts/nuit-retouches-forum.css. */
+  .txt-en { display: none !important; }
+  html[lang="en"] .img-fr { display: none !important; }
+  html[lang="en"] .txt-en { display: inline-flex !important; }
+  .pastille-fb {
+    align-items: flex-end;
+    height: 32px;
+    vertical-align: middle;
+    font: bold 13px Verdana, Arial, sans-serif;
+    color: #2d6900;
+    white-space: nowrap;
+  }
+  .pastille-fb::before {
+    content: '';
+    flex: none;
+    width: 24px;
+    height: 32px;
+    background: url('/fb/post.gif') no-repeat 0 0;
+  }
+  /* L'image de « répondre » est haute de 31 px : un pixel plus bas, son corps
+     tombe pile sur celui de la pastille. */
+  .pastille-fb.repondre::before { background-image: url('/fb/reply.gif'); background-position: 0 1px; }
+  /* Le corps : le liseré et le dégradé de l'image, relevés pixel par pixel
+     sur sa colonne 24 (le reflet du haut, l'ombre du bas). Pas de liseré à
+     gauche : la cerise découpée le porte déjà. La bordure s'écrit en trois
+     propriétés et non en raccourci : la feuille de nuit ne recopie que la
+     couleur, et un `border:` recopié y rendrait le liseré gauche. */
+  .pastille-fb .mot {
+    height: 27px;
+    line-height: 22px;
+    padding: 0 11px 0 2px;
+    border-style: solid;
+    border-width: 1px 1px 1px 0;
+    border-color: #ade76b;
+    border-radius: 0 14px 14px 0;
+    background: linear-gradient(#e2faca 0 1px, #dff9c3 1px 2px, #dbf8bd 2px 3px, #d9f7ba 3px 4px, #d7f7b6 4px 5px,
+      #d6f7b5 5px 20px, #d2f6af 20px 21px, #cbf3a5 21px 22px, #cdf4a8 22px 23px, #d1f5ad 23px 24px, #d5f6b4 24px);
+  }
+
   /* Notice shown in place of the "Répondre" button when the current user
      can't post — either because they're muted or because they were the
      last replier on this topic (anti-double-post). */
@@ -1550,6 +1601,11 @@
   .sig-vide { color: #aaa; font-style: italic; }
 </style>
 <script src="/js/sid-discret.js"></script>
+<!-- Les langues du parc (voir /js/i18n.js) : en anglais, le dictionnaire du
+     forum arrive pendant l'analyse de la page ; en français, rien. Juste après
+     sid-discret.js, qui doit rester le premier script de la page. -->
+<script src="/js/i18n.js"></script>
+<script>FPI18n.charger(['commun', 'forum']);</script>
 <script>
 /*
  * LE MODE NUIT — le forum s'éteint avec le reste du parc.
@@ -1623,33 +1679,35 @@
 
 <div class="forum-shell">
   <div class="topbar">
-    <a href="#" id="back-chat-link" onclick="backToChat();return false" style="font-weight:bold;font-size:12px;margin-right:auto;text-decoration:none;display:none">‹ Salons</a>
+    <a href="#" id="back-chat-link" onclick="backToChat();return false" style="font-weight:bold;font-size:12px;margin-right:auto;text-decoration:none;display:none" data-i18n="forum.retourSalons">‹ Salons</a>
     <div class="user-info" id="user-info"></div>
-    <a href="#" id="pictos-link" onclick="navigate('pictos');return false" style="font-weight:bold;font-size:11px;margin-right:10px;text-decoration:none;display:none">Mes Pictos</a>
-    <button class="close-btn" onclick="closeForum()">Fermer</button>
+    <a href="#" id="pictos-link" onclick="navigate('pictos');return false" style="font-weight:bold;font-size:11px;margin-right:10px;text-decoration:none;display:none" data-i18n="forum.mesPictos">Mes Pictos</a>
+    <button class="close-btn" onclick="closeForum()" data-i18n="commun.fermer">Fermer</button>
   </div>
   <div class="forum-header" id="forum-header">
     <!-- L'orange EST le retour au forum : sur un téléphone, où le fil d'Ariane
-         perd sa racine faute de place, c'est elle qui ramène à l'accueil. -->
-    <a href="#" class="bc-home" onclick="navigate('index');return false" title="Retour au forum"><img class="bc-icon" src="/fb/ico.gif" alt="Forum Frutiparc.com" width="18" height="18"></a>
+         perd sa racine faute de place, c'est elle qui ramène à l'accueil.
+         « Forum Frutiparc.com » est le nom du forum : il ne se traduit pas. -->
+    <a href="#" class="bc-home" onclick="navigate('index');return false" title="Retour au forum" data-i18n-attr="title:forum.retourForum"><img class="bc-icon" src="/fb/ico.gif" alt="Forum Frutiparc.com" width="18" height="18"></a>
     <span class="title-link" id="header-title"><a href="#" onclick="navigate('index');return false">Forum Frutiparc.com</a></span>
     <div class="header-actions" id="header-actions"></div>
-    <button type="button" class="btn btn-green btn-sm search-toggle" id="search-toggle" onclick="basculerRecherche()" aria-expanded="false" aria-controls="search-bar" title="Rechercher dans le forum"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="6.5" cy="6.5" r="4.8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M10.2 10.2l4.3 4.3" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg><span class="lb-long">Rechercher</span></button>
+    <button type="button" class="btn btn-green btn-sm search-toggle" id="search-toggle" onclick="basculerRecherche()" aria-expanded="false" aria-controls="search-bar" title="Rechercher dans le forum" data-i18n-attr="title:forum.rechercherDansForum"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="6.5" cy="6.5" r="4.8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M10.2 10.2l4.3 4.3" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg><span class="lb-long" data-i18n="forum.rechercher">Rechercher</span></button>
   </div>
   <!-- LA RECHERCHE : repliée par défaut. Le bouton de l'en-tête la déplie ;
        dans un forum, on peut la borner à ce forum ; ailleurs, elle cherche
-       partout. -->
+       partout. (« auteur: » est la syntaxe que le serveur lit : elle reste
+       telle quelle dans l'indication anglaise.) -->
   <form class="search-bar" id="search-bar" onsubmit="lancerRecherche();return false" role="search" hidden>
-    <input type="search" id="search-q" placeholder="Rechercher dans le forum… (auteur:pseudo pour un auteur)" maxlength="200" aria-label="Rechercher dans le forum">
-    <label class="search-scope" id="search-scope" hidden><input type="checkbox" id="search-ici" checked> <span id="search-ici-nom">dans ce forum</span></label>
-    <button type="submit" class="btn btn-green btn-sm">Rechercher</button>
+    <input type="search" id="search-q" placeholder="Rechercher dans le forum… (auteur:pseudo pour un auteur)" maxlength="200" aria-label="Rechercher dans le forum" data-i18n-attr="placeholder:forum.rechercheIndication;aria-label:forum.rechercherDansForum">
+    <label class="search-scope" id="search-scope" hidden><input type="checkbox" id="search-ici" checked> <span id="search-ici-nom" data-i18n="forum.dansCeForum">dans ce forum</span></label>
+    <button type="submit" class="btn btn-green btn-sm" data-i18n="forum.rechercher">Rechercher</button>
   </form>
   <div id="app">
-    <div class="loading">Chargement du forum...</div>
+    <div class="loading" data-i18n="forum.chargementForum">Chargement du forum...</div>
   </div>
   <div class="breadcrumb" id="breadcrumb"></div>
 </div>
-<div class="forum-footer">
+<div class="forum-footer" data-i18n-html="forum.piedDePage">
   Forum cr&eacute;&eacute; par <a href="https://www.phpbb.com">phpBB</a> &copy; 2001-2007.<br>
   Design Frutiparc &copy; <a href="https://www.motiontwin.com">Motion Twin</a>
 </div>
@@ -1664,6 +1722,10 @@
 <script src="/js/bouille-vignette.js"></script>
 
 <script>
+// Les textes écrits en dur dans la page (data-i18n…), dans la langue du joueur
+// — avant tout le reste, pour qu'ils ne paraissent pas d'abord en français.
+FPI18n.appliquer(document);
+
 const params = new URLSearchParams(window.location.search);
 const SID = (window.FPSid && FPSid.sid) || params.get('sid') || '';
 let currentUser = null;
@@ -1689,16 +1751,17 @@ let myBannedPermanent = false;
 
 // Moods ("humeur") = the famille SWF's emoteList indices (0-7); see HUMEURS in
 // bouille-moteur.js. Each maps to an eye+mouth combo. Labels for 3/5/6/7 are
-// best-guess from the shapes — adjust freely.
+// best-guess from the shapes — adjust freely. `cle` : le nom dans la langue du
+// joueur (le français reste le repli, voir /js/i18n.js).
 const EXPRESSIONS = [
-  { id: 0, name: 'Neutre' },
-  { id: 1, name: 'Colère' },
-  { id: 2, name: 'Triste' },
-  { id: 3, name: 'Sourire' },
-  { id: 4, name: 'Joie' },
-  { id: 5, name: 'Déterminé' },
-  { id: 6, name: 'Embarrassé' },
-  { id: 7, name: 'Totoché' },
+  { id: 0, name: 'Neutre', cle: 'forum.humeurNeutre' },
+  { id: 1, name: 'Colère', cle: 'forum.humeurColere' },
+  { id: 2, name: 'Triste', cle: 'forum.humeurTriste' },
+  { id: 3, name: 'Sourire', cle: 'forum.humeurSourire' },
+  { id: 4, name: 'Joie', cle: 'forum.humeurJoie' },
+  { id: 5, name: 'Déterminé', cle: 'forum.humeurDetermine' },
+  { id: 6, name: 'Embarrassé', cle: 'forum.humeurEmbarrasse' },
+  { id: 7, name: 'Totoché', cle: 'forum.humeurTotoche' },
 ];
 
 function encode62(n, len) {
@@ -1903,12 +1966,14 @@ function renderBouilleNavLinks(formId) {
   var all = getAllAccessories();
   var pages = Math.max(1, Math.ceil(all.length / BOUILLE_PER_PAGE));
   var cur = _bouillePage[formId] || 0;
+  var precedentes = T('forum.bouillesPrecedentes', '&lt; bouilles précédentes');
+  var suivantes = T('forum.bouillesSuivantes', 'bouilles suivantes &gt;');
   var prev = cur > 0
-    ? '<a href="#" onclick="bouilleNavPage(\'' + formId + '\',-1);return false">&lt; bouilles précédentes</a>'
-    : '<span class="disabled">&lt; bouilles précédentes</span>';
+    ? '<a href="#" onclick="bouilleNavPage(\'' + formId + '\',-1);return false">' + precedentes + '</a>'
+    : '<span class="disabled">' + precedentes + '</span>';
   var next = cur < pages - 1
-    ? '<a href="#" onclick="bouilleNavPage(\'' + formId + '\',1);return false">bouilles suivantes &gt;</a>'
-    : '<span class="disabled">bouilles suivantes &gt;</span>';
+    ? '<a href="#" onclick="bouilleNavPage(\'' + formId + '\',1);return false">' + suivantes + '</a>'
+    : '<span class="disabled">' + suivantes + '</span>';
   return prev + ' | ' + next;
 }
 
@@ -1953,7 +2018,7 @@ function expressionSelectHtml(formId) {
   for (var i = 0; i < EXPRESSIONS.length; i++) {
     var e = EXPRESSIONS[i];
     var s = (Number(current) === e.id) ? ' selected' : '';
-    html += '<option value="' + e.id + '"' + s + '>' + escapeHtml(e.name) + '</option>';
+    html += '<option value="' + e.id + '"' + s + '>' + escapeHtml(T(e.cle, e.name)) + '</option>';
   }
   html += '</select>';
   return html;
@@ -1971,7 +2036,7 @@ function incarnationSelectHtml(formId) {
   var courant = sel.incarnation || '';
   var html = '<select class="editor-select" id="inc-sel-' + formId + '" '
     + 'onchange="bouilleSetIncarnation(\'' + formId + '\', this.value)">';
-  html += '<option value=""' + (courant ? '' : ' selected') + '>Ma bouille</option>';
+  html += '<option value=""' + (courant ? '' : ' selected') + '>' + T('forum.maBouille', 'Ma bouille') + '</option>';
   for (var i = 0; i < myIncarnations.length; i++) {
     var inc = myIncarnations[i];
     var e = String(inc.etat || '');
@@ -2065,7 +2130,7 @@ function bouilleSelHtml(formId, depart) {
 
   // Expression de la bouille
   html += '<div class="editor-row">';
-  html += '<div class="editor-label-cell">Expression de la bouille</div>';
+  html += '<div class="editor-label-cell">' + T('forum.expressionBouille', 'Expression de la bouille') + '</div>';
   html += '<div class="editor-value-cell">' + expressionSelectHtml(formId) + '</div>';
   html += '</div>';
 
@@ -2210,7 +2275,7 @@ function youtubeIdFrom(str) {
 // contraint à [A-Za-z0-9_-] donc rien à échapper dans l'URL.
 function youtubeEmbedHtml(id) {
   return '<div class="bb-youtube"><iframe src="https://www.youtube-nocookie.com/embed/' + id + '"'
-    + ' title="Vidéo YouTube" frameborder="0" loading="lazy"'
+    + ' title="' + T('forum.videoYoutube', 'Vidéo YouTube') + '" frameborder="0" loading="lazy"'
     + ' allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"'
     + ' referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></div>';
 }
@@ -2389,7 +2454,8 @@ function renderBBCode(s) {
   var quoteInnermost = /\[(?:citation|quote)(?:=([^\]]+))?\]\n?((?:(?!\[(?:citation|quote)(?:=[^\]]+)?\])[\s\S])*?)\n?\[\/(?:citation|quote)\]\n?/i;
   for (var qGuard = 0; qGuard < 200 && quoteInnermost.test(out); qGuard++) {
     out = out.replace(quoteInnermost, function(mq, qAuthor, qBody) {
-      return (qAuthor ? '<div class="quote-author">' + qAuthor + ' a dit :</div>' : '')
+      // Le nom vient du message, déjà échappé ; seule la formule se traduit.
+      return (qAuthor ? '<div class="quote-author">' + T('forum.aDit', '{auteur} a dit :', { auteur: qAuthor }) + '</div>' : '')
         + '<blockquote class="quote">' + qBody + '</blockquote>';
     });
   }
@@ -2430,27 +2496,45 @@ function renderBouillAvatar(bouille, username, mood) {
   return FPBouilleVignette.html(s, { humeur: (mood != null && Number(mood) > 0) ? Number(mood) : 0 });
 }
 
+/*
+ * LES DATES DU FORUM, dans la langue du joueur.
+ *
+ * La date et l'heure viennent de T.date ('long' : « 12 mars 2026 » /
+ * « March 12, 2026 » ; 'heure' : « 14:05 »). Le français garde ses deux
+ * formes d'époque à l'octet près — le jour de la semaine devant la date d'un
+ * message, le mois abrégé dans les colonnes « Dernier message » — : ces mots
+ * français sont le REPLI de T(), et le dictionnaire anglais a ses propres
+ * formes (forum.dateMessage, forum.dateCourte).
+ */
+var JOURS_FR = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
+var MOIS_COURTS_FR = ['jan', 'fév', 'mar', 'avr', 'mai', 'juin', 'juil', 'aoû', 'sep', 'oct', 'nov', 'déc'];
 function formatDate(iso) {
   if (!iso) return '';
   var d = new Date(iso);
-  var days = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
-  var months = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-  var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
-  return days[d.getDay()] + ' ' + d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear() + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  return T('forum.dateMessage', '{jour} {date} {heure}', {
+    jour: JOURS_FR[d.getDay()], n: d.getDay(), date: T.date(d, 'long'), heure: T.date(d, 'heure'),
+  });
 }
 
 function formatDateShort(iso) {
   if (!iso) return '';
   var d = new Date(iso);
-  var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
-  var months = ['jan','fév','mar','avr','mai','juin','juil','aoû','sep','oct','nov','déc'];
-  return d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear() + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  return T('forum.dateCourte', '{j} {mois} {a} {heure}', {
+    j: d.getDate(), m: d.getMonth(), mois: MOIS_COURTS_FR[d.getMonth()], a: d.getFullYear(), heure: T.date(d, 'heure'),
+  });
 }
 
 async function apiFetch(url, opts) {
   var sep = url.includes('?') ? '&' : '?';
   var r = await fetch(url + sep + 'sid=' + encodeURIComponent(SID), opts);
   return r.json();
+}
+
+// Ce qu'on dit quand le serveur refuse : son `message` s'il en écrit un (le
+// serveur le rendra dans la langue de chacun), sinon son code d'erreur, dans
+// une phrase du client.
+function erreurServeur(data) {
+  return data.message || T('forum.erreurCode', 'Erreur : {code}', { code: data.error || T('forum.inconnue', 'inconnue') });
 }
 
 function setBreadcrumb(parts) {
@@ -2470,7 +2554,7 @@ function setBreadcrumb(parts) {
     // n'aurait rien à dépiler.
     var html = '';
     if (parts.length) {
-      html += '<a href="#" class="bc-retour" title="Remonter d\'un niveau" '
+      html += '<a href="#" class="bc-retour" title="' + T('forum.remonterNiveau', 'Remonter d\'un niveau') + '" '
         + 'onclick="reculerForum();return false">&lsaquo;</a> ';
     }
     html += '<span class="bc-root"><a href="#" onclick="navigate(\'index\');return false" title="Forum Frutiparc.com">Forum Frutiparc<span class="bc-com">.com</span></a>';
@@ -2679,9 +2763,9 @@ function reculerForum() {
 
 function pagination(total, perPage, currentPage, onclick) {
   var pages = Math.ceil(total / perPage);
-  if (pages <= 1) return '<div class="pagination">Page 1 sur 1</div>';
+  if (pages <= 1) return '<div class="pagination">' + T('forum.pageSur', 'Page {page} sur {pages}', { page: 1, pages: 1 }) + '</div>';
   var html = '<div class="pagination">';
-  html += 'Page ' + currentPage + ' sur ' + pages + '&nbsp;&mdash;&nbsp;';
+  html += T('forum.pageSur', 'Page {page} sur {pages}', { page: currentPage, pages: pages }) + '&nbsp;&mdash;&nbsp;';
   if (currentPage > 1) html += '<a href="#" onclick="' + onclick + '(' + (currentPage - 1) + ');return false">&laquo;</a>';
   for (var i = 1; i <= pages; i++) {
     if (i === currentPage) html += '<span class="current">' + i + '</span>';
@@ -2727,7 +2811,7 @@ function porteeRecherche(id, nom) {
   var sc = document.getElementById('search-scope');
   if (!sc) return;
   sc.hidden = !porteeBoard;
-  if (porteeBoard) document.getElementById('search-ici-nom').textContent = 'dans « ' + nom + ' »';
+  if (porteeBoard) document.getElementById('search-ici-nom').textContent = T('forum.dansLeForum', 'dans « {nom} »', { nom: nom });
 }
 function lancerRecherche() {
   var q = document.getElementById('search-q').value.trim();
@@ -2771,30 +2855,40 @@ async function loadSearch(o) {
   var champ = document.getElementById('search-q');
   if (champ && o.q) champ.value = o.q;
   var app = document.getElementById('app');
-  app.innerHTML = '<div class="loading">Recherche…</div>';
-  setBreadcrumb([{ text: 'Recherche' }]);
+  app.innerHTML = '<div class="loading">' + T('forum.rechercheEnCours', 'Recherche…') + '</div>';
+  setBreadcrumb([{ text: T('forum.recherche', 'Recherche') }]);
   var url = '/api/forum/search?q=' + encodeURIComponent(o.q || '') + '&page=' + (o.page || 1)
     + (o.board ? '&board=' + o.board : '');
   var data;
   try { data = await apiFetch(url); } catch (e) { data = null; }
   if (!data || !data.ok) {
-    app.innerHTML = '<div class="empty">' + escapeHtml((data && data.message) || 'La recherche n’a pas abouti.') + '</div>';
+    app.innerHTML = '<div class="empty">' + escapeHtml((data && data.message) || T('forum.rechercheEchec', 'La recherche n’a pas abouti.')) + '</div>';
     return;
   }
   window.__rechercheCourante = o;
+  // Le bilan : le compte (ou son absence), puis, s'il y a lieu, les mots,
+  // l'auteur et le forum — chaque précision est une clé entière, avec sa
+  // ponctuation, ajoutée dans le même ordre dans les deux langues.
   var html = '<div class="search-info">';
-  html += data.total ? '<b>' + data.total + '</b> message' + (data.total > 1 ? 's' : '') + ' trouvé' + (data.total > 1 ? 's' : '')
-    : 'Aucun message ne contient ' + (data.mots.length > 1 ? 'tous ces mots' : 'ce mot');
-  if (data.mots.length) html += ' pour « ' + escapeHtml(data.mots.join(' ')) + ' »';
-  if (data.auteur) html += ' — de ' + escapeHtml(data.auteur);
-  if (o.boardNom) html += ' — dans « ' + escapeHtml(o.boardNom) + ' »';
+  html += data.total
+    ? T.n('forum.messagesTrouves', data.total, { one: '<b>{n}</b> message trouvé', other: '<b>{n}</b> messages trouvés' })
+    : (data.mots.length > 1 ? T('forum.aucunTousCesMots', 'Aucun message ne contient tous ces mots')
+      : T('forum.aucunCeMot', 'Aucun message ne contient ce mot'));
+  if (data.mots.length) {
+    html += data.total ? T('forum.recherchePour', ' pour « {mots} »', { mots: escapeHtml(data.mots.join(' ')) })
+      : T('forum.rechercheAucunPour', ' pour « {mots} »', { mots: escapeHtml(data.mots.join(' ')) });
+  }
+  if (data.auteur) html += T('forum.rechercheDe', ' — de {auteur}', { auteur: escapeHtml(data.auteur) });
+  if (o.boardNom) html += T('forum.rechercheDans', ' — dans « {forum} »', { forum: escapeHtml(o.boardNom) });
   html += '</div>';
   if (data.total) {
-    html += '<div class="tbl-header"><span class="col-main">Messages</span></div><div class="search-hits">';
+    html += '<div class="tbl-header"><span class="col-main">' + T('forum.messages', 'Messages') + '</span></div><div class="search-hits">';
     data.resultats.forEach(function (r) {
       html += '<a class="search-hit" href="#" onclick="navigate(\'topic\',' + r.topicId + ',{page:' + r.page + ',post:' + r.postId + '});return false">'
         + '<div class="hit-titre">' + surligner(escapeHtml(r.topicTitle), data.mots) + '</div>'
-        + '<div class="hit-ou">' + escapeHtml(r.boardName) + ' · ' + (r.premier ? 'sujet ouvert par ' : 'réponse de ') + escapeHtml(r.author)
+        + '<div class="hit-ou">' + escapeHtml(r.boardName) + ' · '
+        + (r.premier ? T('forum.sujetOuvertPar', 'sujet ouvert par {auteur}', { auteur: escapeHtml(r.author) })
+          : T('forum.reponseDe', 'réponse de {auteur}', { auteur: escapeHtml(r.author) }))
         + ' · ' + formatDateShort(r.createdAt) + '</div>'
         + (r.extrait ? '<div class="hit-extrait">' + surligner(escapeHtml(r.extrait), data.mots) + '</div>' : '')
         + '</a>';
@@ -2812,12 +2906,12 @@ function pageRecherche(p) {
 async function loadIndex() {
   porteeRecherche(null);
   var app = document.getElementById('app');
-  app.innerHTML = '<div class="loading">Chargement...</div>';
+  app.innerHTML = '<div class="loading">' + T('forum.chargement', 'Chargement...') + '</div>';
   setBreadcrumb([]);
 
   var data = await apiFetch('/api/forum/index');
   if (!data.categories || data.categories.length === 0) {
-    app.innerHTML = '<div class="empty">Le forum est vide pour le moment.</div>';
+    app.innerHTML = '<div class="empty">' + T('forum.forumVide', 'Le forum est vide pour le moment.') + '</div>';
     return;
   }
 
@@ -2840,12 +2934,14 @@ async function loadIndex() {
   if (actions && currentUser) {
     actions.innerHTML = '<button type="button" class="btn btn-green btn-sm" id="tout-lu-btn"'
       + ' onclick="marquerToutLu()"'
-      + ' title="Éteint le voyant Forum : tous les sujets passent en « lu »">'
-      + '<span class="lb-long">Tout marquer comme lu</span>'
-      + '<span class="lb-court">Tout lu</span></button>';
+      + ' title="' + T('forum.toutLuTitre', 'Éteint le voyant Forum : tous les sujets passent en « lu »') + '">'
+      + '<span class="lb-long">' + T('forum.toutMarquerLu', 'Tout marquer comme lu') + '</span>'
+      + '<span class="lb-court">' + T('forum.toutLu', 'Tout lu') + '</span></button>';
   }
 
-  html += '<div class="tbl-header"><span class="col-main">Forums</span><span class="col-num">Sujets</span><span class="col-num">Messages</span><span class="col-last">Dernier message</span></div>';
+  // (« Forums » se dit pareil dans les deux langues.)
+  html += '<div class="tbl-header"><span class="col-main">Forums</span><span class="col-num">' + T('forum.sujets', 'Sujets') + '</span>'
+    + '<span class="col-num">' + T('forum.messages', 'Messages') + '</span><span class="col-last">' + T('forum.dernierMessage', 'Dernier message') + '</span></div>';
 
   for (var ci = 0; ci < data.categories.length; ci++) {
     var cat = data.categories[ci];
@@ -2911,7 +3007,7 @@ async function marquerToutLu() {
     if (libelles.length === 2) { libelles[0].textContent = long; libelles[1].textContent = court; }
     else if (b) b.textContent = long;
   };
-  if (b) { b.disabled = true; dire('Marquage…', 'Marquage…'); }
+  if (b) { b.disabled = true; dire(T('forum.marquage', 'Marquage…'), T('forum.marquage', 'Marquage…')); }
   try {
     var r = await apiFetch('/api/forum/read-all', { method: 'POST' });
     if (!r || !r.ok) throw new Error((r && r.error) || 'échec');
@@ -2924,9 +3020,47 @@ async function marquerToutLu() {
     prevenirLHote({ forum: 'toutLu', restant: Number(r.restant) || 0 });
     await loadIndex();
   } catch (e) {
-    if (b) { b.disabled = false; dire('Tout marquer comme lu', 'Tout lu'); }
-    alert('Impossible de tout marquer comme lu pour le moment.');
+    if (b) { b.disabled = false; dire(T('forum.toutMarquerLu', 'Tout marquer comme lu'), T('forum.toutLu', 'Tout lu')); }
+    alert(T('forum.toutLuImpossible', 'Impossible de tout marquer comme lu pour le moment.'));
   }
+}
+
+/*
+ * LES DEUX BOUTONS D'ÉPOQUE — « nouveau » (post.gif) et « répondre »
+ * (reply.gif) — portent leur mot en français DANS l'image. On les garde ;
+ * en anglais, la pastille `.pastille-fb` prend leur place (voir sa règle dans
+ * le <style>). Les deux sont dans la page, et c'est la feuille qui choisit
+ * d'après <html lang> : rien à refaire si la langue change.
+ */
+function boutonImage(sorte, onclick) {
+  var repondre = sorte === 'repondre';
+  var libelle = repondre ? T('forum.repondre', 'Répondre') : T('forum.nouveauSujet', 'Nouveau sujet');
+  var mot = repondre ? T('forum.motRepondre', 'répondre') : T('forum.motNouveau', 'nouveau');
+  return '<a href="#" onclick="' + onclick + '" class="img-btn">'
+    + '<img class="img-fr" src="/fb/' + (repondre ? 'reply.gif' : 'post.gif') + '" alt="' + libelle + '">'
+    + '<span class="pastille-fb txt-en' + (repondre ? ' repondre' : '') + '" role="img" aria-label="' + libelle + '">'
+    + '<span class="mot" aria-hidden="true">' + mot + '</span></span></a>';
+}
+
+/*
+ * POURQUOI ON NE PEUT PAS ÉCRIRE — banni, totoché : la raison, suivie de ce
+ * qu'elle empêche (`quoi` : 'sujet' ou 'reponse'). La date de fin est rendue
+ * par le serveur ; on ne traduit que la phrase autour.
+ */
+function blocageHtml(quoi) {
+  var fin = escapeHtml((myBanned ? myBannedUntilDisplay : myMutedUntilDisplay) || '');
+  var raison, titre;
+  if (myBanned) {
+    raison = titre = myBannedPermanent ? T('forum.banniDefinitivement', 'Banni définitivement')
+      : T('forum.banniJusquau', 'Banni jusqu\'au {date}', { date: fin });
+  } else {
+    titre = T('forum.totocheTitre', 'Tu es totoché jusqu\'au {date}', { date: fin });
+    raison = T('forum.totocheJusquau', 'Totoché jusqu\'au {date}', { date: fin });
+  }
+  var texte = quoi === 'sujet'
+    ? T('forum.nouveauSujetImpossible', '{raison} — nouveau sujet impossible', { raison: raison })
+    : T('forum.reponseImpossible', '{raison} — réponse impossible', { raison: raison });
+  return '<span class="reply-blocked" title="' + titre + '">' + texte + '</span>';
 }
 
 var currentBoardId = null;
@@ -2935,19 +3069,21 @@ async function loadBoard(boardId, page) {
   page = page || 1;
   currentBoardId = boardId;
   var app = document.getElementById('app');
-  app.innerHTML = '<div class="loading">Chargement...</div>';
+  app.innerHTML = '<div class="loading">' + T('forum.chargement', 'Chargement...') + '</div>';
 
   var data = await apiFetch('/api/forum/board/' + boardId + '?page=' + page);
-  if (!data.board) { app.innerHTML = '<div class="empty">Forum introuvable.</div>'; return; }
+  if (!data.board) { app.innerHTML = '<div class="empty">' + T('forum.forumIntrouvable', 'Forum introuvable.') + '</div>'; return; }
   porteeRecherche(data.board.id, data.board.name);
 
   currentBoardName = data.board.name;
   setBreadcrumb([{ text: data.board.name }]);
 
-  var html = '<div class="tbl-header"><span class="col-main">' + escapeHtml(data.board.name) + '</span><span class="col-num">Rép.</span><span class="col-num">Vues</span><span class="col-last">Dernier message</span></div>';
+  var html = '<div class="tbl-header"><span class="col-main">' + escapeHtml(data.board.name) + '</span>'
+    + '<span class="col-num">' + T('forum.reponsesCourt', 'Rép.') + '</span><span class="col-num">' + T('forum.vues', 'Vues') + '</span>'
+    + '<span class="col-last">' + T('forum.dernierMessage', 'Dernier message') + '</span></div>';
 
   if (data.topics.length === 0) {
-    html += '<div class="empty">Aucun sujet dans ce forum.</div>';
+    html += '<div class="empty">' + T('forum.aucunSujet', 'Aucun sujet dans ce forum.') + '</div>';
   }
   for (var ti = 0; ti < data.topics.length; ti++) {
     var t = data.topics[ti];
@@ -2962,14 +3098,14 @@ async function loadBoard(boardId, page) {
     html += '<div class="icon"><img class="topic-folder" src="/fb/' + topicIcon + '" alt=""></div>';
     html += '<div class="info">';
     html += '<div class="title">';
-    if (t.isSticky) html += '<span class="sticky-tag">Post-it: </span>';
-    if (t.isLocked) html += '<span class="locked-tag">[verrouillé] </span>';
+    if (t.isSticky) html += '<span class="sticky-tag">' + T('forum.postItEtiquette', 'Post-it: ') + '</span>';
+    if (t.isLocked) html += '<span class="locked-tag">' + T('forum.verrouilleEtiquette', '[verrouillé] ') + '</span>';
     html += '<a href="#" onclick="navigate(\'topic\',' + t.id + ');return false">' + escapeHtml(t.title) + '</a>';
     // Le ❤ : suivre ce sujet sans l'ouvrir. Réservé aux connectés — un
     // visiteur n'a rien à suivre.
     if (currentUser) html += ' ' + boutonSuivi(t.id, t.followed, false);
     html += '</div>';
-    html += '<div class="author">par <a href="#">' + escapeHtml(t.author) + '</a></div>';
+    html += '<div class="author">' + T('forum.parAuteur', 'par {auteur}', { auteur: '<a href="#">' + escapeHtml(t.author) + '</a>' }) + '</div>';
     html += '</div>';
     html += '<div class="col-num">' + t.replyCount + '</div>';
     html += '<div class="col-num">' + t.viewCount + '</div>';
@@ -2983,24 +3119,19 @@ async function loadBoard(boardId, page) {
   html += '<div class="shell-actions">';
   html += '<div class="shell-left">';
   if (currentUser) {
-    if (myBanned) {
-      var banTxtT = myBannedPermanent ? 'Banni définitivement' : ('Banni jusqu\'au ' + escapeHtml(myBannedUntilDisplay || ''));
-      html += '<span class="reply-blocked" title="' + banTxtT + '">' + banTxtT + ' — nouveau sujet impossible</span>';
-    } else if (myMuted) {
-      html += '<span class="reply-blocked" title="Tu es totoché jusqu\'au ' + escapeHtml(myMutedUntilDisplay || '') + '">'
-        + 'Totoché jusqu\'au ' + escapeHtml(myMutedUntilDisplay || '') + ' — nouveau sujet impossible'
-        + '</span>';
+    if (myBanned || myMuted) {
+      html += blocageHtml('sujet');
     } else if (data.board.postRestricted && !data.peutPoster) {
       html += '<span class="reply-blocked">'
         + (data.board.reservePour === 'animation'
-          ? 'Seuls les animateurs et les modérateurs peuvent publier dans ce forum.'
-          : 'Seuls les modérateurs peuvent publier dans ce forum.')
+          ? T('forum.publierAnimateurs', 'Seuls les animateurs et les modérateurs peuvent publier dans ce forum.')
+          : T('forum.publierModerateurs', 'Seuls les modérateurs peuvent publier dans ce forum.'))
         + '</span>';
     } else {
-      html += '<a href="#" onclick="navigate(\'newTopic\',' + boardId + ');return false" class="img-btn"><img src="/fb/post.gif" alt="Nouveau sujet"></a>';
+      html += boutonImage('nouveau', 'navigate(\'newTopic\',' + boardId + ');return false');
     }
   }
-  else html += '<span class="fb-note-grise">Connecte-toi depuis Frutiparc pour poster</span>';
+  else html += '<span class="fb-note-grise">' + T('forum.connecteToiPoster', 'Connecte-toi depuis Frutiparc pour poster') + '</span>';
   html += '</div>';
   html += '<div class="shell-center">';
   html += pagination(data.total, data.perPage, data.page, 'boardPage');
@@ -3028,7 +3159,7 @@ async function loadTopic(topicId, page, allerA) {
   var pageParam = (page == null) ? 'nonlu' : page;
   currentTopicId = topicId;
   var app = document.getElementById('app');
-  app.innerHTML = '<div class="loading">Chargement...</div>';
+  app.innerHTML = '<div class="loading">' + T('forum.chargement', 'Chargement...') + '</div>';
 
   var data = await apiFetch('/api/forum/topic/' + topicId + '?page=' + pageParam);
   // QUELLES @MENTIONS DE CETTE PAGE SONT DE VRAIS PSEUDOS. Un seul
@@ -3040,7 +3171,7 @@ async function loadTopic(topicId, page, allerA) {
     }));
   }
   currentTopicData = data;
-  if (!data.topic) { app.innerHTML = '<div class="empty">Sujet introuvable.</div>'; return; }
+  if (!data.topic) { app.innerHTML = '<div class="empty">' + T('forum.sujetIntrouvable', 'Sujet introuvable.') + '</div>'; return; }
   // L'historique note la page vraiment ouverte, et pose les niveaux qui
   // manquent derrière un sujet ouvert par un lien direct.
   retoucherHistoire('topic', topicId, data.page);
@@ -3062,8 +3193,8 @@ async function loadTopic(topicId, page, allerA) {
   ]);
   porteeRecherche(data.topic.boardId, data.topic.boardName);
 
-  // Column header: Auteur | Message
-  var html = '<div class="tbl-header"><span class="col-author">Auteur</span><span class="col-main">Message</span></div>';
+  // Column header: Auteur | Message (« Message » se dit pareil en anglais)
+  var html = '<div class="tbl-header"><span class="col-author">' + T('forum.auteur', 'Auteur') + '</span><span class="col-main">Message</span></div>';
 
   // Poll ("sondage") sits at the very top of the topic, on its first page —
   // exactly like the original phpBB layout.
@@ -3083,46 +3214,41 @@ async function loadTopic(topicId, page, allerA) {
     html += '</div>';
     html += '<div class="post-body">';
     html += '<div class="post-header">';
-    html += '<div class="post-info"><span class="post-icon"></span> Posté le ' + formatDate(p.createdAt);
-    if (isFirstPost) html += '&nbsp;&nbsp; Sujet du message: ' + escapeHtml(data.topic.title);
+    html += '<div class="post-info"><span class="post-icon"></span> ' + T('forum.posteLe', 'Posté le {date}', { date: formatDate(p.createdAt) });
+    if (isFirstPost) html += '&nbsp;&nbsp; ' + T('forum.sujetDuMessage', 'Sujet du message: {titre}', { titre: escapeHtml(data.topic.title) });
     html += '</div>';
     html += '<div class="actions">';
-    if (canDelete) html += '<a href="#" class="act-btn act-btn-red" onclick="deletePost(' + p.id + ');return false">supprimer</a>';
-    if (canEdit) html += '<a href="#" class="act-btn act-btn-green" onclick="editPost(' + p.id + ');return false">editer</a>';
-    if (currentUser && !data.topic.isLocked) html += '<a href="#" class="act-btn act-btn-blue" onclick="quotePost(' + p.id + ',\'' + escapeHtml(p.author).replace(/'/g,"\\'") + '\');return false">citer</a>';
+    if (canDelete) html += '<a href="#" class="act-btn act-btn-red" onclick="deletePost(' + p.id + ');return false">' + T('forum.actSupprimer', 'supprimer') + '</a>';
+    if (canEdit) html += '<a href="#" class="act-btn act-btn-green" onclick="editPost(' + p.id + ');return false">' + T('forum.actEditer', 'editer') + '</a>';
+    if (currentUser && !data.topic.isLocked) html += '<a href="#" class="act-btn act-btn-blue" onclick="quotePost(' + p.id + ',\'' + escapeHtml(p.author).replace(/'/g,"\\'") + '\');return false">' + T('forum.actCiter', 'citer') + '</a>';
     html += '</div>';
     html += '</div>';
     html += '<div class="post-content" id="post-content-' + p.id + '" data-raw="' + escapeHtml(p.content) + '">' + renderBBCode(p.content) + '</div>';
     // Signature de l'auteur (BBCode), à la fin du post — comme un forum d'époque.
     if (p.signature) html += '<div class="post-signature">' + renderBBCode(p.signature) + '</div>';
-    if (p.updatedAt) html += '<div class="post-edited">Ce message a été édité le ' + formatDate(p.updatedAt) + '</div>';
+    if (p.updatedAt) html += '<div class="post-edited">' + T('forum.editeLe', 'Ce message a été édité le {date}', { date: formatDate(p.updatedAt) }) + '</div>';
     html += '</div>';
     html += '</div>';
   }
 
   // Bottom filter bar (phpBB-style) — centered on green
   html += '<div class="bottom-bar">';
-  html += '<span>Montrer les messages depuis: <select><option>Tous</option></select>';
-  html += ' <select><option>Le plus ancien en premier</option><option>Le plus récent en premier</option></select>';
-  html += ' <button class="go-btn">Aller</button></span>';
+  html += '<span>' + T('forum.montrerDepuis', 'Montrer les messages depuis:') + ' <select><option>' + T('forum.tous', 'Tous') + '</option></select>';
+  html += ' <select><option>' + T('forum.plusAncien', 'Le plus ancien en premier') + '</option><option>' + T('forum.plusRecent', 'Le plus récent en premier') + '</option></select>';
+  html += ' <button class="go-btn">' + T('forum.aller', 'Aller') + '</button></span>';
   html += '</div>';
 
   // Shell zone: pagination on left, action buttons on right
   html += '<div class="shell-actions">';
   html += '<div class="shell-left">';
   if (currentUser && !data.topic.isLocked) {
-    if (myBanned) {
-      var banTxtR = myBannedPermanent ? 'Banni définitivement' : ('Banni jusqu\'au ' + escapeHtml(myBannedUntilDisplay || ''));
-      html += '<span class="reply-blocked" title="' + banTxtR + '">' + banTxtR + ' — réponse impossible</span>';
-    } else if (myMuted) {
-      html += '<span class="reply-blocked" title="Tu es totoché jusqu\'au ' + escapeHtml(myMutedUntilDisplay || '') + '">'
-        + 'Totoché jusqu\'au ' + escapeHtml(myMutedUntilDisplay || '') + ' — réponse impossible'
-        + '</span>';
+    if (myBanned || myMuted) {
+      html += blocageHtml('reponse');
     } else if (data.topic.postRestricted && !data.peutPoster) {
       html += '<span class="reply-blocked">'
         + (data.topic.reservePour === 'animation'
-          ? 'Seuls les animateurs et les modérateurs peuvent répondre dans ce forum.'
-          : 'Seuls les modérateurs peuvent répondre dans ce forum.')
+          ? T('forum.repondreAnimateurs', 'Seuls les animateurs et les modérateurs peuvent répondre dans ce forum.')
+          : T('forum.repondreModerateurs', 'Seuls les modérateurs peuvent répondre dans ce forum.'))
         + '</span>';
     } else if (data.topic.lastPostBy && currentUser
                && data.topic.lastPostBy === String(currentUser).toLowerCase()
@@ -3132,7 +3258,7 @@ async function loadTopic(topicId, page, allerA) {
       // their previous post or wait for someone else to reply.
       // Exception: moderators/animateurs may post consecutively.
     } else {
-      html += '<a href="#" onclick="showReplyForm();return false" class="img-btn"><img src="/fb/reply.gif" alt="Répondre"></a>';
+      html += boutonImage('repondre', 'showReplyForm();return false');
     }
     // Suivre CE sujet. Le libellé dit à quoi sert le cœur, et l'infobulle
     // rappelle le réglage qui le rend actif.
@@ -3144,11 +3270,13 @@ async function loadTopic(topicId, page, allerA) {
   html += '</div>';
   html += '<div class="shell-right">';
   if (data.peutModerer) {
-    html += '<a href="#" class="act-btn act-btn-red" onclick="toggleSticky();return false">' + (data.topic.isSticky ? 'Retirer Post-it' : 'Post-it') + '</a>';
-    html += '<a href="#" class="act-btn act-btn-red" onclick="toggleLock();return false">' + (data.topic.isLocked ? 'Déverrouiller' : 'Verrouiller') + '</a>';
+    html += '<a href="#" class="act-btn act-btn-red" onclick="toggleSticky();return false">'
+      + (data.topic.isSticky ? T('forum.retirerPostIt', 'Retirer Post-it') : T('forum.postIt', 'Post-it')) + '</a>';
+    html += '<a href="#" class="act-btn act-btn-red" onclick="toggleLock();return false">'
+      + (data.topic.isLocked ? T('forum.deverrouiller', 'Déverrouiller') : T('forum.verrouiller', 'Verrouiller')) + '</a>';
   }
   if (currentUser && (data.topic.author === currentUser || data.peutModerer)) {
-    html += '<a href="#" class="act-btn act-btn-red" onclick="deleteTopic();return false">Supprimer</a>';
+    html += '<a href="#" class="act-btn act-btn-red" onclick="deleteTopic();return false">' + T('forum.supprimer', 'Supprimer') + '</a>';
   }
   html += '</div>';
   html += '</div>';
@@ -3213,17 +3341,23 @@ var SUIVI_ETAT = {};
 
 function boutonSuivi(topicId, suivi, avecLibelle, mode) {
   SUIVI_ETAT[topicId] = !!suivi;
-  var titre = suivi ? 'Ne plus suivre ce sujet' : 'Suivre ce sujet';
+  var titre = titreSuivi(suivi);
   if (mode !== undefined && Number(mode) !== 2) {
-    titre += ' — actif si « Notifications du forum » est réglé sur'
-      + ' « Seulement mes sujets suivis »';
+    titre += T('forum.suiviActifSi', ' — actif si « Notifications du forum » est réglé sur'
+      + ' « Seulement mes sujets suivis »');
   }
   return '<button type="button" class="suivi-btn' + (suivi ? ' on' : '') + '"'
     + ' id="suivi-' + topicId + '" title="' + escapeHtml(titre) + '"'
     + ' onclick="basculerSuivi(' + topicId + ');return false">'
     + '<span class="c">' + (suivi ? '♥' : '♡') + '</span>'
-    + (avecLibelle ? ' ' + (suivi ? 'Suivi' : 'Suivre') : '')
+    + (avecLibelle ? ' ' + libelleSuivi(suivi) : '')
     + '</button>';
+}
+function titreSuivi(suivi) {
+  return suivi ? T('forum.nePlusSuivre', 'Ne plus suivre ce sujet') : T('forum.suivreCeSujet', 'Suivre ce sujet');
+}
+function libelleSuivi(suivi) {
+  return suivi ? T('forum.suivi', 'Suivi') : T('forum.suivre', 'Suivre');
 }
 
 async function basculerSuivi(topicId) {
@@ -3244,9 +3378,9 @@ async function basculerSuivi(topicId) {
       // Le libellé n'existe que sur le bouton du sujet ; dans la liste, le
       // cœur est seul et il n'y a rien à réécrire.
       if (b.childNodes.length > 1) {
-        b.lastChild.textContent = ' ' + (r.followed ? 'Suivi' : 'Suivre');
+        b.lastChild.textContent = ' ' + libelleSuivi(r.followed);
       }
-      b.title = r.followed ? 'Ne plus suivre ce sujet' : 'Suivre ce sujet';
+      b.title = titreSuivi(r.followed);
     }
   } catch (e) { /* le cœur reste comme il était */ }
   b.disabled = false;
@@ -3265,7 +3399,8 @@ function renderPoll(poll, canManage) {
   var voted = poll.myOptionId != null;
   var showResults = voted || poll.isClosed || pollShowResults[poll.id];
   var html = '<div class="poll-box" id="poll-box-' + poll.id + '">';
-  html += '<div class="poll-box-header"><span class="poll-icon"></span>Sondage' + (poll.isClosed ? ' — clos' : '') + '</div>';
+  html += '<div class="poll-box-header"><span class="poll-icon"></span>'
+    + (poll.isClosed ? T('forum.sondageClos', 'Sondage — clos') : T('forum.sondage', 'Sondage')) + '</div>';
   html += '<div class="poll-box-body">';
   html += '<div class="poll-question">' + escapeHtml(poll.question) + '</div>';
   if (showResults) {
@@ -3276,22 +3411,23 @@ function renderPoll(poll, canManage) {
       var mine = (poll.myOptionId === o.id);
       html += '<div class="poll-result-row' + (mine ? ' poll-mine' : '') + '">';
       html += '<div class="poll-result-label">' + escapeHtml(o.label)
-        + (mine ? ' <span class="poll-check">(ton vote)</span>' : '') + '</div>';
+        + (mine ? ' <span class="poll-check">' + T('forum.tonVote', '(ton vote)') + '</span>' : '') + '</div>';
       html += '<div class="poll-result-track"><div class="poll-result-fill" style="width:' + pct + '%"></div></div>';
-      html += '<div class="poll-result-num">' + o.votes + ' vote' + (o.votes > 1 ? 's' : '') + ' — ' + pct + '%</div>';
+      html += '<div class="poll-result-num">' + T.n('forum.votesPourcent', o.votes,
+        { one: '{n} vote — {pct}%', other: '{n} votes — {pct}%' }, { pct: pct }) + '</div>';
       html += '</div>';
     }
-    html += '<div class="poll-total">Total : ' + total + ' vote' + (total > 1 ? 's' : '') + '</div>';
+    html += '<div class="poll-total">' + T.n('forum.totalVotes', total, { one: 'Total : {n} vote', other: 'Total : {n} votes' }) + '</div>';
     if (poll.isClosed) {
-      html += '<div class="poll-closed-note">Ce sondage est clos, le vote n\'est plus possible.</div>';
+      html += '<div class="poll-closed-note">' + T('forum.sondageClosNote', 'Ce sondage est clos, le vote n\'est plus possible.') + '</div>';
     } else if (!voted) {
-      html += '<div class="poll-results-peek"><a href="#" onclick="hidePollResults(' + poll.id + ');return false">&laquo; Revenir au vote</a></div>';
+      html += '<div class="poll-results-peek"><a href="#" onclick="hidePollResults(' + poll.id + ');return false">' + T('forum.revenirAuVote', '&laquo; Revenir au vote') + '</a></div>';
     }
     if (canManage && !poll.isClosed) {
-      html += '<div class="poll-manage"><button type="button" class="poll-close-btn" onclick="closePoll(' + poll.id + ')">Clore le sondage</button></div>';
+      html += '<div class="poll-manage"><button type="button" class="poll-close-btn" onclick="closePoll(' + poll.id + ')">' + T('forum.cloreSondage', 'Clore le sondage') + '</button></div>';
     }
   } else if (!currentUser) {
-    html += '<div class="poll-login-note">Connecte-toi depuis Frutiparc pour participer au sondage.</div>';
+    html += '<div class="poll-login-note">' + T('forum.connecteToiSondage', 'Connecte-toi depuis Frutiparc pour participer au sondage.') + '</div>';
     for (var j = 0; j < poll.options.length; j++) {
       html += '<div class="poll-vote-opt poll-vote-disabled">' + escapeHtml(poll.options[j].label) + '</div>';
     }
@@ -3302,8 +3438,8 @@ function renderPoll(poll, canManage) {
         + escapeHtml(op.label) + '</label>';
     }
     html += '<div class="poll-actions">';
-    html += '<button type="button" class="poll-vote-btn" onclick="votePoll(' + poll.id + ')">Voter</button>';
-    html += '<a href="#" class="poll-peek-link" onclick="showPollResults(' + poll.id + ');return false">Voir les résultats</a>';
+    html += '<button type="button" class="poll-vote-btn" onclick="votePoll(' + poll.id + ')">' + T('forum.voter', 'Voter') + '</button>';
+    html += '<a href="#" class="poll-peek-link" onclick="showPollResults(' + poll.id + ');return false">' + T('forum.voirResultats', 'Voir les résultats') + '</a>';
     html += '</div>';
   }
   html += '</div></div>';
@@ -3329,7 +3465,7 @@ function hidePollResults(pollId) {
 
 async function votePoll(pollId) {
   var sel = document.querySelector('input[name="poll-' + pollId + '"]:checked');
-  if (!sel) { alert('Choisis une réponse avant de voter.'); return; }
+  if (!sel) { alert(T('forum.choisisReponse', 'Choisis une réponse avant de voter.')); return; }
   var data = await apiFetch('/api/forum/poll/' + pollId + '/vote', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -3339,12 +3475,12 @@ async function votePoll(pollId) {
     if (currentTopicData) currentTopicData.poll = data.poll;
     refreshPollBox(data.poll);
   } else {
-    alert(data.message || ('Erreur : ' + (data.error || 'inconnue')));
+    alert(erreurServeur(data));
   }
 }
 
 async function closePoll(pollId) {
-  if (!confirm('Clore ce sondage ? Plus personne ne pourra voter ensuite.')) return;
+  if (!confirm(T('forum.cloreSondageConfirmer', 'Clore ce sondage ? Plus personne ne pourra voter ensuite.'))) return;
   var data = await apiFetch('/api/forum/poll/' + pollId + '/close', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -3354,7 +3490,7 @@ async function closePoll(pollId) {
     if (currentTopicData) currentTopicData.poll = data.poll;
     refreshPollBox(data.poll);
   } else {
-    alert(data.message || ('Erreur : ' + (data.error || 'inconnue')));
+    alert(erreurServeur(data));
   }
 }
 
@@ -3364,7 +3500,7 @@ function showReplyForm(initialContent) {
   var topic = currentTopicData.topic;
   setBreadcrumb([
     { text: topic.boardName, href: "navigate('board'," + topic.boardId + ");return false" },
-    { text: 'Répondre à un message' },
+    { text: T('forum.repondreAMessage', 'Répondre à un message') },
   ]);
   var app = document.getElementById('app');
   app.innerHTML = renderEditor({
@@ -3374,7 +3510,7 @@ function showReplyForm(initialContent) {
     content: initialContent || '',
     onSubmit: 'submitReply()',
     onCancel: 'loadTopic(' + currentTopicId + ', currentTopicData ? currentTopicData.page : 1)',
-    submitLabel: 'Envoyer',
+    submitLabel: T('forum.envoyer', 'Envoyer'),
   });
   brancherBouilles(app);
   var ta = document.getElementById('reply-content');
@@ -3459,7 +3595,7 @@ async function submitReply() {
   var ta = document.getElementById('reply-content');
   if (!ta) return;
   var content = ta.value.trim();
-  if (!content) { alert('Le message ne peut pas être vide.'); return; }
+  if (!content) { alert(T('forum.messageVide', 'Le message ne peut pas être vide.')); return; }
   var bouille = myBouille ? getCurrentBouilleState('reply') : undefined;
   var mood = myBouille ? getCurrentMood('reply') : undefined;
   var data = await apiFetch('/api/forum/post', {
@@ -3484,7 +3620,7 @@ async function submitReply() {
      */
     loadTopic(currentTopicId, 'last', data.postId);
   } else {
-    alert(data.message || ('Erreur : ' + (data.error || 'inconnue')));
+    alert(erreurServeur(data));
   }
 }
 
@@ -3494,62 +3630,70 @@ async function submitReply() {
 // (Le BARRÉ : `renderBBCode` rendait déjà [s]…[/s], mais aucun bouton ne
 // l'écrivait — il fallait connaître la balise.)
 function bbcodeToolbarHtml(targetId) {
+  // `cle` : le libellé dans la langue du joueur ; `label` reste le français.
   var sizeOpts = [
-    { v: '', label: 'Taille' },
-    { v: 8,  label: '8 (très petit)' },
-    { v: 10, label: '10 (petit)' },
-    { v: 12, label: '12 (normal)' },
-    { v: 14, label: '14 (grand)' },
-    { v: 18, label: '18 (très grand)' },
-    { v: 24, label: '24 (énorme)' },
-    { v: 30, label: '30 (gigantesque)' },
+    { v: '', label: 'Taille', cle: 'forum.taille' },
+    { v: 8,  label: '8 (très petit)', cle: 'forum.tailleTresPetit' },
+    { v: 10, label: '10 (petit)', cle: 'forum.taillePetit' },
+    { v: 12, label: '12 (normal)', cle: 'forum.tailleNormal' },
+    { v: 14, label: '14 (grand)', cle: 'forum.tailleGrand' },
+    { v: 18, label: '18 (très grand)', cle: 'forum.tailleTresGrand' },
+    { v: 24, label: '24 (énorme)', cle: 'forum.tailleEnorme' },
+    { v: 30, label: '30 (gigantesque)', cle: 'forum.tailleGigantesque' },
   ];
   // Frutiz feutres — RGB values extracted from loader_bouille.swf (_global.penList).
   // Order matches penItemList (item ids 315..327, 599..602).
   var colorOpts = [
-    { v: '',         label: 'Couleur' },
-    { v: '#FF6600',  label: 'Orange' },
-    { v: '#6666CC',  label: 'Bleu' },
-    { v: '#5EA523',  label: 'Vert foncé' },
-    { v: '#962761',  label: 'Bordeaux' },
-    { v: '#F986E2',  label: 'Rose' },
-    { v: '#EBB601',  label: 'Jaune' },
-    { v: '#20D251',  label: 'Vert clair' },
-    { v: '#47B9C9',  label: 'Turquoise' },
-    { v: '#472899',  label: 'Bleu foncé' },
-    { v: '#A0752E',  label: 'Marron' },
-    { v: '#66451E',  label: 'Marron foncé' },
-    { v: '#729236',  label: 'Kaki' },
-    { v: '#408877',  label: 'Bleu pétrole' },
-    { v: '#5B944B',  label: 'Vert' },
-    { v: '#264859',  label: 'Bleu pétrole foncé' },
-    { v: '#C8400D',  label: 'Orange foncé' },
-    { v: '#6E3C8D',  label: 'Violet' },
+    { v: '',         label: 'Couleur', cle: 'forum.couleur' },
+    { v: '#FF6600',  label: 'Orange', cle: 'forum.feutreOrange' },
+    { v: '#6666CC',  label: 'Bleu', cle: 'forum.feutreBleu' },
+    { v: '#5EA523',  label: 'Vert foncé', cle: 'forum.feutreVertFonce' },
+    { v: '#962761',  label: 'Bordeaux', cle: 'forum.feutreBordeaux' },
+    { v: '#F986E2',  label: 'Rose', cle: 'forum.feutreRose' },
+    { v: '#EBB601',  label: 'Jaune', cle: 'forum.feutreJaune' },
+    { v: '#20D251',  label: 'Vert clair', cle: 'forum.feutreVertClair' },
+    { v: '#47B9C9',  label: 'Turquoise', cle: 'forum.feutreTurquoise' },
+    { v: '#472899',  label: 'Bleu foncé', cle: 'forum.feutreBleuFonce' },
+    { v: '#A0752E',  label: 'Marron', cle: 'forum.feutreMarron' },
+    { v: '#66451E',  label: 'Marron foncé', cle: 'forum.feutreMarronFonce' },
+    { v: '#729236',  label: 'Kaki', cle: 'forum.feutreKaki' },
+    { v: '#408877',  label: 'Bleu pétrole', cle: 'forum.feutreBleuPetrole' },
+    { v: '#5B944B',  label: 'Vert', cle: 'forum.feutreVert' },
+    { v: '#264859',  label: 'Bleu pétrole foncé', cle: 'forum.feutreBleuPetroleFonce' },
+    { v: '#C8400D',  label: 'Orange foncé', cle: 'forum.feutreOrangeFonce' },
+    { v: '#6E3C8D',  label: 'Violet', cle: 'forum.feutreViolet' },
   ];
 
   function selHtml(name, opts, onChange) {
     var s = '<select class="bb-select" onchange="' + onChange + '">';
     for (var i = 0; i < opts.length; i++) {
-      s += '<option value="' + opts[i].v + '">' + escapeHtml(opts[i].label) + '</option>';
+      s += '<option value="' + opts[i].v + '">' + escapeHtml(T(opts[i].cle, opts[i].label)) + '</option>';
     }
     return s + '</select>';
   }
 
+  // Les libellés des boutons (l'infobulle répète le libellé, sauf pour
+  // l'image et la vidéo, qui en disent plus).
+  var L = {
+    gras: T('forum.gras', 'Gras'), italique: T('forum.italique', 'Italique'),
+    souligne: T('forum.souligne', 'Souligné'), barre: T('forum.barre', 'Barré'),
+    liste: T('forum.liste', 'Liste'), citation: T('forum.citation', 'Citation'), lien: T('forum.lien', 'Lien'),
+  };
   var html = '<div class="editor-bbcode-toolbar">';
-  html += '<button type="button" class="bb-btn" style="font-weight:bold" onclick="bbToggleTag(\'' + targetId + '\',\'b\')" title="Gras">Gras</button>';
-  html += '<button type="button" class="bb-btn" style="font-style:italic" onclick="bbToggleTag(\'' + targetId + '\',\'i\')" title="Italique">Italique</button>';
-  html += '<button type="button" class="bb-btn" style="text-decoration:underline" onclick="bbToggleTag(\'' + targetId + '\',\'u\')" title="Souligné">Souligné</button>';
-  html += '<button type="button" class="bb-btn" style="text-decoration:line-through" onclick="bbToggleTag(\'' + targetId + '\',\'s\')" title="Barré">Barré</button>';
+  html += '<button type="button" class="bb-btn" style="font-weight:bold" onclick="bbToggleTag(\'' + targetId + '\',\'b\')" title="' + L.gras + '">' + L.gras + '</button>';
+  html += '<button type="button" class="bb-btn" style="font-style:italic" onclick="bbToggleTag(\'' + targetId + '\',\'i\')" title="' + L.italique + '">' + L.italique + '</button>';
+  html += '<button type="button" class="bb-btn" style="text-decoration:underline" onclick="bbToggleTag(\'' + targetId + '\',\'u\')" title="' + L.souligne + '">' + L.souligne + '</button>';
+  html += '<button type="button" class="bb-btn" style="text-decoration:line-through" onclick="bbToggleTag(\'' + targetId + '\',\'s\')" title="' + L.barre + '">' + L.barre + '</button>';
   html += selHtml('size',  sizeOpts,  'bbInsertSizeFromSelect(\'' + targetId + '\', this)');
   html += selHtml('color', colorOpts, 'bbInsertColorFromSelect(\'' + targetId + '\', this)');
-  html += '<button type="button" class="bb-btn" onclick="bbInsertList(\'' + targetId + '\')" title="Liste">Liste</button>';
+  html += '<button type="button" class="bb-btn" onclick="bbInsertList(\'' + targetId + '\')" title="' + L.liste + '">' + L.liste + '</button>';
   html += '<button type="button" class="bb-btn" onclick="bbInsertCode(\'' + targetId + '\')" title="Code">Code</button>';
   html += '</div>';
   html += '<div class="editor-bbcode-toolbar" style="margin-top:3px">';
-  html += '<button type="button" class="bb-btn" onclick="bbToggleTag(\'' + targetId + '\',\'citation\')" title="Citation">Citation</button>';
-  html += '<button type="button" class="bb-btn" onclick="bbInsertUrl(\'' + targetId + '\')" title="Lien">Lien</button>';
-  html += '<button type="button" class="bb-btn" onclick="bbInsertImage(\'' + targetId + '\')" title="Insérer une image depuis ton ordinateur">Image</button>';
-  html += '<button type="button" class="bb-btn" onclick="bbInsertYoutube(\'' + targetId + '\')" title="Intégrer une vidéo YouTube">YouTube</button>';
+  html += '<button type="button" class="bb-btn" onclick="bbToggleTag(\'' + targetId + '\',\'citation\')" title="' + L.citation + '">' + L.citation + '</button>';
+  html += '<button type="button" class="bb-btn" onclick="bbInsertUrl(\'' + targetId + '\')" title="' + L.lien + '">' + L.lien + '</button>';
+  html += '<button type="button" class="bb-btn" onclick="bbInsertImage(\'' + targetId + '\')" title="' + T('forum.imageTitre', 'Insérer une image depuis ton ordinateur') + '">Image</button>';
+  html += '<button type="button" class="bb-btn" onclick="bbInsertYoutube(\'' + targetId + '\')" title="' + T('forum.youtubeTitre', 'Intégrer une vidéo YouTube') + '">YouTube</button>';
   html += '<button type="button" class="bb-btn" onclick="bbTogglePictos(\'' + targetId + '\', this)" title="Pictos">Pictos</button>';
   html += '</div>';
   return html;
@@ -3558,8 +3702,8 @@ function bbcodeToolbarHtml(targetId) {
 // Hint row with help text + "Fermer les balises" button.
 function editorHintRowHtml(targetId) {
   return '<div class="editor-hint-row">'
-    + '<span class="hint-text">Sélectionnez votre texte pour lui appliquer une mise en forme</span>'
-    + '<button type="button" class="close-tags-btn" onclick="bbCloseAllTags(\'' + targetId + '\')">Fermer les balises</button>'
+    + '<span class="hint-text">' + T('forum.aideMiseEnForme', 'Sélectionnez votre texte pour lui appliquer une mise en forme') + '</span>'
+    + '<button type="button" class="close-tags-btn" onclick="bbCloseAllTags(\'' + targetId + '\')">' + T('forum.fermerBalises', 'Fermer les balises') + '</button>'
     + '</div>';
 }
 
@@ -3569,37 +3713,37 @@ function editorHintRowHtml(targetId) {
 // All alts and codes are matched whitespace-bounded in renderPostContent below,
 // so ":)" inside a URL or word boundary won't trigger.
 var EMOTICONS = [
-  { file: 'smile.gif',     code: ':)',         alts: [':smile:'],       title: 'Sourire' },
-  { file: 'wink.gif',      code: ';)',         alts: [':wink:'],        title: 'Clin d\'œil' },
-  { file: 'biggrin.gif',   code: ':D',         alts: [':biggrin:'],     title: 'Hilare' },
-  { file: 'frown.gif',     code: ':(',         alts: [':frown:'],       title: 'Triste' },
-  { file: 'tongue.gif',    code: ':P',         alts: [':tongue:', ':p'],title: 'Tire la langue' },
-  { file: 'surprised.gif', code: ':o',         alts: [':surprised:'],   title: 'Surpris' },
-  { file: 'cool.gif',      code: '8)',         alts: [':cool:'],        title: 'Cool' },
-  { file: 'rolleyes.gif',  code: ':roll:',     alts: [':rolleyes:'],    title: 'Yeux au ciel' },
-  { file: 'eek.gif',       code: ':eek:',      alts: [],                title: 'Hyper surpris' },
-  { file: 'confused.gif',  code: ':?',         alts: [':confused:'],    title: 'Confus' },
-  { file: 'huh.gif',       code: ':huh:',      alts: [],                title: 'Perplexe' },
-  { file: 'cry.gif',       code: ':cry:',      alts: [],                title: 'En pleurs' },
-  { file: 'mad.gif',       code: ':mad:',      alts: [':@'],            title: 'Fâché' },
-  { file: 'evil.gif',      code: ':evil:',     alts: [],                title: 'Démon' },
-  { file: 'twisted.gif',   code: ':twisted:',  alts: [],                title: 'Sourire diabolique' },
-  { file: 'redface.gif',   code: ':oops:',     alts: [':redface:'],     title: 'Rougit' },
-  { file: 'idea.gif',      code: ':idea:',     alts: [],                title: 'Idée' },
-  { file: 'arrow.gif',     code: ':arrow:',    alts: [],                title: 'Flèche' },
-  { file: 'question.gif',  code: ':?:',        alts: [':question:'],    title: 'Question' },
-  { file: 'exclaim.gif',   code: ':!:',        alts: [':exclaim:'],     title: 'Exclamation' },
-  { file: 'lol.gif',       code: ':lol:',      alts: [],                title: 'Mort de rire' },
-  { file: 'yeah.gif',      code: ':yeah:',     alts: [],                title: 'Ouais !' },
-  { file: 'keepcool.gif',  code: ':keepcool:', alts: [],                title: 'Garde ton calme' },
-  { file: 'wink2.gif',     code: ':wink2:',    alts: [],                title: 'Clin d\'œil (variante)' },
-  { file: 'dontcare.gif',  code: ':dontcare:', alts: [],                title: 'On s\'en fiche' },
-  { file: 'nooo.gif',      code: ':nooo:',     alts: [':noo:'],         title: 'NON !' },
-  { file: 'cross.gif',     code: ':cross:',    alts: [],                title: 'Croix' },
-  { file: 'chart.gif',     code: ':chart:',    alts: [],                title: 'Graphique' },
+  { file: 'smile.gif',     code: ':)',         alts: [':smile:'],       title: 'Sourire',            cle: 'forum.smileySourire' },
+  { file: 'wink.gif',      code: ';)',         alts: [':wink:'],        title: 'Clin d\'œil',        cle: 'forum.smileyClinDoeil' },
+  { file: 'biggrin.gif',   code: ':D',         alts: [':biggrin:'],     title: 'Hilare',             cle: 'forum.smileyHilare' },
+  { file: 'frown.gif',     code: ':(',         alts: [':frown:'],       title: 'Triste',             cle: 'forum.smileyTriste' },
+  { file: 'tongue.gif',    code: ':P',         alts: [':tongue:', ':p'],title: 'Tire la langue',     cle: 'forum.smileyLangue' },
+  { file: 'surprised.gif', code: ':o',         alts: [':surprised:'],   title: 'Surpris',            cle: 'forum.smileySurpris' },
+  { file: 'cool.gif',      code: '8)',         alts: [':cool:'],        title: 'Cool',               cle: 'forum.smileyCool' },
+  { file: 'rolleyes.gif',  code: ':roll:',     alts: [':rolleyes:'],    title: 'Yeux au ciel',       cle: 'forum.smileyYeuxAuCiel' },
+  { file: 'eek.gif',       code: ':eek:',      alts: [],                title: 'Hyper surpris',      cle: 'forum.smileyHyperSurpris' },
+  { file: 'confused.gif',  code: ':?',         alts: [':confused:'],    title: 'Confus',             cle: 'forum.smileyConfus' },
+  { file: 'huh.gif',       code: ':huh:',      alts: [],                title: 'Perplexe',           cle: 'forum.smileyPerplexe' },
+  { file: 'cry.gif',       code: ':cry:',      alts: [],                title: 'En pleurs',          cle: 'forum.smileyPleurs' },
+  { file: 'mad.gif',       code: ':mad:',      alts: [':@'],            title: 'Fâché',              cle: 'forum.smileyFache' },
+  { file: 'evil.gif',      code: ':evil:',     alts: [],                title: 'Démon',              cle: 'forum.smileyDemon' },
+  { file: 'twisted.gif',   code: ':twisted:',  alts: [],                title: 'Sourire diabolique', cle: 'forum.smileyDiabolique' },
+  { file: 'redface.gif',   code: ':oops:',     alts: [':redface:'],     title: 'Rougit',             cle: 'forum.smileyRougit' },
+  { file: 'idea.gif',      code: ':idea:',     alts: [],                title: 'Idée',               cle: 'forum.smileyIdee' },
+  { file: 'arrow.gif',     code: ':arrow:',    alts: [],                title: 'Flèche',             cle: 'forum.smileyFleche' },
+  { file: 'question.gif',  code: ':?:',        alts: [':question:'],    title: 'Question',           cle: 'forum.smileyQuestion' },
+  { file: 'exclaim.gif',   code: ':!:',        alts: [':exclaim:'],     title: 'Exclamation',        cle: 'forum.smileyExclamation' },
+  { file: 'lol.gif',       code: ':lol:',      alts: [],                title: 'Mort de rire',       cle: 'forum.smileyMortDeRire' },
+  { file: 'yeah.gif',      code: ':yeah:',     alts: [],                title: 'Ouais !',            cle: 'forum.smileyOuais' },
+  { file: 'keepcool.gif',  code: ':keepcool:', alts: [],                title: 'Garde ton calme',    cle: 'forum.smileyCalme' },
+  { file: 'wink2.gif',     code: ':wink2:',    alts: [],                title: 'Clin d\'œil (variante)', cle: 'forum.smileyClinDoeil2' },
+  { file: 'dontcare.gif',  code: ':dontcare:', alts: [],                title: 'On s\'en fiche',     cle: 'forum.smileyOnSenFiche' },
+  { file: 'nooo.gif',      code: ':nooo:',     alts: [':noo:'],         title: 'NON !',              cle: 'forum.smileyNon' },
+  { file: 'cross.gif',     code: ':cross:',    alts: [],                title: 'Croix',              cle: 'forum.smileyCroix' },
+  { file: 'chart.gif',     code: ':chart:',    alts: [],                title: 'Graphique',          cle: 'forum.smileyGraphique' },
   // Le smiley triste animé, retrouvé avec ceux du stand Miniwave — mais qui
   // ne s'y vendait pas : il est à tout le monde.
-  { file: 'smiley_sad.gif', code: ':sad:',     alts: [],                title: 'Tout triste' },
+  { file: 'smiley_sad.gif', code: ':sad:',     alts: [],                title: 'Tout triste',        cle: 'forum.smileyToutTriste' },
 ];
 
 // Les smileys ANIMÉS du stand Miniwave ($smiley_love / _laugh / _twirl, les
@@ -3609,9 +3753,9 @@ var EMOTICONS = [
 // avec /api/forum/me (mySmileys). Même table côté serveur :
 // MINIWAVE_FORUM_SMILEYS.
 var MINIWAVE_EMOTICONS = [
-  { file: 'smiley_aux_anges.gif', code: ':auxanges:', title: 'Aux anges (stand Miniwave)' },
-  { file: 'smiley_extasie.gif',   code: ':extasie:',  title: 'Extasié (stand Miniwave)' },
-  { file: 'smiley_ravi.gif',      code: ':ravi:',     title: 'Ravi (stand Miniwave)' },
+  { file: 'smiley_aux_anges.gif', code: ':auxanges:', title: 'Aux anges (stand Miniwave)', cle: 'forum.smileyAuxAnges' },
+  { file: 'smiley_extasie.gif',   code: ':extasie:',  title: 'Extasié (stand Miniwave)',   cle: 'forum.smileyExtasie' },
+  { file: 'smiley_ravi.gif',      code: ':ravi:',     title: 'Ravi (stand Miniwave)',      cle: 'forum.smileyRavi' },
 ];
 var mySmileys = [];   // codes débloqués pour CE joueur, remplis par init()
 
@@ -3619,7 +3763,7 @@ function emoticonsRowHtml(targetId) {
   var html = '<div class="emoticons-row">';
   for (var i = 0; i < EMOTICONS.length; i++) {
     var e = EMOTICONS[i];
-    html += '<button type="button" class="emo-btn" title="' + escapeHtml(e.title)
+    html += '<button type="button" class="emo-btn" title="' + escapeHtml(T(e.cle, e.title))
       + ' (' + escapeHtml(e.code) + ')" '
       + 'onclick="bbInsertText(\'' + targetId + '\',\' ' + escapeHtml(e.code) + ' \')">'
       + '<img class="emo-img" src="/fb/' + e.file + '" alt="' + escapeHtml(e.code) + '"></button>';
@@ -3628,7 +3772,7 @@ function emoticonsRowHtml(targetId) {
   for (var k = 0; k < MINIWAVE_EMOTICONS.length; k++) {
     var s = MINIWAVE_EMOTICONS[k];
     if (mySmileys.indexOf(s.code) < 0) continue;
-    html += '<button type="button" class="emo-btn" title="' + escapeHtml(s.title)
+    html += '<button type="button" class="emo-btn" title="' + escapeHtml(T(s.cle, s.title))
       + ' (' + escapeHtml(s.code) + ')" '
       + 'onclick="bbInsertText(\'' + targetId + '\',\' ' + escapeHtml(s.code) + ' \')">'
       + '<img class="emo-img" src="/fb/' + s.file + '" alt="' + escapeHtml(s.code) + '"></button>';
@@ -3741,7 +3885,7 @@ function bbInsertText(targetId, text) {
 }
 
 function bbInsertUrl(targetId) {
-  var url = prompt('URL :', 'https://');
+  var url = prompt(T('forum.demanderUrl', 'URL :'), 'https://');
   if (!url) return;
   var ta = document.getElementById(targetId);
   if (!ta) return;
@@ -3756,10 +3900,10 @@ function bbInsertUrl(targetId) {
 
 // YouTube : demande une URL (ou un ID), la valide, et insère [youtube]…[/youtube].
 function bbInsertYoutube(targetId) {
-  var url = prompt('Lien de la vidéo YouTube :', 'https://www.youtube.com/watch?v=');
+  var url = prompt(T('forum.demanderYoutube', 'Lien de la vidéo YouTube :'), 'https://www.youtube.com/watch?v=');
   if (!url) return;
   var id = youtubeIdFrom(url);
-  if (!id) { alert('Lien YouTube non reconnu.\nExemples acceptés :\n• https://www.youtube.com/watch?v=XXXXXXXXXXX\n• https://youtu.be/XXXXXXXXXXX'); return; }
+  if (!id) { alert(T('forum.youtubeNonReconnu', 'Lien YouTube non reconnu.\nExemples acceptés :\n• https://www.youtube.com/watch?v=XXXXXXXXXXX\n• https://youtu.be/XXXXXXXXXXX')); return; }
   var ta = document.getElementById(targetId);
   if (!ta) return;
   var start = ta.selectionStart, end = ta.selectionEnd;
@@ -3817,7 +3961,9 @@ function bbInsertList(targetId) {
   var start = ta.selectionStart, end = ta.selectionEnd;
   var sel = ta.value.substring(start, end);
   if (sel) { bbWrap(targetId, 'liste', '[liste]\n[*]', '\n[/liste]'); return; }
-  var insert = '[liste]\n[*]Premier élément\n[*]Deuxième élément\n[/liste]';
+  // Les balises restent celles du BBCode ; seuls les deux exemples se traduisent.
+  var insert = '[liste]\n[*]' + T('forum.premierElement', 'Premier élément')
+    + '\n[*]' + T('forum.deuxiemeElement', 'Deuxième élément') + '\n[/liste]';
   ta.value = ta.value.substring(0, start) + insert + ta.value.substring(end);
   ta.focus();
   ta.setSelectionRange(start + insert.length, start + insert.length);
@@ -3859,11 +4005,12 @@ function uploadForumImage(targetId, file) {
   if (!ta) return;
   var MAX = 3 * 1024 * 1024;
   if (file.size > MAX) {
-    alert('Image trop lourde (' + (Math.round(file.size / 1048576 * 10) / 10) + ' Mo). Maximum : 3 Mo.');
+    alert(T('forum.imageTropLourde', 'Image trop lourde ({taille} Mo). Maximum : 3 Mo.',
+      { taille: Math.round(file.size / 1048576 * 10) / 10 }));
     return;
   }
   // Drop a placeholder at the cursor and lock the field while it uploads.
-  var placeholder = '[…envoi de l\'image…]';
+  var placeholder = T('forum.envoiImageEnCours', '[…envoi de l\'image…]');
   var at = ta.selectionStart;
   ta.value = ta.value.substring(0, at) + placeholder + ta.value.substring(ta.selectionEnd);
   ta.disabled = true;
@@ -3891,11 +4038,11 @@ function uploadForumImage(targetId, file) {
       restore('[img]' + res.j.url + '[/img]');
     } else {
       restore('');
-      alert((res.j && res.j.message) ? res.j.message : "Échec de l'envoi de l'image.");
+      alert((res.j && res.j.message) ? res.j.message : T('forum.envoiImageEchec', "Échec de l'envoi de l'image."));
     }
   }).catch(function () {
     restore('');
-    alert("Échec de l'envoi de l'image (problème réseau).");
+    alert(T('forum.envoiImageReseau', "Échec de l'envoi de l'image (problème réseau)."));
   });
 }
 
@@ -3918,13 +4065,13 @@ async function bbTogglePictos(targetId, btn) {
   document.querySelectorAll('.picto-picker').forEach(function(el) { el.remove(); });
   var picker = document.createElement('div');
   picker.className = 'picto-picker';
-  picker.innerHTML = '<span class="picto-empty">Chargement...</span>';
+  picker.innerHTML = '<span class="picto-empty">' + T('forum.chargement', 'Chargement...') + '</span>';
   btn.parentNode.style.position = 'relative';
   btn.parentNode.appendChild(picker);
   var pictos = await fetchPictos();
   picker.innerHTML = '';
   if (pictos.length === 0) {
-    picker.innerHTML = '<span class="picto-empty">Aucun picto. Jouez aux jeux pour en collecter !</span>';
+    picker.innerHTML = '<span class="picto-empty">' + T('forum.aucunPicto', 'Aucun picto. Jouez aux jeux pour en collecter !') + '</span>';
     return;
   }
   // Rangés PAR JEU, sous un intertitre chacun : le serveur les envoie déjà
@@ -3933,7 +4080,7 @@ async function bbTogglePictos(targetId, btn) {
   // chaque changement de jeu. Avant, c'était l'ordre des parties gagnées.
   var jeuCourant = null;
   pictos.forEach(function(p) {
-    var jeu = p.game || 'Autre';
+    var jeu = p.game || T('forum.autreJeu', 'Autre');
     if (jeu !== jeuCourant) {
       jeuCourant = jeu;
       var titre = document.createElement('div');
@@ -3999,11 +4146,11 @@ function editPost(postId) {
     + editorHintRowHtml(taId)
     + '<textarea id="' + taId + '"></textarea>'
     + '<div class="form-actions" style="margin-top:6px">'
-    + '<button class="btn btn-green" onclick="submitEdit(' + postId + ')">Enregistrer</button>'
+    + '<button class="btn btn-green" onclick="submitEdit(' + postId + ')">' + T('forum.enregistrer', 'Enregistrer') + '</button>'
     // Le BBCode ne se relit pas de tête : on corrige un message autant qu'on
     // l'écrit, et l'aperçu n'existait qu'à l'écriture.
-    + '<button class="btn btn-orange" onclick="previewEdit(' + postId + ')">Prévisualiser</button>'
-    + '<button class="btn btn-orange" onclick="cancelEdit(' + postId + ')">Annuler</button>'
+    + '<button class="btn btn-orange" onclick="previewEdit(' + postId + ')">' + T('forum.previsualiser', 'Prévisualiser') + '</button>'
+    + '<button class="btn btn-orange" onclick="cancelEdit(' + postId + ')">' + T('commun.annuler', 'Annuler') + '</button>'
     + '</div>'
     + '<div id="edit-preview-' + postId + '"></div>';
   contentEl.style.display = 'none';
@@ -4043,7 +4190,7 @@ function previewEdit(postId) {
   var slot = document.getElementById('edit-preview-' + postId);
   if (!ta || !slot) return;
   var html = '<div class="editor-preview-wrap">';
-  html += '<div class="editor-preview-header"><span class="post-icon"></span>Aperçu de la correction.</div>';
+  html += '<div class="editor-preview-header"><span class="post-icon"></span>' + T('forum.apercuCorrection', 'Aperçu de la correction.') + '</div>';
   html += '<div class="editor-preview-body">';
   html += '<div class="editor-preview-content">' + renderBBCode(ta.value || '') + '</div>';
   html += '</div></div>';
@@ -4071,7 +4218,7 @@ async function submitEdit(postId) {
   var ta = document.getElementById('edit-textarea-' + postId);
   if (!ta) return;
   var newContent = ta.value.trim();
-  if (!newContent) { alert('Le message ne peut pas être vide.'); return; }
+  if (!newContent) { alert(T('forum.messageVide', 'Le message ne peut pas être vide.')); return; }
   // La bouille ne voyage que si le sélecteur était là — donc si c'est bien
   // notre message. Le serveur applique la même règle de son côté.
   var envoi = { content: newContent, sid: SID };
@@ -4085,36 +4232,36 @@ async function submitEdit(postId) {
     body: JSON.stringify(envoi),
   });
   if (data.ok) loadTopic(currentTopicId, currentTopicData ? currentTopicData.page : 1);
-  else alert(data.message || ('Erreur : ' + (data.error || 'inconnue')));
+  else alert(erreurServeur(data));
 }
 
 async function deletePost(postId) {
-  if (!confirm('Supprimer ce message ?')) return;
+  if (!confirm(T('forum.supprimerMessageConfirmer', 'Supprimer ce message ?'))) return;
   var data = await apiFetch('/api/forum/post/' + postId, { method: 'DELETE' });
   if (data.ok) loadTopic(currentTopicId, currentTopicData ? currentTopicData.page : 1);
-  else alert(data.message || ('Erreur : ' + (data.error || 'inconnue')));
+  else alert(erreurServeur(data));
 }
 
 async function toggleSticky() {
   if (!currentTopicId) return;
   var data = await apiFetch('/api/forum/topic/' + currentTopicId + '/sticky', { method: 'POST' });
   if (data.ok) loadTopic(currentTopicId, currentTopicData ? currentTopicData.page : 1);
-  else alert(data.message || ('Erreur : ' + (data.error || 'inconnue')));
+  else alert(erreurServeur(data));
 }
 
 async function toggleLock() {
   if (!currentTopicId) return;
   var data = await apiFetch('/api/forum/topic/' + currentTopicId + '/lock', { method: 'POST' });
   if (data.ok) loadTopic(currentTopicId, currentTopicData ? currentTopicData.page : 1);
-  else alert(data.message || ('Erreur : ' + (data.error || 'inconnue')));
+  else alert(erreurServeur(data));
 }
 
 async function deleteTopic() {
   if (!currentTopicId) return;
-  if (!confirm('Supprimer ce sujet et tous ses messages ?')) return;
+  if (!confirm(T('forum.supprimerSujetConfirmer', 'Supprimer ce sujet et tous ses messages ?'))) return;
   var data = await apiFetch('/api/forum/topic/' + currentTopicId, { method: 'DELETE' });
   if (data.ok) navigate('board', data.boardId || (currentTopicData && currentTopicData.topic.boardId));
-  else alert(data.message || ('Erreur : ' + (data.error || 'inconnue')));
+  else alert(erreurServeur(data));
 }
 
 // Shared editor renderer used for new topics and replies.
@@ -4126,7 +4273,7 @@ function renderEditor(opts) {
   var showTitle = opts.mode === 'new';
   var initialTitle = opts.title || '';
   var initialContent = opts.content || '';
-  var submitLabel = opts.submitLabel || (showTitle ? 'Envoyer' : 'Envoyer');
+  var submitLabel = opts.submitLabel || T('forum.envoyer', 'Envoyer');
 
   var html = '<div class="form-area editor-area" id="editor-' + formId + '">';
 
@@ -4137,7 +4284,7 @@ function renderEditor(opts) {
 
   // Sujet row (always shown — read-only for replies, editable for new topics).
   html += '<div class="editor-row">';
-  html += '<div class="editor-label-cell">Sujet</div>';
+  html += '<div class="editor-label-cell">' + T('forum.sujet', 'Sujet') + '</div>';
   html += '<div class="editor-value-cell">';
   if (showTitle) {
     html += '<input type="text" class="editor-input" id="' + titleId + '" maxlength="200" value="' + escapeHtml(initialTitle) + '">';
@@ -4153,7 +4300,7 @@ function renderEditor(opts) {
 
   // Corps du message row
   html += '<div class="editor-row">';
-  html += '<div class="editor-label-cell">Corps du message</div>';
+  html += '<div class="editor-label-cell">' + T('forum.corpsMessage', 'Corps du message') + '</div>';
   html += '<div class="editor-value-cell">';
   html += bbcodeToolbarHtml(taId);
   html += '</div></div>';
@@ -4164,7 +4311,7 @@ function renderEditor(opts) {
   html += '<div class="editor-label-cell">Emoticons' + emoticonsRowHtml(taId) + '</div>';
   html += '<div class="editor-value-cell">';
   html += editorHintRowHtml(taId);
-  html += '<textarea class="editor-textarea" id="' + taId + '" placeholder="Votre message...">'
+  html += '<textarea class="editor-textarea" id="' + taId + '" placeholder="' + T('forum.votreMessage', 'Votre message...') + '">'
     + escapeHtml(initialContent) + '</textarea>';
   html += '</div></div>';
 
@@ -4178,9 +4325,9 @@ function renderEditor(opts) {
   // Action buttons
   html += '<div class="editor-actions">';
   html += '<button type="button" class="edit-btn" onclick="' + opts.onSubmit + '">' + escapeHtml(submitLabel) + '</button>';
-  html += '<button type="button" class="edit-btn" onclick="previewEditor(\'' + formId + '\',' + showTitle + ')">Prévisualiser</button>';
-  html += '<button type="button" class="edit-btn" onclick="openSignatureEditor()" title="Ta signature s\'affiche à la fin de tous tes messages">✍️ Ma signature</button>';
-  html += '<button type="button" class="edit-btn" onclick="' + opts.onCancel + '">Annuler</button>';
+  html += '<button type="button" class="edit-btn" onclick="previewEditor(\'' + formId + '\',' + showTitle + ')">' + T('forum.previsualiser', 'Prévisualiser') + '</button>';
+  html += '<button type="button" class="edit-btn" onclick="openSignatureEditor()" title="' + T('forum.signatureTitre', 'Ta signature s\'affiche à la fin de tous tes messages') + '">✍️ ' + T('forum.maSignature', 'Ma signature') + '</button>';
+  html += '<button type="button" class="edit-btn" onclick="' + opts.onCancel + '">' + T('commun.annuler', 'Annuler') + '</button>';
   html += '</div>';
 
   html += '</div>'; // .editor-area
@@ -4193,7 +4340,7 @@ function renderEditor(opts) {
 // aperçu live (rendu par renderBBCode). Enregistre via POST /api/forum/signature
 // SANS recharger la page (le brouillon de message en cours n'est pas perdu).
 function openSignatureEditor() {
-  if (!currentUser) { alert('Connecte-toi pour définir une signature.'); return; }
+  if (!currentUser) { alert(T('forum.connecteToiSignature', 'Connecte-toi pour définir une signature.')); return; }
   var old = document.getElementById('sig-modal');
   if (old) old.remove();
   var m = document.createElement('div');
@@ -4201,15 +4348,15 @@ function openSignatureEditor() {
   m.className = 'sig-modal';
   m.innerHTML =
     '<div class="sig-boite">'
-    + '<h3 class="sig-titre">Ma signature</h3>'
-    + '<p class="sig-aide">Affichée à la fin de tous tes messages. Codes utilisables&nbsp;: [b]gras[/b], [i]italique[/i], [u]souligné[/u], [color=#cc0000]couleur[/color], [size=14]taille[/size], [url]lien[/url]…</p>'
+    + '<h3 class="sig-titre">' + T('forum.maSignature', 'Ma signature') + '</h3>'
+    + '<p class="sig-aide">' + T('forum.signatureAide', 'Affichée à la fin de tous tes messages. Codes utilisables&nbsp;: [b]gras[/b], [i]italique[/i], [u]souligné[/u], [color=#cc0000]couleur[/color], [size=14]taille[/size], [url]lien[/url]…') + '</p>'
     + bbcodeToolbarHtml('sig-content')
-    + '<textarea id="sig-content" class="editor-textarea" style="width:100%;min-height:84px;box-sizing:border-box" placeholder="Ta signature…" oninput="updateSigPreview()"></textarea>'
-    + '<div class="sig-legende">Aperçu&nbsp;:</div>'
+    + '<textarea id="sig-content" class="editor-textarea" style="width:100%;min-height:84px;box-sizing:border-box" placeholder="' + T('forum.taSignature', 'Ta signature…') + '" oninput="updateSigPreview()"></textarea>'
+    + '<div class="sig-legende">' + T('forum.apercuDeuxPoints', 'Aperçu&nbsp;:') + '</div>'
     + '<div id="sig-preview" class="post-signature sig-apercu"></div>'
     + '<div style="margin-top:12px;text-align:right">'
-    + '<button type="button" class="edit-btn" onclick="saveSignature()">Enregistrer</button> '
-    + '<button type="button" class="edit-btn" onclick="closeSignatureEditor()">Annuler</button>'
+    + '<button type="button" class="edit-btn" onclick="saveSignature()">' + T('forum.enregistrer', 'Enregistrer') + '</button> '
+    + '<button type="button" class="edit-btn" onclick="closeSignatureEditor()">' + T('commun.annuler', 'Annuler') + '</button>'
     + '</div></div>';
   document.body.appendChild(m);
   m.addEventListener('click', function (e) { if (e.target === m) closeSignatureEditor(); });
@@ -4229,7 +4376,7 @@ function updateSigPreview() {
   var ta = document.getElementById('sig-content'), pv = document.getElementById('sig-preview');
   if (!ta || !pv || pv._last === ta.value) return;
   pv._last = ta.value;
-  pv.innerHTML = ta.value.trim() ? renderBBCode(ta.value) : '<span class="sig-vide">(vide)</span>';
+  pv.innerHTML = ta.value.trim() ? renderBBCode(ta.value) : '<span class="sig-vide">' + T('forum.vide', '(vide)') + '</span>';
 }
 async function saveSignature() {
   var ta = document.getElementById('sig-content');
@@ -4240,33 +4387,35 @@ async function saveSignature() {
       body: JSON.stringify({ sid: SID, signature: ta.value }),
     });
     var d = await r.json();
-    if (!r.ok) { alert('Erreur : ' + (d.error || 'inconnu')); return; }
+    if (!r.ok) { alert(T('forum.erreurCode', 'Erreur : {code}', { code: d.error || T('forum.inconnu', 'inconnu') })); return; }
     mySignature = d.signature || '';
     closeSignatureEditor();
-  } catch (e) { alert('Erreur réseau : ' + e.message); }
+  } catch (e) { alert(T('forum.erreurReseau', 'Erreur réseau : {detail}', { detail: e.message })); }
 }
 
 // One answer row in the poll editor (text input + remove button).
 function pollOptionRowHtml(placeholder) {
   return '<div class="poll-opt-row">'
-    + '<input type="text" class="editor-input poll-opt-input" maxlength="100" placeholder="' + escapeHtml(placeholder || 'Réponse') + '">'
-    + '<button type="button" class="poll-del-btn" onclick="removePollOption(this)" title="Retirer cette réponse">&times;</button>'
+    + '<input type="text" class="editor-input poll-opt-input" maxlength="100" placeholder="' + escapeHtml(placeholder || T('forum.reponse', 'Réponse')) + '">'
+    + '<button type="button" class="poll-del-btn" onclick="removePollOption(this)" title="' + T('forum.retirerReponse', 'Retirer cette réponse') + '">&times;</button>'
     + '</div>';
 }
+// « Réponse 1 », « Réponse 2 »… : l'indication d'une ligne de réponse.
+function libelleReponse(n) { return T('forum.reponseN', 'Réponse {n}', { n: n }); }
 
 // The collapsible "Sondage (optionnel)" block in the new-topic editor.
 function pollEditorHtml(formId) {
   var html = '<div class="editor-row">';
-  html += '<div class="editor-label-cell">Sondage <span class="poll-optional">(optionnel)</span></div>';
+  html += '<div class="editor-label-cell">' + T('forum.sondage', 'Sondage') + ' <span class="poll-optional">' + T('forum.optionnel', '(optionnel)') + '</span></div>';
   html += '<div class="editor-value-cell">';
-  html += '<label class="poll-enable"><input type="checkbox" id="' + formId + '-poll-enable" onchange="togglePollFields(\'' + formId + '\')"> Ajouter un sondage à ce sujet</label>';
+  html += '<label class="poll-enable"><input type="checkbox" id="' + formId + '-poll-enable" onchange="togglePollFields(\'' + formId + '\')"> ' + T('forum.ajouterSondage', 'Ajouter un sondage à ce sujet') + '</label>';
   html += '<div id="' + formId + '-poll-fields" class="poll-fields" style="display:none">';
   html += '<div class="poll-edit-q"><label>Question</label>';
-  html += '<input type="text" class="editor-input" id="' + formId + '-poll-question" maxlength="200" placeholder="Votre question..."></div>';
-  html += '<div class="poll-edit-opts-label">Réponses</div>';
-  html += '<div id="' + formId + '-poll-options">' + pollOptionRowHtml('Réponse 1') + pollOptionRowHtml('Réponse 2') + '</div>';
-  html += '<button type="button" class="poll-add-btn" onclick="addPollOption(\'' + formId + '\')">+ Ajouter une réponse</button>';
-  html += '<div class="poll-edit-hint">De 2 à 10 réponses. Chaque Frutiz ne vote qu\'une seule fois, et le vote est définitif.</div>';
+  html += '<input type="text" class="editor-input" id="' + formId + '-poll-question" maxlength="200" placeholder="' + T('forum.votreQuestion', 'Votre question...') + '"></div>';
+  html += '<div class="poll-edit-opts-label">' + T('forum.reponses', 'Réponses') + '</div>';
+  html += '<div id="' + formId + '-poll-options">' + pollOptionRowHtml(libelleReponse(1)) + pollOptionRowHtml(libelleReponse(2)) + '</div>';
+  html += '<button type="button" class="poll-add-btn" onclick="addPollOption(\'' + formId + '\')">' + T('forum.ajouterReponse', '+ Ajouter une réponse') + '</button>';
+  html += '<div class="poll-edit-hint">' + T('forum.sondageAide', 'De 2 à 10 réponses. Chaque Frutiz ne vote qu\'une seule fois, et le vote est définitif.') + '</div>';
   html += '</div></div></div>';
   return html;
 }
@@ -4281,9 +4430,9 @@ function addPollOption(formId) {
   var box = document.getElementById(formId + '-poll-options');
   if (!box) return;
   var count = box.querySelectorAll('.poll-opt-row').length;
-  if (count >= 10) { alert('10 réponses maximum.'); return; }
+  if (count >= 10) { alert(T('forum.dixReponsesMax', '10 réponses maximum.')); return; }
   var tmp = document.createElement('div');
-  tmp.innerHTML = pollOptionRowHtml('Réponse ' + (count + 1));
+  tmp.innerHTML = pollOptionRowHtml(libelleReponse(count + 1));
   box.appendChild(tmp.firstChild);
 }
 
@@ -4291,7 +4440,7 @@ function removePollOption(btn) {
   var row = btn.parentNode;           // .poll-opt-row
   var box = row.parentNode;           // #<form>-poll-options
   if (box.querySelectorAll('.poll-opt-row').length <= 2) {
-    alert('Un sondage doit proposer au moins 2 réponses.');
+    alert(T('forum.sondageDeuxReponses', 'Un sondage doit proposer au moins 2 réponses.'));
     return;
   }
   box.removeChild(row);
@@ -4322,7 +4471,7 @@ function previewEditor(formId, hasTitle) {
   var mood = myBouille ? getCurrentMood(formId) : 0;
 
   var html = '<div class="editor-preview-wrap">';
-  html += '<div class="editor-preview-header"><span class="post-icon"></span>Aperçu de votre message.</div>';
+  html += '<div class="editor-preview-header"><span class="post-icon"></span>' + T('forum.apercuMessage', 'Aperçu de votre message.') + '</div>';
   html += '<div class="editor-preview-body">';
   html += '<div class="editor-preview-author">';
   html += '<div class="avatar" id="editor-preview-avatar-' + formId + '">' + getBouillePreviewHtml(state, mood) + '</div>';
@@ -4348,7 +4497,7 @@ function showNewTopicForm(boardId) {
   if (boardId === currentBoardId && currentBoardName) {
     fil.push({ text: currentBoardName, href: "navigate('board'," + boardId + ");return false" });
   }
-  fil.push({ text: 'Poster un nouveau message' });
+  fil.push({ text: T('forum.posterNouveau', 'Poster un nouveau message') });
   setBreadcrumb(fil);
   var app = document.getElementById('app');
   app.innerHTML = renderEditor({
@@ -4356,7 +4505,7 @@ function showNewTopicForm(boardId) {
     formId: 'newtopic',
     onSubmit: 'submitNewTopic(' + boardId + ')',
     onCancel: 'navigate(\'board\',' + boardId + ')',
-    submitLabel: 'Envoyer',
+    submitLabel: T('forum.envoyer', 'Envoyer'),
   });
   brancherBouilles(app);
   var t = document.getElementById('newtopic-title');
@@ -4367,11 +4516,11 @@ async function submitNewTopic(boardId) {
   var title = (document.getElementById('newtopic-title') || {}).value || '';
   var content = (document.getElementById('newtopic-content') || {}).value || '';
   title = title.trim(); content = content.trim();
-  if (!title || !content) { alert('Titre et message requis.'); return; }
+  if (!title || !content) { alert(T('forum.titreEtMessage', 'Titre et message requis.')); return; }
   var poll = getPollPayload('newtopic');
   if (poll) {
-    if (!poll.question) { alert('Le sondage doit avoir une question.'); return; }
-    if (poll.options.length < 2) { alert('Le sondage doit proposer au moins 2 réponses.'); return; }
+    if (!poll.question) { alert(T('forum.sondageQuestion', 'Le sondage doit avoir une question.')); return; }
+    if (poll.options.length < 2) { alert(T('forum.leSondageDeuxReponses', 'Le sondage doit proposer au moins 2 réponses.')); return; }
   }
   var bouille = myBouille ? getCurrentBouilleState('newtopic') : undefined;
   var mood = myBouille ? getCurrentMood('newtopic') : undefined;
@@ -4381,34 +4530,35 @@ async function submitNewTopic(boardId) {
     body: JSON.stringify({ boardId: boardId, title: title, content: content, bouille: bouille, mood: mood, poll: poll, sid: SID }),
   });
   if (data.ok) navigate('topic', data.topicId);
-  else alert(data.message || ('Erreur : ' + (data.error || 'inconnue')));
+  else alert(erreurServeur(data));
 }
 
 function renderConsecrationBanner(conse) {
   if (!conse || !conse.enabledCount) return '';
   var pct = Number(conse.overall) || 0;
   var html = '<div class="consecration-banner">'
-    + '<div class="conse-title"><span>Score de consécration</span>'
-    + '<span class="conse-pct">' + pct.toFixed(2) + ' %</span></div>'
+    + '<div class="conse-title"><span>' + T('forum.scoreConsecration', 'Score de consécration') + '</span>'
+    + '<span class="conse-pct">' + T('forum.pourcent', '{n} %', { n: pct.toFixed(2) }) + '</span></div>'
     + '<div class="conse-bar"><div class="conse-fill" style="width:' + Math.min(pct, 100) + '%"></div></div>'
     + '<div class="conse-games">';
   for (var i = 0; i < conse.games.length; i++) {
     var g = conse.games[i];
     var label = g.mode === 'completion'
-      ? (g.unlocked ? 'joué' : 'non joué')
+      ? (g.unlocked ? T('forum.joue', 'joué') : T('forum.nonJoue', 'non joué'))
       : (g.unlocked + ' / ' + g.total);
-    html += '<span class="conse-game">' + escapeHtml(g.name) + ' : <b>' + escapeHtml(label) + '</b> (' + g.contribution.toFixed(2) + ' %)</span>';
+    html += '<span class="conse-game">' + T('forum.conseJeu', '{jeu} : <b>{compte}</b> ({pct} %)',
+      { jeu: escapeHtml(g.name), compte: escapeHtml(label), pct: g.contribution.toFixed(2) }) + '</span>';
   }
   html += '</div>';
-  html += '<div class="conse-note">Chaque jeu finalisé vaut ' + conse.perGameMax.toFixed(2) + ' % du score total.</div>';
+  html += '<div class="conse-note">' + T('forum.conseNote', 'Chaque jeu finalisé vaut {pct} % du score total.', { pct: conse.perGameMax.toFixed(2) }) + '</div>';
   html += '</div>';
   return html;
 }
 
 async function loadPictos() {
-  setBreadcrumb([{ text: 'Mes Pictos' }]);
+  setBreadcrumb([{ text: T('forum.mesPictos', 'Mes Pictos') }]);
   var app = document.getElementById('app');
-  app.innerHTML = '<div class="loading">Chargement...</div>';
+  app.innerHTML = '<div class="loading">' + T('forum.chargement', 'Chargement...') + '</div>';
   _pictoCache = null;
   var pictos = await fetchPictos();
   var conse = null;
@@ -4416,17 +4566,19 @@ async function loadPictos() {
   var banner = renderConsecrationBanner(conse);
 
   if (pictos.length === 0) {
-    app.innerHTML = banner + '<div class="empty">Vous n\'avez aucun picto. Jouez aux jeux pour en collecter !</div>';
+    app.innerHTML = banner + '<div class="empty">' + T('forum.aucunPictoVous', 'Vous n\'avez aucun picto. Jouez aux jeux pour en collecter !') + '</div>';
     return;
   }
   var byGame = {};
   for (var i = 0; i < pictos.length; i++) {
-    var g = pictos[i].game || 'Autre';
+    var g = pictos[i].game || T('forum.autreJeu', 'Autre');
     if (!byGame[g]) byGame[g] = [];
     byGame[g].push(pictos[i]);
   }
-  var html = banner + '<div class="picto-bbcode-hint">Vous avez <b>' + pictos.length + '</b> picto' + (pictos.length > 1 ? 's' : '')
-    + '. Pour utiliser un picto dans un message, insérez <code>[picto=nom]</code> ou cliquez sur le bouton <b>Pictos</b> dans la barre d\'édition.</div>';
+  var html = banner + '<div class="picto-bbcode-hint">' + T.n('forum.pictosAide', pictos.length, {
+    one: 'Vous avez <b>{n}</b> picto. Pour utiliser un picto dans un message, insérez <code>[picto=nom]</code> ou cliquez sur le bouton <b>Pictos</b> dans la barre d\'édition.',
+    other: 'Vous avez <b>{n}</b> pictos. Pour utiliser un picto dans un message, insérez <code>[picto=nom]</code> ou cliquez sur le bouton <b>Pictos</b> dans la barre d\'édition.',
+  }) + '</div>';
   var games = Object.keys(byGame);
   for (var gi = 0; gi < games.length; gi++) {
     var gameName = games[gi];
@@ -4465,14 +4617,14 @@ async function init() {
       myBanned = !!data.banned;
       myBannedUntilDisplay = data.bannedUntilDisplay || null;
       myBannedPermanent = !!data.bannedPermanent;
-      document.getElementById('user-info').textContent = 'Connecté : ' + currentUser;
+      document.getElementById('user-info').textContent = T('forum.connecte', 'Connecté : {nom}', { nom: currentUser });
       var pl = document.getElementById('pictos-link');
       if (pl) pl.style.display = 'inline';
     } else {
-      document.getElementById('user-info').textContent = 'Non connecté';
+      document.getElementById('user-info').textContent = T('forum.nonConnecte', 'Non connecté');
     }
   } catch (e) {
-    document.getElementById('user-info').textContent = "Erreur d'authentification";
+    document.getElementById('user-info').textContent = T('forum.erreurAuthentification', "Erreur d'authentification");
   }
   // Show the "‹ Salons" shortcut when the forum was opened from the mobile chat.
   if (new URLSearchParams(window.location.search).get('from') === 'light') {
