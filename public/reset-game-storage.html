@@ -3,6 +3,10 @@
 <head>
   <meta charset="utf-8">
   <title>Frutiparc — Réinitialiser le stockage local d'un jeu</title>
+  <!-- Les langues du parc (voir /js/i18n.js) : en anglais, les dictionnaires
+       arrivent pendant l'analyse de la page ; en français, rien. -->
+  <script src="/js/i18n.js"></script>
+  <script>FPI18n.charger(['commun', 'pages']);</script>
   <style>
     body { font-family: system-ui, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 20px; line-height: 1.45; color: #222; }
     h1 { font-size: 22px; }
@@ -15,20 +19,20 @@
   </style>
 </head>
 <body>
-  <h1>Réinitialiser le stockage local d'un jeu</h1>
-  <p>
+  <h1 data-i18n="pages.stockageTitre">Réinitialiser le stockage local d'un jeu</h1>
+  <p data-i18n-html="pages.stockageIntro1">
     Cette page efface les <em>SharedObject</em> Flash que Ruffle stocke dans le
     <code>localStorage</code> de ton navigateur, par jeu. À utiliser quand
     ta partie locale est désynchronisée de la sauvegarde serveur (cas
     typique : ancienne partie corrompue qui survit en mode classique alors
     qu'une nouvelle session marche en navigation privée).
   </p>
-  <p>
+  <p data-i18n="pages.stockageIntro2">
     Les autres données du site (cookie de session, clé admin, etc.) ne sont
     PAS touchées.
   </p>
 
-  <p><strong>Choisis un jeu :</strong></p>
+  <p><strong data-i18n="pages.stockageChoisis">Choisis un jeu :</strong></p>
   <p>
     <button onclick="wipe(['minipixiz','minitroll','miniPixiz','miniTroll'])">Mini-Pixiz</button>
     <button onclick="wipe(['miniwave','miniWave'])">Mini-Wave</button>
@@ -40,20 +44,24 @@
     <button onclick="wipe(['poulpi','jamajama'])">JamaJama</button>
   </p>
   <p>
-    <button onclick="listKeys()">Lister toutes les clés localStorage</button>
-    <button onclick="wipeAllRuffle()" style="background:#fee">Effacer TOUS les SharedObject Ruffle</button>
+    <button onclick="listKeys()" data-i18n="pages.stockageLister">Lister toutes les clés localStorage</button>
+    <button onclick="wipeAllRuffle()" style="background:#fee" data-i18n="pages.stockageToutEffacer">Effacer TOUS les SharedObject Ruffle</button>
   </p>
 
   <div id="result"></div>
   <pre id="dump" style="display:none"></pre>
 
-  <p style="margin-top:32px;color:#888;font-size:12px">
+  <p style="margin-top:32px;color:#888;font-size:12px" data-i18n-html="pages.stockagePied">
     Une fois la purge effectuée, retourne sur
     <a href="/">/</a> et relance le jeu — il repartira d'une carte vierge
     générée à partir des données du serveur.
   </p>
 
 <script>
+// Le HTML marqué data-i18n, puis le titre de l'onglet (rien en français).
+FPI18n.appliquer(document);
+document.title = T('pages.stockageTitrePage', document.title);
+
 function looksLikeRuffleKey(key) {
   if (!key) return false;
   // Ruffle's local-storage backend prefixes keys with a Ruffle-specific
@@ -85,17 +93,18 @@ function wipe(tokens) {
   }
   const r = document.getElementById('result');
   if (removed.length === 0) {
-    r.innerHTML = '<p class="warn">Aucune clé localStorage ne correspond à ' +
-                  tokens.map(t => '<code>'+t+'</code>').join(', ') +
-                  '. Rien à effacer.</p>';
+    r.innerHTML = '<p class="warn">' + T('pages.stockageAucuneCle', 'Aucune clé localStorage ne correspond à {cles}. Rien à effacer.',
+                  { cles: tokens.map(t => '<code>'+t+'</code>').join(', ') }) + '</p>';
   } else {
-    r.innerHTML = '<p class="ok">' + removed.length + ' clé(s) supprimée(s) :</p>' +
+    // Le français d'origine écrit « clé(s) » quel que soit le nombre ; l'anglais accorde.
+    r.innerHTML = '<p class="ok">' + T.n('pages.stockageSupprimees', removed.length,
+                  { one: '{n} clé(s) supprimée(s) :', other: '{n} clé(s) supprimée(s) :' }) + '</p>' +
                   '<pre>' + removed.map(k => '- ' + k).join('\n') + '</pre>';
   }
 }
 
 function wipeAllRuffle() {
-  if (!confirm('Effacer TOUS les SharedObject Ruffle (tous les jeux) ?')) return;
+  if (!confirm(T('pages.stockageConfirmer', 'Effacer TOUS les SharedObject Ruffle (tous les jeux) ?'))) return;
   const removed = [];
   for (const k of Object.keys(localStorage)) {
     if (looksLikeRuffleKey(k)) {
@@ -104,8 +113,8 @@ function wipeAllRuffle() {
     }
   }
   const r = document.getElementById('result');
-  r.innerHTML = '<p class="ok">' + removed.length +
-                ' clé(s) Ruffle supprimée(s).</p><pre>' +
+  r.innerHTML = '<p class="ok">' + T.n('pages.stockageRuffleSupprimees', removed.length,
+                { one: '{n} clé(s) Ruffle supprimée(s).', other: '{n} clé(s) Ruffle supprimée(s).' }) + '</p><pre>' +
                 removed.map(k => '- ' + k).join('\n') + '</pre>';
 }
 
@@ -113,7 +122,7 @@ function listKeys() {
   const dump = document.getElementById('dump');
   const keys = Object.keys(localStorage);
   if (keys.length === 0) {
-    dump.textContent = '(localStorage vide)';
+    dump.textContent = T('pages.stockageVide', '(localStorage vide)');
   } else {
     dump.textContent = keys.map(k => {
       const v = localStorage.getItem(k) || '';

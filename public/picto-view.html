@@ -3,6 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <title>Picto Frutiparc</title>
+<!-- Les langues du parc (voir /js/i18n.js) : en anglais, les dictionnaires
+     arrivent pendant l'analyse de la page ; en français, rien. -->
+<script src="/js/i18n.js"></script>
+<script>FPI18n.charger(['commun', 'pages']);</script>
 <style>
 body {
   margin: 0;
@@ -71,9 +75,11 @@ body {
 </style>
 </head>
 <body>
-<div class="card" id="card">Chargement...</div>
+<div class="card" id="card" data-i18n="pages.pictoChargement">Chargement...</div>
 <script>
 (function() {
+  FPI18n.appliquer(document);
+  document.title = T('pages.pictoTitrePage', document.title);
   var params = new URLSearchParams(window.location.search);
   var item = params.get('item') || '';
   var name = params.get('name') || item.replace(/^\$/, '');
@@ -81,11 +87,13 @@ body {
 
   var card = document.getElementById('card');
   if (!item) {
-    card.textContent = 'Picto introuvable.';
+    card.textContent = T('pages.pictoIntrouvable', 'Picto introuvable.');
     return;
   }
 
-  document.title = name + ' - Picto Frutiparc';
+  // Le nom du picto vient de l'adresse (et du serveur) : il ne se traduit pas.
+  document.title = T('pages.pictoTitreNom', '{nom} - Picto Frutiparc', { nom: name });
+  var codeForum = '<div class="bbcode-label">' + esc(T('pages.pictoCodeForum', 'Code forum :')) + '</div>';
   var imgUrl = '/api/picto/' + encodeURIComponent(item);
 
   var html = '<h2>' + esc(name) + '</h2>';
@@ -95,13 +103,13 @@ body {
   img.onload = function() {
     card.innerHTML = html
       + '<img src="' + esc(imgUrl) + '" alt="' + esc(name) + '">'
-      + '<div class="bbcode-label">Code forum :</div>'
+      + codeForum
       + '<div class="bbcode">[picto=' + esc(item) + ']</div>';
   };
   img.onerror = function() {
     card.innerHTML = html
       + '<div class="no-image">?</div>'
-      + '<div class="bbcode-label">Code forum :</div>'
+      + codeForum
       + '<div class="bbcode">[picto=' + esc(item) + ']</div>';
   };
   img.src = imgUrl;

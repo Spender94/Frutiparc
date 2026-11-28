@@ -4,6 +4,12 @@
     <meta charset="UTF-8">
     <link rel="icon" href="/favicon.ico" type="image/x-icon">
     <title>Frutiparc - Ruffle</title>
+    <!-- Les langues du parc (voir /js/i18n.js). Le bureau Flash lui-même reste
+         en français (SWF d'époque) ; ce qui se traduit, ce sont les fenêtres
+         HTML posées par-dessus. « widgets » : les noms de la palette et de la
+         recherche par bouille, dans le Bouilloscope. -->
+    <script src="/js/i18n.js"></script>
+    <script>FPI18n.charger(['commun', 'pages', 'widgets']);</script>
     <style>
         body {
             margin: 0;
@@ -149,9 +155,9 @@
     <div id="online-badge" style="position:fixed;top:8px;right:10px;z-index:2147483646;
         background:rgba(44,74,15,.82);color:#CFF599;font:bold 12px Verdana,sans-serif;
         padding:5px 10px;border-radius:14px;cursor:pointer;user-select:none;display:none;
-        box-shadow:0 2px 6px rgba(0,0,0,.25)" title="Voir qui est connecté">
+        box-shadow:0 2px 6px rgba(0,0,0,.25)" title="Voir qui est connecté" data-i18n-attr="title:pages.ruffleVoirConnectes">
       <span id="online-dot" style="display:inline-block;width:8px;height:8px;border-radius:50%;
-        background:#2ecc40;margin-right:6px;vertical-align:middle"></span><span id="online-count">…</span> en ligne<span id="online-today" style="display:none"><span style="opacity:.55;margin:0 5px">·</span><span id="online-today-n"></span> aujourd'hui</span> <span style="opacity:.6">▾</span>
+        background:#2ecc40;margin-right:6px;vertical-align:middle"></span><span data-i18n-html="pages.ruffleEnLigne"><span id="online-count">…</span> en ligne<span id="online-today" style="display:none"><span style="opacity:.55;margin:0 5px">·</span><span id="online-today-n"></span> aujourd'hui</span></span> <span style="opacity:.6">▾</span>
     </div>
     <!-- Liste des connectés (repliée par défaut, ouverte au clic sur le badge). -->
     <div id="online-list" style="position:fixed;top:38px;right:10px;z-index:2147483646;display:none;
@@ -159,10 +165,13 @@
         border:1px solid rgba(207,245,153,.35);border-radius:10px;padding:8px 0;
         max-height:60vh;overflow-y:auto;min-width:170px;max-width:240px;
         box-shadow:0 6px 18px rgba(0,0,0,.4)">
-      <div id="online-list-head" style="font-weight:bold;color:#CFF599;padding:2px 14px 8px;border-bottom:1px solid rgba(207,245,153,.2);margin-bottom:4px">Connectés</div>
+      <div id="online-list-head" style="font-weight:bold;color:#CFF599;padding:2px 14px 8px;border-bottom:1px solid rgba(207,245,153,.2);margin-bottom:4px" data-i18n="pages.ruffleConnectes">Connectés</div>
       <div id="online-list-body"></div>
     </div>
     <script>
+        // Le HTML marqué data-i18n (rien en français) — AVANT que les scripts
+        // ci-dessous ne retiennent le compteur et la liste.
+        FPI18n.appliquer(document);
         // Poll the connected-players count; click the badge to list the pseudos.
         // ── Blindtest (bureau) ──
         //
@@ -378,7 +387,7 @@
                 var t = document.getElementById("bt-b-temps");
                 var bo = document.getElementById("bt-b-bouton");
                 if (t) t.textContent = reste + " s";
-                if (bo) bo.textContent = sonne() ? "Couper" : "Écouter";
+                if (bo) bo.textContent = sonne() ? T("pages.ruffleCouper", "Couper") : T("pages.ruffleEcouter", "Écouter");
                 if (reste <= 0) retirer();
             }
             setInterval(tic, 500);
@@ -423,26 +432,31 @@
                         if (d && typeof d.today === "number") {
                             document.getElementById("online-today-n").textContent = d.today;
                             document.getElementById("online-today").style.display = "";
-                            badge.title = d.today + (d.today > 1 ? " Frutiz différents" : " Frutiz") + " depuis minuit"
-                                + (d.peak ? " — jusqu'à " + d.peak + " en même temps" : "") + ". Cliquer pour voir qui est connecté.";
+                            badge.title = d.peak
+                                ? T.n("pages.ruffleDepuisMinuitPic", d.today, {
+                                    one: "{n} Frutiz depuis minuit — jusqu'à {pic} en même temps. Cliquer pour voir qui est connecté.",
+                                    other: "{n} Frutiz différents depuis minuit — jusqu'à {pic} en même temps. Cliquer pour voir qui est connecté." }, { pic: d.peak })
+                                : T.n("pages.ruffleDepuisMinuit", d.today, {
+                                    one: "{n} Frutiz depuis minuit. Cliquer pour voir qui est connecté.",
+                                    other: "{n} Frutiz différents depuis minuit. Cliquer pour voir qui est connecté." });
                         }
                     })
                     .catch(function () { /* keep last value */ });
             }
             function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
             function renderList() {
-                body.innerHTML = '<div style="padding:4px 14px;color:#9fb37e">Chargement…</div>';
+                body.innerHTML = '<div style="padding:4px 14px;color:#9fb37e">' + esc(T("pages.ruffleChargement", "Chargement…")) + '</div>';
                 fetch("/api/online-users", { cache: "no-store" })
                     .then(function (r) { return r.json(); })
                     .then(function (d) {
                         var list = (d && d.users) || [];
-                        head.textContent = list.length + (list.length > 1 ? " connectés" : " connecté");
-                        if (!list.length) { body.innerHTML = '<div style="padding:4px 14px;color:#9fb37e">Personne pour le moment.</div>'; return; }
+                        head.textContent = T.n("pages.ruffleNbConnectes", list.length, { one: "{n} connecté", other: "{n} connectés" });
+                        if (!list.length) { body.innerHTML = '<div style="padding:4px 14px;color:#9fb37e">' + esc(T("pages.rufflePersonne", "Personne pour le moment.")) + '</div>'; return; }
                         body.innerHTML = list.map(function (u) {
                             return '<div style="padding:4px 14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(u) + '</div>';
                         }).join("");
                     })
-                    .catch(function () { body.innerHTML = '<div style="padding:4px 14px;color:#f0a">Erreur de chargement.</div>'; });
+                    .catch(function () { body.innerHTML = '<div style="padding:4px 14px;color:#f0a">' + esc(T("pages.ruffleErreurChargement", "Erreur de chargement.")) + '</div>'; });
             }
             function setOpen(v) { open = v; panel.style.display = v ? "block" : "none"; if (v) renderList(); }
             badge.addEventListener("click", function (e) { e.stopPropagation(); setOpen(!open); });
@@ -1008,6 +1022,8 @@
                 // pour borner le nombre de miniatures /bouille-img chargées.
                 var TR_PAGE = 48;
                 var ov = null, gridEl = null, searchEl = null, letterEl = null, pagerEl = null;
+                // « Tous » est l'IDENTIFIANT de la pastille sans filtre ; seul son
+                // affichage se traduit (cf. renderLetters).
                 var data = null, letters = [], letter = "Tous", page = 0;
                 /* LA RECHERCHE PAR BOUILLE. Mêmes règles que /light (module
                    /js/bouille-recherche.js) : des lignes qu'on règle ou qu'on
@@ -1088,7 +1104,7 @@
                     close.addEventListener("click", hide);
                     titleRow.appendChild(title); titleRow.appendChild(close);
                     searchEl = document.createElement("input");
-                    searchEl.type = "search"; searchEl.placeholder = "Rechercher un Frutiz…";
+                    searchEl.type = "search"; searchEl.placeholder = T("pages.ruffleRechercher", "Rechercher un Frutiz…");
                     searchEl.className = "fpt-search";
                     searchEl.style.cssText = "width:100%;box-sizing:border-box;padding:8px 12px;border:0;border-radius:14px;font-size:13px;background:#fff;color:#333;box-shadow:0 1px 2px rgba(122,31,31,.18)";
                     searchEl.addEventListener("input", function () { page = 0; renderLetters(); render(); });
@@ -1099,8 +1115,8 @@
                     bqBouton = document.createElement("button");
                     bqBouton.className = "fpt-chip";
                     bqBouton.type = "button";
-                    bqBouton.textContent = "par bouille";
-                    bqBouton.title = "Chercher par la bouille plutôt que par le pseudo";
+                    bqBouton.textContent = T("pages.ruffleParBouille", "par bouille");
+                    bqBouton.title = T("pages.ruffleParBouilleTitre", "Chercher par la bouille plutôt que par le pseudo");
                     bqBouton.addEventListener("click", function () { bqOuvrir(!bqActif); });
                     ligneRech.appendChild(searchEl); ligneRech.appendChild(bqBouton);
                     letterEl = document.createElement("div");
@@ -1163,12 +1179,12 @@
                         var g = row.querySelector(".bqg"), t = g.firstChild, hex = FPBouille.colorHex(v);
                         g.style.background = libre ? "" : hex;
                         g.style.borderColor = libre ? "" : bqDecale(hex, 0xBB);
-                        t.textContent = libre ? champ.libelle + " : peu importe" : champ.libelle + " · " + FPBouille.colorName(v);
+                        t.textContent = libre ? T("pages.rufflePeuImporte", "{champ} : peu importe", { champ: champ.libelle }) : champ.libelle + " · " + FPBouille.colorName(v);
                         t.style.color = libre ? "" : FPBouille.readableText(hex);
                         g.title = t.textContent;
                     } else {
                         var c = row.querySelector(".bqc");
-                        c.textContent = libre ? champ.libelle + " : peu importe"
+                        c.textContent = libre ? T("pages.rufflePeuImporte", "{champ} : peu importe", { champ: champ.libelle })
                             : champ.libelle + " " + FPBouilleRecherche.nomValeur(champ.cle, v);
                         c.title = c.textContent;
                     }
@@ -1200,7 +1216,7 @@
                     bqEcran = document.createElement("div");
                     bqEcran.style.cssText = "position:relative;width:100px;height:100px;background:url('/frutiz/sprites/ecran-fond.svg') 0 0/100% 100% no-repeat;border-radius:6px;box-shadow:0 0 0 2px #DDD;overflow:hidden";
                     var vider = document.createElement("button");
-                    vider.className = "bqb"; vider.type = "button"; vider.textContent = "tout effacer";
+                    vider.className = "bqb"; vider.type = "button"; vider.textContent = T("pages.ruffleToutEffacer", "tout effacer");
                     vider.addEventListener("click", function () {
                         bqCriteres = {};
                         FPBouilleRecherche.CHAMPS.forEach(bqLigne);
@@ -1256,7 +1272,7 @@
                     var chips = ["Tous"].concat(letters);
                     letterEl.innerHTML = chips.map(function (L) {
                         var active = !searching && L === letter;
-                        return '<button class="fpt-chip" data-l="' + esc(L) + '" style="flex:0 0 auto;min-width:26px;padding:4px 8px;border:0;border-radius:12px;cursor:pointer;font-weight:bold;font-size:12px;' + (active ? "background:#fff;color:#D16767;box-shadow:0 1px 3px rgba(122,31,31,.30)" : "background:rgba(255,255,255,.45);color:#7a1f1f") + '">' + esc(L) + '</button>';
+                        return '<button class="fpt-chip" data-l="' + esc(L) + '" style="flex:0 0 auto;min-width:26px;padding:4px 8px;border:0;border-radius:12px;cursor:pointer;font-weight:bold;font-size:12px;' + (active ? "background:#fff;color:#D16767;box-shadow:0 1px 3px rgba(122,31,31,.30)" : "background:rgba(255,255,255,.45);color:#7a1f1f") + '">' + esc(L === "Tous" ? T("pages.ruffleTous", "Tous") : L) + '</button>';
                     }).join("");
                     Array.prototype.forEach.call(letterEl.querySelectorAll("button"), function (b) {
                         b.addEventListener("click", function () { if (searchEl) searchEl.value = ""; letter = b.getAttribute("data-l"); page = 0; renderLetters(); render(); });
@@ -1265,17 +1281,22 @@
                 function renderPager(total, pages) {
                     if (!pagerEl) return;
                     // Compteur en pastille « étiquette » blanche.
-                    var badge = '<span style="display:inline-block;padding:3px 12px;border-radius:999px;background:#fff;color:#D16767;font-weight:bold;font-size:12px;box-shadow:0 1px 2px rgba(122,31,31,.20)">' + total + ' Frutiz</span>';
+                    function pastille(txt) {
+                        return '<span style="display:inline-block;padding:3px 12px;border-radius:999px;background:#fff;color:#D16767;font-weight:bold;font-size:12px;box-shadow:0 1px 2px rgba(122,31,31,.20)">' + esc(txt) + '</span>';
+                    }
+                    var badge = pastille(T("pages.ruffleNbFrutiz", "{n} Frutiz", { n: total }));
                     if (pages <= 1) {
+                        // Le français d'origine dit « ressemblantes » quel que soit le nombre.
                         pagerEl.innerHTML = total ? badge
-                            : (bqProches.length ? badge.replace(total + ' Frutiz', bqProches.length + ' ressemblantes') : "");
+                            : (bqProches.length ? pastille(T.n("pages.ruffleNbRessemblantes", bqProches.length,
+                                { one: "{n} ressemblantes", other: "{n} ressemblantes" })) : "");
                         return;
                     }
                     // Boutons « bonbon » : voile blanc dégradé + reflet interne.
                     var btn = "border:0;background:linear-gradient(180deg,rgba(255,255,255,.55),rgba(255,255,255,0) 52%),linear-gradient(180deg,#FEB7B7,#F58E8E);color:#7a1f1f;font-weight:bold;font-size:16px;width:36px;height:30px;border-radius:9px;cursor:pointer;box-shadow:0 1px 2px rgba(122,31,31,.22),inset 0 1px 0 rgba(255,255,255,.55)";
                     pagerEl.innerHTML =
                         '<button class="fpt-pgbtn" id="tr-prev" style="' + btn + (page <= 0 ? ";opacity:.4" : "") + '">‹</button>' +
-                        '<span style="font-size:12px;color:#7a1f1f">page ' + (page + 1) + '/' + pages + '</span>' +
+                        '<span style="font-size:12px;color:#7a1f1f">' + esc(T("pages.rufflePage", "page {p}/{total}", { p: page + 1, total: pages })) + '</span>' +
                         '<button class="fpt-pgbtn" id="tr-next" style="' + btn + (page >= pages - 1 ? ";opacity:.4" : "") + '">›</button>' +
                         badge;
                     var p = pagerEl.querySelector("#tr-prev"), n = pagerEl.querySelector("#tr-next");
@@ -1284,7 +1305,8 @@
                 }
                 function carteHtml(e) {
                     var titre = e.rates === undefined ? e.pseudo
-                        : e.pseudo + " — " + (e.rates === 1 ? "un trait de différence" : e.rates + " traits de différence");
+                        : e.pseudo + " — " + (e.rates === 1 ? T("pages.ruffleUnTrait", "un trait de différence")
+                            : T("pages.ruffleTraits", "{n} traits de différence", { n: e.rates }));
                     return '<div class="fpt-card" title="' + esc(titre) + '" style="display:flex;flex-direction:column;align-items:center;gap:4px;background:#fff;border:1px solid #f0dada;border-radius:10px;padding:8px 4px;text-align:center">'
                         + '<span style="display:block;width:72px;height:72px;border:1px solid #cfe0b3;border-radius:8px;background:#E8F8D3;overflow:hidden">' + FPBouilleVignette.html(e.bouille) + '</span>'
                         + '<span style="font-size:12px;font-weight:bold;color:#2C4A0F;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(e.pseudo) + '</span></div>';
@@ -1298,10 +1320,10 @@
                     if (!list.length && bqProches.length) {
                         // Personne ne porte exactement cette tête : on montre
                         // les plus proches plutôt qu'une page vide.
-                        gridEl.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#7a1f1f;font-size:12px;padding:10px 8px 2px;line-height:1.5">Aucune bouille ne correspond exactement.<br>Voici les plus ressemblantes :</div>'
+                        gridEl.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#7a1f1f;font-size:12px;padding:10px 8px 2px;line-height:1.5">' + T("pages.ruffleAucuneExacte", "Aucune bouille ne correspond exactement.<br>Voici les plus ressemblantes :") + '</div>'
                             + bqProches.map(carteHtml).join("");
                     } else if (!list.length) {
-                        gridEl.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#888;font-size:13px;padding:24px">' + ((data && data.length) ? "Aucun Frutiz ne correspond." : "Le trombinoscope est encore vide.") + '</div>';
+                        gridEl.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#888;font-size:13px;padding:24px">' + esc((data && data.length) ? T("pages.ruffleAucunFrutiz", "Aucun Frutiz ne correspond.") : T("pages.ruffleTrombiVide", "Le trombinoscope est encore vide.")) + '</div>';
                     } else {
                         // Vignette = <img> sur le cache PNG /bouille-img (rendu identique
                         // au forum, mais statique : aucun Ruffle une fois en cache). Le
@@ -1315,7 +1337,7 @@
                     renderPager(list.length, pages);
                 }
                 function load() {
-                    gridEl.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#789;padding:24px">Chargement…</div>';
+                    gridEl.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#789;padding:24px">' + esc(T("pages.ruffleChargement", "Chargement…")) + '</div>';
                     fetch("/api/trombinoscope", { cache: "no-store" })
                         .then(function (r) { return r.json(); })
                         .then(function (d) {
@@ -1326,7 +1348,7 @@
                             letter = "Tous"; page = 0;
                             renderLetters(); render();
                         })
-                        .catch(function () { gridEl.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#a33;padding:24px">Erreur de chargement.</div>'; });
+                        .catch(function () { gridEl.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#a33;padding:24px">' + esc(T("pages.ruffleErreurChargement", "Erreur de chargement.")) + '</div>'; });
                 }
                 // Appelé par l'icône « Frutiblogs » du bureau : main.swf est patché
                 // (scripts/patch-main-frutiblogs-trombi.js) pour exécuter
@@ -1465,8 +1487,8 @@
                     console.error("[Ruffle] giving up on main.swf:", err);
                     document.getElementById("player-container").innerHTML =
                         '<div style="color:#fff;font-family:Verdana;padding:24px;text-align:center">' +
-                        'Le chargement de Frutiparc a échoué. Vérifie ta connexion puis ' +
-                        '<a href="javascript:location.reload()" style="color:#ade76b">recharge la page</a>.' +
+                        T("pages.ruffleEchecChargement", 'Le chargement de Frutiparc a échoué. Vérifie ta connexion puis ' +
+                        '<a href="javascript:location.reload()" style="color:#ade76b">recharge la page</a>.') +
                         '</div>';
                     return;
                 }
@@ -1509,8 +1531,8 @@
                     "transition:opacity 0.35s ease",
                 ].join(";");
                 refreshOverlay.innerHTML =
-                    '<span>Bloqué(e) à 9 % ? Actualise !</span>' +
-                    '<button type="button" style="background:#ade76b;color:#1b2a08;border:none;border-radius:4px;padding:5px 10px;font:bold 11px Verdana,sans-serif;cursor:pointer">Actualiser</button>';
+                    '<span>' + T("pages.ruffleBloque", "Bloqué(e) à 9 % ? Actualise !") + '</span>' +
+                    '<button type="button" style="background:#ade76b;color:#1b2a08;border:none;border-radius:4px;padding:5px 10px;font:bold 11px Verdana,sans-serif;cursor:pointer">' + T("pages.ruffleActualiser", "Actualiser") + '</button>';
                 refreshOverlay.querySelector("button").addEventListener("click", () => {
                     window.location.reload();
                 });

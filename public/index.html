@@ -5,6 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="icon" href="/favicon.ico" type="image/x-icon" />
   <title>Frutiparc</title>
+  <!-- Les langues du parc (voir /js/i18n.js) : en anglais, les dictionnaires
+       arrivent pendant l'analyse de la page ; en français, rien. -->
+  <script src="/js/i18n.js"></script>
+  <script>FPI18n.charger(['commun', 'pages']);</script>
   <style>
     body { margin: 0; background: #335511; color: #fff; font-family: Verdana, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
     .splash { text-align: center; }
@@ -20,11 +24,12 @@
 <body>
   <div class="splash">
     <h1>Frutiparc</h1>
-    <p>Le site de jeux Flash des années 2000 — émulé avec Ruffle</p>
+    <p data-i18n="pages.indexSousTitre">Le site de jeux Flash des années 2000 — émulé avec Ruffle</p>
     <div class="actions">
-      <a href="/light">Entrer dans Frutiparc</a>
-      <a class="secondary" href="/legacy">Version Flash</a>
+      <a href="/light" data-i18n="pages.indexEntrer">Entrer dans Frutiparc</a>
+      <a class="secondary" href="/legacy" data-i18n="pages.indexVersionFlash">Version Flash</a>
     </div>
   </div>
+  <script>FPI18n.appliquer(document);</script>
 </body>
 </html>
