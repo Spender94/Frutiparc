@@ -213,7 +213,9 @@ test('au démarrage, VieuxPruneau ouvre le sujet et y poste la map du jour avec 
   assert.strictEqual(String(carte.bouille || '').slice(0, 24), '0g0000010000000000000000');
   assert.match(carte.content, /\[img\]\/forum-uploads\/[0-9a-f]{32}\.svg\[\/img\]/);
   assert.match(carte.content, /Le boss\[\/b\] en [A-H][1-8]\./);
-  assert.match(carte.content, /\(graine \d+ · carte v2\)\[\/i\]$/);
+  // La marque ferme le FRANÇAIS ; la version anglaise suit, dans le même
+  // message, en italique sous un trait (forumBilingue.js).
+  assert.match(carte.content, /\(graine \d+ · carte v2\)\[\/i\]\n\n────────────\n\[i\]\[b\](Today's map|Do-over!)\[\/b\][^]*\[\/i\]$/);
   // Le plan se sert, en SVG, et c'est bien celui de la map servie.
   const url = /\[img\]([^\[]+)\[\/img\]/.exec(carte.content)[1];
   const r = await fetch(BASE + url);

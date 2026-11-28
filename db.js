@@ -278,6 +278,12 @@ async function initSchema() {
       );
 
       CREATE INDEX IF NOT EXISTS idx_user_logs_user ON user_logs(user_id, log_type, created_at DESC);
+      -- L'entrée dans la langue de chacun : \`content\` reste le texte FRANÇAIS
+      -- (le bureau Flash, les recherches par contenu) ; une entrée faite d'un
+      -- gabarit range aussi sa clé et ses paramètres, et se refait dans la
+      -- langue du lecteur. Les anciennes lignes, sans clé, restent en français.
+      ALTER TABLE user_logs ADD COLUMN IF NOT EXISTS msg_key TEXT NULL;
+      ALTER TABLE user_logs ADD COLUMN IF NOT EXISTS msg_params JSONB NULL;
 
       CREATE TABLE IF NOT EXISTS challenge_medals (
         id          SERIAL PRIMARY KEY,
@@ -383,6 +389,10 @@ async function initSchema() {
       );
       CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user
         ON push_subscriptions(username);
+      -- La langue du joueur au moment où l'appareil s'abonne (tenue à jour
+      -- quand il en change) : une notification part souvent vers un absent,
+      -- dont le compte n'est pas chargé en mémoire.
+      ALTER TABLE push_subscriptions ADD COLUMN IF NOT EXISTS lang TEXT NULL;
 
       -- La paire de clés VAPID qui signe les envois. Générée au premier
       -- démarrage et conservée : en changer invaliderait tous les abonnements
@@ -1141,6 +1151,10 @@ async function initSchema() {
         created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
       );
       CREATE INDEX IF NOT EXISTS idx_kikooz_log_user ON kikooz_log(user_id, created_at DESC);
+      -- Le motif d'une entrée « obtenus par » en CODE (clé + paramètres), en
+      -- plus du libellé français : il se lit dans la langue du joueur.
+      ALTER TABLE kikooz_log ADD COLUMN IF NOT EXISTS label_key TEXT NULL;
+      ALTER TABLE kikooz_log ADD COLUMN IF NOT EXISTS label_params JSONB NULL;
 
       -- Les scores de Swapou joués AVEC l'analyse en partie (l'« IA »). Ils ne
       -- vont dans aucun classement : ils se rangent ici, pour l'admin seulement.
@@ -2421,7 +2435,7 @@ async function comptesInactifs(joursLimite, joursPreavis) {
   const lim = Math.max(30, Number(joursLimite) || 0);
   const pre = Math.max(1, Number(joursPreavis) || 0);
   const aAvertir = (await pool.query(
-    `SELECT id, username, email, COALESCE(last_login, created_at) AS derniere
+    `SELECT id, username, email, lang, COALESCE(last_login, created_at) AS derniere
        FROM users
       WHERE COALESCE(last_login, created_at) < now() - make_interval(days => $1)
         AND email IS NOT NULL AND email <> ''
@@ -2896,19 +2910,22 @@ async function removeGameItem(userId, itemName) {
 }
 
 // ── Persistent user history (user_logs table) ──
-async function addUserLogEntry(userId, logType, entryType, content, isNew) {
+// `cle` / `params` : la clé du gabarit et ses paramètres, quand l'entrée en a
+// un (sinon NULL : l'entrée se lit telle quelle, en français).
+async function addUserLogEntry(userId, logType, entryType, content, isNew, cle, params) {
   if (!userId) return;
   await pool.query(
-    `INSERT INTO user_logs (user_id, log_type, entry_type, content, is_new)
-     VALUES ($1, $2, $3, $4, $5)`,
-    [userId, logType, entryType || 1, String(content || ''), !!isNew]
+    `INSERT INTO user_logs (user_id, log_type, entry_type, content, is_new, msg_key, msg_params)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [userId, logType, entryType || 1, String(content || ''), !!isNew,
+      cle || null, cle && params ? JSON.stringify(params) : null]
   );
 }
 
 async function getUserLogEntries(userId, logType, limit = 200) {
   if (!userId) return [];
   const { rows } = await pool.query(
-    `SELECT id, entry_type, content, is_new, created_at
+    `SELECT id, entry_type, content, is_new, created_at, msg_key, msg_params
      FROM user_logs
      WHERE user_id = $1 AND log_type = $2
      ORDER BY created_at DESC
@@ -2947,11 +2964,11 @@ async function deleteSiteLogByContent(content) {
   );
 }
 
-async function broadcastSiteLogToAllUsers(entryType, content) {
+async function broadcastSiteLogToAllUsers(entryType, content, cle, params) {
   await pool.query(
-    `INSERT INTO user_logs (user_id, log_type, entry_type, content, is_new)
-     SELECT id, 'site', $1, $2, true FROM users`,
-    [entryType || 1, String(content || '')]
+    `INSERT INTO user_logs (user_id, log_type, entry_type, content, is_new, msg_key, msg_params)
+     SELECT id, 'site', $1, $2, true, $3, $4::jsonb FROM users`,
+    [entryType || 1, String(content || ''), cle || null, cle && params ? JSON.stringify(params) : null]
   );
 }
 
@@ -3067,28 +3084,31 @@ async function sumKikoozGiftsForWeek(weekKey) {
 // Une ligne par nœud d'époque : b (achat, label = le produit), c (kikooz reçus,
 // label = qui les a donnés), g (le filleul), a (offerts par l'animation ou
 // l'équipe). Relu à l'hydratation, du plus récent au plus ancien.
+// `labelKey` / `labelParams` : le motif en code, quand il en a un.
 async function addKikoozLogEntry(userId, entry) {
   if (!userId || !entry) return;
   await pool.query(
-    `INSERT INTO kikooz_log (user_id, entry_type, amount, label, created_at)
-     VALUES ($1, $2, $3, $4, COALESCE($5, now()))`,
+    `INSERT INTO kikooz_log (user_id, entry_type, amount, label, created_at, label_key, label_params)
+     VALUES ($1, $2, $3, $4, COALESCE($5, now()), $6, $7)`,
     [userId, String(entry.type || 'c').slice(0, 1), Math.round(Number(entry.k) || 0),
-      String(entry.label || '').slice(0, 120), entry.at || null]
+      String(entry.label || '').slice(0, 120), entry.at || null,
+      entry.labelKey || null, entry.labelKey && entry.labelParams ? JSON.stringify(entry.labelParams) : null]
   );
 }
 // La même chose pour un joueur HORS LIGNE, désigné par son pseudo.
 async function addKikoozLogEntryByUsername(username, entry) {
   if (!username || !entry) return;
   await pool.query(
-    `INSERT INTO kikooz_log (user_id, entry_type, amount, label)
-     SELECT id, $2, $3, $4 FROM users WHERE LOWER(username) = LOWER($1)`,
+    `INSERT INTO kikooz_log (user_id, entry_type, amount, label, label_key, label_params)
+     SELECT id, $2, $3, $4, $5, $6::jsonb FROM users WHERE LOWER(username) = LOWER($1)`,
     [String(username), String(entry.type || 'c').slice(0, 1),
-      Math.round(Number(entry.k) || 0), String(entry.label || '').slice(0, 120)]
+      Math.round(Number(entry.k) || 0), String(entry.label || '').slice(0, 120),
+      entry.labelKey || null, entry.labelKey && entry.labelParams ? JSON.stringify(entry.labelParams) : null]
   );
 }
 async function getKikoozLog(userId, limit = 200) {
   const { rows } = await pool.query(
-    `SELECT entry_type, amount, label, created_at FROM kikooz_log
+    `SELECT entry_type, amount, label, created_at, label_key, label_params FROM kikooz_log
      WHERE user_id = $1 ORDER BY created_at DESC, id DESC LIMIT $2`,
     [userId, Math.max(1, Math.min(Number(limit) || 200, 1000))]
   );
@@ -6230,19 +6250,28 @@ async function saveVapidKeys(publicKey, privateKey) {
     [publicKey, privateKey]
   );
 }
-async function upsertPushSubscription(username, endpoint, p256dh, auth, ua) {
+async function upsertPushSubscription(username, endpoint, p256dh, auth, ua, lang) {
   await pool.query(
-    `INSERT INTO push_subscriptions (username, endpoint, p256dh, auth, ua)
-     VALUES ($1, $2, $3, $4, $5)
-     ON CONFLICT (endpoint) DO UPDATE SET username = $1, p256dh = $3, auth = $4, ua = $5`,
-    [username, endpoint, p256dh, auth, ua || '']
+    `INSERT INTO push_subscriptions (username, endpoint, p256dh, auth, ua, lang)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (endpoint) DO UPDATE SET username = $1, p256dh = $3, auth = $4, ua = $5, lang = $6`,
+    [username, endpoint, p256dh, auth, ua || '', lang || null]
   );
+}
+// Le joueur change de langue : ses appareils abonnés suivent.
+async function setPushSubscriptionsLang(username, lang) {
+  await pool.query('UPDATE push_subscriptions SET lang = $2 WHERE LOWER(username) = LOWER($1)',
+    [String(username || ''), lang || null]);
 }
 async function deletePushSubscription(endpoint) {
   await pool.query('DELETE FROM push_subscriptions WHERE endpoint = $1', [endpoint]);
 }
 async function loadAllPushSubscriptions() {
-  const { rows } = await pool.query('SELECT username, endpoint, p256dh, auth FROM push_subscriptions');
+  // La langue de l'appareil ; à défaut (un abonnement d'avant la colonne),
+  // celle du compte.
+  const { rows } = await pool.query(
+    `SELECT s.username, s.endpoint, s.p256dh, s.auth, COALESCE(s.lang, u.lang) AS lang
+       FROM push_subscriptions s LEFT JOIN users u ON LOWER(u.username) = LOWER(s.username)`);
   return rows;
 }
 
@@ -6454,6 +6483,7 @@ module.exports = {
   saveVapidKeys,
   upsertPushSubscription,
   deletePushSubscription,
+  setPushSubscriptionsLang,
   loadAllPushSubscriptions,
   createTournament,
   listTournaments,

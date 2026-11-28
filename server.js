@@ -3973,6 +3973,9 @@ async function hydrateUserFromDb(username, dbUser) {
       t: Number(row.entry_type) || 1,
       c: String(row.content || ''),
     };
+    // Le gabarit d'origine, quand l'entrée en a un : elle se refait dans la
+    // langue du lecteur, même après un redémarrage.
+    if (row.msg_key) { e.k = String(row.msg_key); e.kp = row.msg_params || {}; }
     if (row.is_new) e.n = 1;
     return e;
   };
@@ -4045,32 +4048,89 @@ function sqlTimestampMinus1s(ts) {
   return new Date(d.getTime() - 1000).toISOString().replace('T', ' ').substring(0, 19);
 }
 
-function addUserHistoryEntry(user, { type = 1, content = '', flNew = false } = {}) {
-  if (!user) return;
-  if (!Array.isArray(user.userLog)) user.userLog = [];
+/*
+ * L'HISTORIQUE DANS LA LANGUE DE CHACUN.
+ *
+ * `content` est un TEXTE TRADUISIBLE (cf. texteDe) : une chaîne — ce qu'un
+ * humain a tapé, une annonce de l'équipe —, ou un gabarit { k, fr, p }. Une
+ * entrée garde TOUJOURS son texte français dans `c` (le bureau Flash d'époque,
+ * qui le lit tel quel, les tests, et le code qui cherche une entrée par son
+ * contenu) ; celle qui vient d'un gabarit range en plus sa clé (`k`) et ses
+ * paramètres (`kp`), en mémoire comme en base (user_logs.msg_key /
+ * msg_params). À la lecture, texteEntree(langue, entrée) la refait dans la
+ * langue du lecteur ; sans clé (une vieille ligne, un texte tapé), elle reste
+ * telle qu'elle a été écrite.
+ */
+function entreeHistorique(type, content, flNew) {
   const entry = {
     d: nowSqlTimestamp(),
     t: Number(type) || 1,
-    c: String(content || ''),
+    c: texteDe('fr', content),
   };
+  if (estTexteCle(content)) { entry.k = content.k; entry.kp = parametresRanges(content); }
   if (flNew) entry.n = 1;
+  return entry;
+}
+function texteEntree(lang, e) {
+  if (!e) return '';
+  const c = String(e.c || '');
+  if (!e.k || (FPI18n.valide(lang) || 'fr') === 'fr') return c;
+  const rendu = texteRange(lang, e.k, e.kp);
+  return rendu == null ? c : rendu;
+}
+
+// Le passage de niveau : trois chemins y mènent (l'XP du jour, l'XP immédiate,
+// l'XP créditée hors ligne), une seule phrase.
+function texteNiveau(niveau, xp) {
+  return { k: 'historique.niveau', fr: 'Bravo ! Tu passes au niveau {niveau} ! ({xp} XP)', p: { niveau, xp } };
+}
+// La totoche d'un modérateur (deux commandes la posent).
+function texteTotoche(par) {
+  return { k: 'historique.totoche', fr: 'Tu as été réduit au silence pendant 10 minutes par {par}.', p: { par: getDisplayName(par) } };
+}
+// Un picto débloqué — la même phrase pour tous les jeux.
+function textePicto(jeu, nom) {
+  return { k: 'historique.picto', fr: 'Nouveau picto débloqué sur {jeu} : {nom} !', p: { jeu, nom } };
+}
+
+// LES ÉCRITURES D'UN MÊME JOURNAL PARTENT DANS L'ORDRE. Deux entrées écrites
+// coup sur coup (une mise sur un podium, puis sur l'or) prenaient deux
+// connexions du pool et pouvaient se croiser en base : la ligne de la seconde
+// passait devant. Une file par joueur les range dans l'ordre des évènements.
+const fileHistoriqueEnBase = new Map();
+function ecrireHistoriqueEnBase(cle, tache) {
+  const tour = (fileHistoriqueEnBase.get(cle) || Promise.resolve()).then(tache);
+  const fin = tour.catch(() => {});
+  fileHistoriqueEnBase.set(cle, fin);
+  fin.then(() => { if (fileHistoriqueEnBase.get(cle) === fin) fileHistoriqueEnBase.delete(cle); });
+  return tour;
+}
+
+function addUserHistoryEntry(user, { type = 1, content = '', flNew = false } = {}) {
+  if (!user) return;
+  if (!Array.isArray(user.userLog)) user.userLog = [];
+  const entry = entreeHistorique(type, content, flNew);
   user.userLog.unshift(entry);
   if (user.userLog.length > 200) user.userLog.length = 200;
 
   // Persist to DB so history survives server restarts.
   if (user._dbId) {
-    db.addUserLogEntry(user._dbId, 'user', entry.t, entry.c, !!flNew)
-      .then(() => db.pruneUserLog(user._dbId, 'user', 200))
+    ecrireHistoriqueEnBase(user._dbId, () => db.addUserLogEntry(user._dbId, 'user', entry.t, entry.c, !!flNew, entry.k, entry.kp)
+      .then(() => db.pruneUserLog(user._dbId, 'user', 200)))
       .catch((e) => console.error('[DB] addUserLogEntry user error:', e.message));
   }
 }
 
+// La trame <aw> d'une entrée, dans la langue de la socket (le bureau Flash
+// n'en annonce pas : il la reçoit en français).
+function trameNouvelleEntree(sock, entry, typeParDefaut) {
+  const lang = langueClient(xmlSocketClients.get(sock));
+  return `<${CMD.newuserlog} date="${escapeXml(entry.d || nowSqlTimestamp())}" type="${escapeXml(String(entry.t || typeParDefaut))}">${escapeXml(texteEntree(lang, entry))}</${CMD.newuserlog}>`;
+}
 function notifyNewUserLog(username, entry) {
   if (typeof CMD === 'undefined') return;
   for (const sock of getSocketsForUsername(username)) {
-    sendToClient(sock,
-      `<${CMD.newuserlog} date="${escapeXml(entry.d || nowSqlTimestamp())}" type="${escapeXml(String(entry.t || 1))}">${escapeXml(entry.c || '')}</${CMD.newuserlog}>`
-    );
+    sendToClient(sock, trameNouvelleEntree(sock, entry, 1));
   }
 }
 
@@ -4086,9 +4146,10 @@ function addAndNotifyUserLog(username, { type = 1, content = '', flNew = true } 
   // Without this, any notification raised while the user is disconnected (medal,
   // picto, level-up, totoché…) was silently lost.
   if (process.env.DATABASE_URL) {
-    db.findUserByUsername(username)
-      .then((row) => row && db.addUserLogEntry(row.id, 'user', type, content, !!flNew)
-        .then(() => db.pruneUserLog(row.id, 'user', 200)))
+    const e = entreeHistorique(type, content, flNew);
+    ecrireHistoriqueEnBase('hors-ligne:' + String(username).toLowerCase(), () => db.findUserByUsername(username)
+      .then((row) => row && db.addUserLogEntry(row.id, 'user', type, e.c, !!flNew, e.k, e.kp)
+        .then(() => db.pruneUserLog(row.id, 'user', 200))))
       .catch((e) => console.error('[DB] offline userLog persist error:', e.message));
   }
 }
@@ -4096,17 +4157,12 @@ function addAndNotifyUserLog(username, { type = 1, content = '', flNew = true } 
 function addSiteHistoryEntry(user, { type = 1, content = '', flNew = false } = {}) {
   if (!user) return;
   if (!Array.isArray(user.siteLog)) user.siteLog = [];
-  const entry = {
-    d: nowSqlTimestamp(),
-    t: Number(type) || 1,
-    c: String(content || ''),
-  };
-  if (flNew) entry.n = 1;
+  const entry = entreeHistorique(type, content, flNew);
   user.siteLog.unshift(entry);
   if (user.siteLog.length > 200) user.siteLog.length = 200;
 
   if (user._dbId) {
-    db.addUserLogEntry(user._dbId, 'site', entry.t, entry.c, !!flNew)
+    db.addUserLogEntry(user._dbId, 'site', entry.t, entry.c, !!flNew, entry.k, entry.kp)
       .then(() => db.pruneUserLog(user._dbId, 'site', 200))
       .catch((e) => console.error('[DB] addUserLogEntry site error:', e.message));
   }
@@ -4362,7 +4418,7 @@ async function awardDailyXp() {
     user.xp = oldXp + gain;
     const newLevel = getLevelForXp(user.xp);
     if (newLevel > oldLevel) {
-      addAndNotifyUserLog(username, { type: USER_LOG_TYPE.LEVEL_UP, content: `Bravo ! Tu passes au niveau ${newLevel} ! (${user.xp} XP)` });
+      addAndNotifyUserLog(username, { type: USER_LOG_TYPE.LEVEL_UP, content: texteNiveau(newLevel, user.xp) });
       maybeUnlockReferral(username, oldLevel, newLevel).catch(() => {});
     }
     if (user._dbId) {
@@ -4429,9 +4485,11 @@ function grantReferralReward(username, role, filleul) {
   const quand = new Date().toISOString().replace('T', ' ').substring(0, 19);
   journalKikooz(user, filleul
     ? { type: 'g', t: quand, k: REFERRAL.kikooz, f: getDisplayName(filleul) }
-    : { type: 'c', t: quand, k: REFERRAL.kikooz, c: 'parrainage' });
+    : { type: 'c', t: quand, k: REFERRAL.kikooz, c: { k: 'historique.kikooz.motif.parrainage', fr: 'parrainage' } });
   notifyKikoozUpdate(username, user.kikooz);
-  addAndNotifyUserLog(username, { type: USER_LOG_TYPE.GODSON, content: `Parrainage (${role}) : +${REFERRAL.kikooz} kikooz !` });
+  // Le rôle (« Parrain », « Filleul ») se dit aussi dans la langue du joueur.
+  addAndNotifyUserLog(username, { type: USER_LOG_TYPE.GODSON, content: { k: 'historique.parrainage', fr: 'Parrainage ({role}) : +{k} kikooz !',
+    p: { role: { k: 'historique.role.' + String(role).toLowerCase(), fr: role }, k: REFERRAL.kikooz } } });
 }
 
 // ── L'HISTORIQUE KIKOOZ : UN SEUL GUICHET ───────────────────────────────────
@@ -4448,17 +4506,74 @@ function grantReferralReward(username, role, filleul) {
 //   { type: 'g', k, f }   k kikooz obtenus grâce au filleul f
 //   { type: 'a', k, f }   k kikooz offerts par f (animation, /don, équipe)
 //   { type: 'p', k, n }   mise de k kikooz sur un pari de tournoi (n : le pari)
+//
+// LE MOTIF D'UN « OBTENUS PAR » (`c`) peut être un CODE : un texte à clé
+// { k, fr, p } (connexion quotidienne, parrainage, revente…). L'entrée garde
+// son libellé français dans `c` — le bureau Flash (/ft/log) le lit tel quel, et
+// la revente le compare —, et range en plus le code (`ck`, `cp`, en base
+// label_key / label_params) : l'Historique Kikooz du light le dit dans la
+// langue du joueur. Un nom de joueur (un don) reste une chaîne.
+function motifKikooz(entry) {
+  if (entry.c == null || typeof entry.c === 'string') return entry;
+  const motif = entry.c;
+  entry.c = texteDe('fr', motif);
+  if (estTexteCle(motif)) { entry.ck = motif.k; entry.cp = parametresRanges(motif); }
+  return entry;
+}
+// Ce qu'on range en base d'un motif (pour les chemins hors ligne).
+function motifKikoozEnBase(type, k, motif) {
+  const e = motifKikooz({ type, k, c: motif });
+  return { type, k, label: e.c, labelKey: e.ck, labelParams: e.cp };
+}
 function journalKikooz(user, entry) {
   if (!user || !entry) return;
   if (!Array.isArray(user.kikoozLog)) user.kikoozLog = [];
+  motifKikooz(entry);
   if (!entry.t) entry.t = new Date().toISOString().replace('T', ' ').substring(0, 19);
   user.kikoozLog.unshift(entry);
   if (user.kikoozLog.length > 200) user.kikoozLog.length = 200;
   if (user._dbId && process.env.DATABASE_URL) {
     db.addKikoozLogEntry(user._dbId, {
       type: entry.type, k: entry.k, label: entry.n || entry.c || entry.f || '',
+      labelKey: entry.ck, labelParams: entry.cp,
     }).catch(dbErr('kikooz_log'));
   }
+}
+
+/*
+ * LES ANCIENS MOTIFS. Avant les codes, le motif d'un « obtenus par » n'était
+ * rangé qu'en français, et la table kikooz_log n'est jamais élaguée. Le jeu
+ * des phrases que le serveur écrivait est FINI : on les reconnaît à la
+ * lecture et on leur rend leur code, pour qu'elles se lisent aussi en anglais.
+ * Ce qui ne ressemble à aucune (le nom d'un joueur qui a fait un don, un
+ * libellé tronqué) reste tel quel.
+ */
+const MOTIFS_KIKOOZ_ANCIENS = [
+  [/^connexion quotidienne$/, 'connexion', () => ({})],
+  [/^parrainage$/, 'parrainage', () => ({})],
+  [/^bienvenue de Gaspard$/, 'gaspard', () => ({})],
+  [/^médailles du challenge \((.+)\)$/, 'medailles', (m) => ({ jour: m[1] })],
+  [/^un pari gagné$/, 'pariGagne', () => ({})],
+  [/^un pari gagné \((.+)\)$/, 'pariGagneQuoi', (m) => ({ quoi: m[1] })],
+  [/^un pari remboursé$/, 'pariRembourse', () => ({})],
+  [/^un pari remboursé \((.+)\)$/, 'pariRembourseQuoi', (m) => ({ quoi: m[1] })],
+  [/^la cagnotte des Prunostics$/, 'cagnotte', () => ({})],
+  [/^la quête « (.+) » \(Gromelin\)$/, 'quete', (m) => ({ titre: m[1] })],
+  [/^le contrat « (.+) » \(Gromelin\)$/, 'contrat', (m) => ({ titre: m[1] })],
+  [/^la mise à prix du record « (.+) » \(Gromelin\)$/, 'record', (m) => ({ record: m[1] })],
+  [/^la vente de "(.+)" à (.+)$/, 'vente', (m) => ({ nom: m[1], acheteur: m[2] })],
+  [/^la revente de "(.+)"$/, 'revente', (m) => ({ nom: m[1] })],
+];
+function motifKikoozAncien(label) {
+  for (const [re, code, params] of MOTIFS_KIKOOZ_ANCIENS) {
+    const m = re.exec(label);
+    if (m) return { ck: 'historique.kikooz.motif.' + code, cp: params(m) };
+  }
+  return null;
+}
+// Le motif d'une entrée « obtenus par », dans une langue.
+function motifKikoozDans(lang, e) {
+  return texteEntree(lang, { c: e.c || '', k: e.ck, kp: e.cp });
 }
 
 // Les lignes de la base, remises dans la forme que /ft/log et /api/light/kikooz
@@ -4475,6 +4590,12 @@ function kikoozLogDepuisBase(rows) {
     };
     const label = String(r.label || '');
     if (type === 'b' || type === 'p') e.n = label; else if (type === 'c') e.c = label; else e.f = label;
+    // Le motif en code : rangé tel quel depuis qu'on le range, retrouvé dans
+    // le libellé français pour les lignes d'avant.
+    if (type === 'c') {
+      const code = r.label_key ? { ck: String(r.label_key), cp: r.label_params || {} } : motifKikoozAncien(label);
+      if (code) Object.assign(e, code);
+    }
     out.push(e);
   }
   return out;
@@ -4565,7 +4686,7 @@ function awardImmediateXp(username, gain, reason = '', { notify = true } = {}) {
   const newLevel = getLevelForXp(user.xp);
   if (user._dbId) db.updateUser(username, { xp: user.xp }).catch(dbErr('updateUser xp'));
   if (newLevel > oldLevel) {
-    const content = `Bravo ! Tu passes au niveau ${newLevel} ! (${user.xp} XP)`;
+    const content = texteNiveau(newLevel, user.xp);
     if (notify) addAndNotifyUserLog(username, { type: USER_LOG_TYPE.LEVEL_UP, content });
     else addUserHistoryEntry(user, { type: USER_LOG_TYPE.LEVEL_UP, content, flNew: true });
     maybeUnlockReferral(username, oldLevel, newLevel).catch(() => {});
@@ -4669,12 +4790,13 @@ function awardDailyLoginKikooz(username) {
   // reboot) — sinon la série repartait de 1 après chaque redémarrage. Avec
   // RETRY : perdre cette écriture un jour J casserait la série (bonus 7 jours).
   dbUpdateUserCritical(username, { daily_kikooz_day: today, daily_streak: streak, kikooz: user.kikooz }, 'série de connexion');
-  journalKikooz(user, { type: 'c', k: reward, c: 'connexion quotidienne' });
+  journalKikooz(user, { type: 'c', k: reward, c: { k: 'historique.kikooz.motif.connexion', fr: 'connexion quotidienne' } });
   notifyKikoozUpdate(username, user.kikooz);
-  const serie = streak > 1 ? ` (série de ${streak} jours)` : '';
   addUserHistoryEntry(user, {
     type: USER_LOG_TYPE.GODSON,
-    content: `Connexion quotidienne${serie} : +${reward} kikooz !`,
+    content: streak > 1
+      ? { k: 'historique.connexionSerie', fr: 'Connexion quotidienne (série de {serie} jours) : +{k} kikooz !', p: { serie: streak, k: reward } }
+      : { k: 'historique.connexion', fr: 'Connexion quotidienne : +{k} kikooz !', p: { k: reward } },
     flNew: true,
   });
   console.log(`[KIKOOZ] ${username}: +${reward} kikooz (connexion quotidienne, série ${streak})`);
@@ -4697,8 +4819,9 @@ function awardDailyLoginKikooz(username) {
 // le rattrapage (rattraperCadeauSerie) sert ceux qui ne se reconnectent pas.
 const SERIE_CADEAU_JOURS = 100;
 const SERIE_CADEAU_PACK_ID = 630100;
-const messageCadeauSerie = (streak, nom) =>
-  `${streak} jours de connexion d'affilée ! Pour te remercier de ta fidélité, l'accessoire ${nom} t'attend dans ton inventaire.`;
+const messageCadeauSerie = (streak, nom) => ({ k: 'historique.cadeauSerie',
+  fr: "{serie} jours de connexion d'affilée ! Pour te remercier de ta fidélité, l'accessoire {nom} t'attend dans ton inventaire.",
+  p: { serie: streak, nom } });
 function verifierCadeauSerie(username) {
   const user = users[username];
   const streak = user ? Number(user.dailyStreak) || 0 : 0;
@@ -4940,8 +5063,11 @@ function frutisigneAnnoncer(username) {
   if (st.fs) return false;
   st.fs = 1;
   fdPersist(username, user);
+  // La phrase française vient de frutisignes.js ; l'anglais la refait de ce
+  // qu'elle dit (la semaine, l'ascendant, les jeux).
   const phrase = FRUTISIGNES.phraseDuBonus(bonus, fdGameLabel);
-  addAndNotifyUserLog(username, { type: USER_LOG_TYPE.CHAT, content: phrase });
+  addAndNotifyUserLog(username, { type: USER_LOG_TYPE.CHAT, content: { k: 'historique.frutisigne', fr: '{phrase}',
+    p: { phrase, semaine: !!bonus.semaine, ascendant: !!bonus.ascendant, jeux: bonus.jeux.map(fdGameLabel) } } });
   console.log(`[FD] ${username} : Frutisigne du jour → ${bonus.jeux.join(', ')}`);
   return true;
 }
@@ -5033,7 +5159,8 @@ function fdGateChallengeScore(username, user, game, rankingId) {
     fdPersist(username, user);
     addAndNotifyUserLog(username, {
       type: USER_LOG_TYPE.CHAT,
-      content: `Plus de FD pour le challenge « ${fdGameLabel(game)} » aujourd'hui : tes prochains scores ne seront pas classés. Le Pass quotidien (Boutique, rubrique Pass) ajoute une partie par jour, pour toujours !`,
+      content: { k: 'historique.plusDeFd', p: { jeu: fdGameLabel(game) },
+        fr: "Plus de FD pour le challenge « {jeu} » aujourd'hui : tes prochains scores ne seront pas classés. Le Pass quotidien (Boutique, rubrique Pass) ajoute une partie par jour, pour toujours !" },
     });
   }
   console.log(`[FD] ${username} : challenge ${seau} BLOQUÉ (plus de FD)`);
@@ -5394,7 +5521,7 @@ function awardMedalKikooz(username, reward, reason) {
     db.incrementKikooz(username, reward).catch(dbErr('incrementKikooz medal'));
     // Hors ligne, la ligne d'historique part directement en base : le joueur
     // la lira à sa prochaine connexion, avec les autres.
-    db.addKikoozLogEntryByUsername(username, { type: 'c', k: reward, label: reason }).catch(dbErr('kikooz_log medal'));
+    db.addKikoozLogEntryByUsername(username, motifKikoozEnBase('c', reward, reason)).catch(dbErr('kikooz_log medal'));
   }
 }
 
@@ -5422,7 +5549,7 @@ async function recompenserMedaillesXp(username, places, visibleDay) {
     if (apres != null) {
       const avant = getLevelForXp(apres - total), niveau = getLevelForXp(apres);
       if (niveau > avant) {
-        addAndNotifyUserLog(username, { type: USER_LOG_TYPE.LEVEL_UP, content: `Bravo ! Tu passes au niveau ${niveau} ! (${apres} XP)` });
+        addAndNotifyUserLog(username, { type: USER_LOG_TYPE.LEVEL_UP, content: texteNiveau(niveau, apres) });
         maybeUnlockReferral(username, avant, niveau).catch(() => {});
       }
       console.log(`[XP]  ${username}: +${total} XP (${raison}, hors ligne) → total=${apres}`);
@@ -5448,9 +5575,12 @@ async function annoncerMedaillesDuJour(winnersByUser, visibleDay, placesByUser =
     const sansMedaille = places.filter((p) => !p.medal && xpPayees[p.rankingId] > 0);
     if (sansMedaille.length) {
       const total = sansMedaille.reduce((n, p) => n + xpPayees[p.rankingId], 0);
-      const liste = sansMedaille.map((p) => `${p.rank}e à ${GAME_DISPLAY_NAMES[p.game] || p.game}`).join(', ');
+      // Les rangs en clair (rang, jeu) : l'anglais en fait ses ordinaux.
+      const rangs = sansMedaille.map((p) => ({ rang: p.rank, jeu: GAME_DISPLAY_NAMES[p.game] || p.game }));
+      const liste = rangs.map((p) => `${p.rang}e à ${p.jeu}`).join(', ');
       addAndNotifyUserLog(username, { type: USER_LOG_TYPE.MEDAL, flNew: true,
-        content: `Bien joué ! Tu termines ${liste} au challenge du jour et empoches ${total} XP ! (${visibleDay})` });
+        content: { k: 'historique.places', fr: 'Bien joué ! Tu termines {liste} au challenge du jour et empoches {xp} XP ! ({jour})',
+          p: { liste, places: rangs, xp: total, jour: visibleDay } } });
     }
     for (const m of medals) {
       const gameName = GAME_DISPLAY_NAMES[m.game] || m.game;
@@ -5458,9 +5588,12 @@ async function annoncerMedaillesDuJour(winnersByUser, visibleDay, placesByUser =
       const reward = MEDAL_KIKOOZ[m.medal] || 0;
       const xp = xpPayees[m.rankingId] || 0;
       const gains = [reward > 0 ? `${reward} kikooz` : '', xp > 0 ? `${xp} XP` : ''].filter(Boolean).join(' et ');
+      // `medaille` (or, argent, bronze) et les gains en chiffres : l'anglais
+      // refait le nom de la médaille et la liste des gains à sa façon.
+      const p = { nomMedaille: medalName, medaille: m.medal, jeu: gameName, gains, kikooz: reward, xp, jour: visibleDay };
       const text = gains
-        ? `Félicitations ! Vous avez gagné la médaille ${medalName} à ${gameName} et empoché ${gains} ! (${visibleDay})`
-        : `Félicitations ! Vous avez gagné la médaille ${medalName} à ${gameName} ! (${visibleDay})`;
+        ? { k: 'historique.medailleGains', fr: 'Félicitations ! Vous avez gagné la médaille {nomMedaille} à {jeu} et empoché {gains} ! ({jour})', p }
+        : { k: 'historique.medaille', fr: 'Félicitations ! Vous avez gagné la médaille {nomMedaille} à {jeu} ! ({jour})', p };
       // Notify online (live + DB) AND offline (DB, shown unread on next login)
       // through the unified path — no more "only if connected at push time".
       addAndNotifyUserLog(username, { type: USER_LOG_TYPE.MEDAL, content: text, flNew: true });
@@ -5488,7 +5621,7 @@ function notifyChallengeWinners(winnersByUser, visibleDay) {
     // Crédit kikooz : UNE fois par joueur (somme de ses médailles du jour), pour
     // éviter toute course d'écriture pour un joueur hors ligne multi-médaillé.
     if (totalReward > 0) {
-      awardMedalKikooz(username, totalReward, `médailles du challenge (${visibleDay})`);
+      awardMedalKikooz(username, totalReward, { k: 'historique.kikooz.motif.medailles', fr: 'médailles du challenge ({jour})', p: { jour: visibleDay } });
     }
   }
 }
@@ -5887,10 +6020,24 @@ const FRUTIJOB_JEUX = {
   minifever: { voyant: 'minifever', nom: 'Mini-Fever' },
   jamajama: { voyant: 'jamajama', nom: 'JamaJama' },
 };
+// LES TITRES EN CODE. Un titre que le SERVEUR pose (le « Prunostiqueur du
+// mois ») est rangé en code — « [prunostiqueur] » — et se dit à l'affichage,
+// dans la langue de qui lit la fiche (le bureau Flash, lui, le lit en
+// français). Un frutijob tapé par l'admin reste tel quel.
+const FRUTIJOB_TITRES = {
+  prunostiqueur: { k: 'historique.titre.prunostiqueur', fr: 'Prunostiqueur du mois' },
+  prunostiqueuse: { k: 'historique.titre.prunostiqueuse', fr: 'Prunostiqueuse du mois' },
+};
+function frutijobTitres(job, lang) {
+  return String(job || '').replace(/\[([a-z]+)\]/gi, (m, code) => {
+    const titre = FRUTIJOB_TITRES[code.toLowerCase()];
+    return titre ? texteDe(lang || 'fr', titre) : m;
+  });
+}
 // Le titre en morceaux : { texte } et { jeu, nom[, annees] } (années rangées,
 // sans doublon). null s'il n'a aucun code connu — le texte suffit alors.
-function frutijobMorceaux(job) {
-  const s = String(job || '');
+function frutijobMorceaux(job, lang) {
+  const s = frutijobTitres(job, lang);
   const morceaux = [];
   let reste = 0, jeux = 0;
   const ajouterTexte = (t) => {
@@ -5925,9 +6072,9 @@ function frutijobAnneesEnTexte(annees) {
 }
 // La version texte, pour le bureau : deux jeux que seuls des espaces séparent
 // sont joints par une virgule.
-function frutijobEnTexte(job) {
-  const morceaux = frutijobMorceaux(job);
-  if (!morceaux) return String(job || '');
+function frutijobEnTexte(job, lang) {
+  const morceaux = frutijobMorceaux(job, lang);
+  if (!morceaux) return frutijobTitres(job, lang);
   let out = '';
   morceaux.forEach((m, i) => {
     if (m.jeu) {
@@ -6481,8 +6628,9 @@ function notifyNewMail(targetUsername, mail) {
   noterDecisionPush(targetUsername, 'courrier', true, 'absent → envoyé');
   const de = String(mail.fromAddr || mail.from || '').split('@')[0] || 'Frutiparc';
   pousserNotif(targetUsername, {
-    t: '📬 Nouveau courrier',
-    c: `${de} — ${String(mail.subject || 'sans objet')}`,
+    t: { k: 'notif.courrier', fr: '📬 Nouveau courrier' },
+    c: { k: 'notif.courrierCorps', fr: '{de} — {sujet}',
+      p: { de, sujet: mail.subject ? String(mail.subject) : { k: 'notif.sansObjet', fr: 'sans objet' } } },
     u: '/light?ouvre=mail',
     tag: 'courrier',
   }, PUSH_TTL.courrier);
@@ -8555,12 +8703,30 @@ function noterDecisionPush(username, type, envoye, raison) {
   if (pushJournal.length > 300) pushJournal.shift();
 }
 
+// LA LANGUE D'UN APPAREIL : celle du compte s'il est en mémoire (elle fait
+// foi, et suit un changement fait à l'instant), sinon celle qu'on a rangée
+// avec l'abonnement — le destinataire d'une notification est souvent un
+// absent, dont le compte n'est pas chargé.
+function langueAbonnement(abo) {
+  const u = abo && users[abo.username];
+  return (u && FPI18n.valide(u.lang)) || FPI18n.valide(abo && abo.lang) || 'fr';
+}
+// Le titre (`t`) et le corps (`c`) d'une notification sont des TEXTES
+// TRADUISIBLES (cf. texteDe) : rendus ici, appareil par appareil. Une chaîne
+// part telle quelle.
+function chargeDansSaLangue(charge, lang) {
+  const out = Object.assign({}, charge);
+  for (const champ of ['t', 'c']) {
+    if (charge[champ] != null && typeof charge[champ] !== 'string') out[champ] = texteDe(lang, charge[champ]);
+  }
+  return out;
+}
 // Envoi à un appareil. Rend false si l'abonnement est mort (et le retire).
 async function pushEnvoyerBrut(abo, charge, ttl, urgence) {
   try {
     await webpush.sendNotification(
       { endpoint: abo.endpoint, keys: abo.keys },
-      JSON.stringify(charge),
+      JSON.stringify(chargeDansSaLangue(charge, langueAbonnement(abo))),
       // L'URGENCE COMMANDE LE DÉLAI. Sans elle, le message part en « normal » :
       // le service de poussée du téléphone a le droit de l'entasser avec
       // d'autres et de ne le livrer qu'au prochain réveil de l'appareil — d'où
@@ -8626,7 +8792,7 @@ function pousserNotifMpSiAbsent(g, fromUsername, texteBrut) {
     noterDecisionPush(cible, 'mp', true, 'absent → envoyé');
     const extrait = String(texteBrut || '').replace(/<[^>]*>/g, '').slice(0, 90);
     pousserNotif(cible, {
-      t: `💬 ${getDisplayName(fromUsername)} t'écrit`,
+      t: { k: 'notif.mp', fr: "💬 {nom} t'écrit", p: { nom: getDisplayName(fromUsername) } },
       c: extrait,
       u: '/light?ouvre=prive&avec=' + encodeURIComponent(fromUsername),
       tag: 'mp_' + String(fromUsername).toLowerCase(),
@@ -8649,9 +8815,9 @@ function pousserNotifDefiSiAbsent(de, vers, jeu) {
   noterDecisionPush(cible, 'defi_' + jeu, true, 'absent → envoyé');
   const nomJeu = jeu === 'bandas' ? 'Frutibandas' : jeu === 'snake3' ? 'Frutisnake' : 'Grapiz';
   pousserNotif(cible, {
-    t: `⚔️ ${getDisplayName(de)} te défie !`,
-    c: jeu === 'snake3' ? `Le Battle de ${nomJeu} commence — ton serpent est lâché.`
-      : `La partie de ${nomJeu} commence — ton horloge tourne.`,
+    t: { k: 'notif.defi', fr: '⚔️ {nom} te défie !', p: { nom: getDisplayName(de) } },
+    c: jeu === 'snake3' ? { k: 'notif.defiSnake', fr: 'Le Battle de {jeu} commence — ton serpent est lâché.', p: { jeu: nomJeu } }
+      : { k: 'notif.defiPartie', fr: 'La partie de {jeu} commence — ton horloge tourne.', p: { jeu: nomJeu } },
     u: '/light?ouvre=' + jeu,
     tag: 'defi_' + jeu,
   }, PUSH_TTL.defi);
@@ -8888,7 +9054,7 @@ function notifierMentionTous(g, auteur, texteBrut) {
   for (const u of cibles) {
     addAndNotifyUserLog(u, {
       type: USER_LOG_TYPE.MENTION,
-      content: `📣 ${nomAuteur} s'adresse à tout le monde (${salon}) : « ${extrait} »`,
+      content: { k: 'historique.mentionTous', fr: "📣 {nom} s'adresse à tout le monde ({salon}) : « {extrait} »", p: { nom: nomAuteur, salon, extrait } },
     });
   }
   pousserNotifMentionChat(g, auteur, texteBrut, cibles);
@@ -8923,7 +9089,7 @@ function pousserNotifMentionChat(g, auteur, texteBrut, cibles) {
     }
     noterDecisionPush(cible, 'mention', true, 'absent → envoyé');
     pousserNotif(cible, {
-      t: `💬 ${getDisplayName(auteur)} t'a mentionné`,
+      t: { k: 'notif.mention', fr: "💬 {nom} t'a mentionné", p: { nom: getDisplayName(auteur) } },
       c: extrait,
       u: '/light?ouvre=chat&salon=' + encodeURIComponent(g),
       tag: 'mention_' + String(g || ''),
@@ -8956,7 +9122,8 @@ async function notifierMentionsForum(auteur, topicId, titre, contenu) {
     }
     addAndNotifyUserLog(cible, {
       type: USER_LOG_TYPE.MENTION,
-      content: `Tu as été mentionné(e) sur le forum, dans « ${sujet} », par ${nomAuteur}.`,
+      content: { k: 'historique.mentionForum', fr: 'Tu as été mentionné(e) sur le forum, dans « {sujet} », par {nom}.',
+        p: { sujet: titre ? sujet : { k: 'historique.unSujet', fr: sujet }, nom: nomAuteur } },
     });
     // Le voyant du raccourci, pour lui seul — la trame nommée, celle qui porte
     // le sujet, pour que le clic mène au bon fil.
@@ -8971,8 +9138,8 @@ async function notifierMentionsForum(auteur, topicId, titre, contenu) {
     }
     noterDecisionPush(cible, 'mention_forum', true, 'absent → envoyé');
     pousserNotif(cible, {
-      t: `✏️ ${nomAuteur} t'a mentionné sur le forum`,
-      c: sujet,
+      t: { k: 'notif.mentionForum', fr: "✏️ {nom} t'a mentionné sur le forum", p: { nom: nomAuteur } },
+      c: titre ? sujet : { k: 'historique.unSujet', fr: sujet },
       u: '/light?ouvre=forum&sujet=' + Number(topicId || 0),
       tag: 'forum_' + Number(topicId || 0),
     }, PUSH_TTL.forum);
@@ -9002,8 +9169,8 @@ function pousserNotifCitationsForum(auteur, topicId, titre, contenu) {
     }
     noterDecisionPush(cible, 'forum', true, 'absent → envoyé');
     pousserNotif(cible, {
-      t: `✏️ ${getDisplayName(auteur)} te cite sur le forum`,
-      c: String(titre || 'Un sujet du forum'),
+      t: { k: 'notif.citation', fr: '✏️ {nom} te cite sur le forum', p: { nom: getDisplayName(auteur) } },
+      c: titre ? String(titre) : { k: 'notif.unSujetDuForum', fr: 'Un sujet du forum' },
       u: '/light?ouvre=forum&sujet=' + Number(topicId),
       tag: 'forum_' + Number(topicId),
     }, PUSH_TTL.forum);
@@ -9036,8 +9203,8 @@ async function pousserNotifSuiviForum(auteur, topicId, titre, connus) {
     }
     noterDecisionPush(cible, 'forum', true, 'sujet suivi, absent → envoyé');
     pousserNotif(cible, {
-      t: `💬 ${getDisplayName(auteur)} a répondu sur un sujet que tu suis`,
-      c: String(titre || 'Un sujet du forum'),
+      t: { k: 'notif.suivi', fr: '💬 {nom} a répondu sur un sujet que tu suis', p: { nom: getDisplayName(auteur) } },
+      c: titre ? String(titre) : { k: 'notif.unSujetDuForum', fr: 'Un sujet du forum' },
       u: '/light?ouvre=forum&sujet=' + Number(topicId),
       tag: 'forum_' + Number(topicId),
     }, PUSH_TTL.forum);
@@ -9056,10 +9223,13 @@ function pushEnregistrer(username, sub, ua) {
     username: String(username).toLowerCase(),
     endpoint: sub.endpoint,
     keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth },
+    // La langue du joueur, rangée avec l'appareil : une notification pour un
+    // absent se rend dans sa langue sans charger son compte.
+    lang: langueDe(username),
   };
   pushAbonnements.set(abo.endpoint, abo);
   if (process.env.DATABASE_URL) {
-    db.upsertPushSubscription(abo.username, abo.endpoint, abo.keys.p256dh, abo.keys.auth, ua || '')
+    db.upsertPushSubscription(abo.username, abo.endpoint, abo.keys.p256dh, abo.keys.auth, ua || '', abo.lang)
       .catch(dbErr('upsertPushSubscription'));
   }
   return abo;
@@ -9155,7 +9325,7 @@ app.post('/api/push/test', (req, res) => {
   if (!username) return res.status(401).json({ ok: false, error: 'auth' });
   pousserNotif(username, {
     t: '🔔 Frutiparc',
-    c: 'Les notifications fonctionnent ! Tu seras prévenu du courrier, des messages privés et des événements.',
+    c: { k: 'notif.test', fr: 'Les notifications fonctionnent ! Tu seras prévenu du courrier, des messages privés et des événements.' },
     u: '/light',
     tag: 'test',
   }, 300);
@@ -10206,6 +10376,10 @@ app.post('/api/auth/login', async (req, res) => {
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 const RESET_FROM = (process.env.RESET_FROM_EMAIL || 'Frutiparc <noreply@frutiparc.com>').trim();
 const RESEND_API_KEY = (process.env.RESEND_API_KEY || '').trim();
+// L'adresse de l'API d'envoi. RESEND_API_URL la remplace — un relais, ou un
+// faux service local qui CAPTURE les courriels au lieu de les envoyer (les
+// tests : test/historiqueLangues.test.js).
+const RESEND_API_URL = (process.env.RESEND_API_URL || 'https://api.resend.com/emails').trim();
 
 function hashResetToken(token) {
   return crypto.createHash('sha256').update(String(token)).digest('hex');
@@ -10220,30 +10394,35 @@ function buildPublicBase(req) {
 
 // Send the reset email. Returns true if actually dispatched to a provider,
 // false if it only fell back to console logging (still a "success" for UX).
-async function sendResetEmail(toEmail, username, link) {
-  const subject = 'Frutiparc — réinitialise ton code secret';
-  const text =
-    `Salut ${username} !\n\n` +
-    `Tu as demandé à réinitialiser ton code secret Frutiparc.\n` +
-    `Clique sur ce lien (valable 1 heure) pour en choisir un nouveau :\n\n${link}\n\n` +
-    `Si tu n'es pas à l'origine de cette demande, ignore simplement cet e-mail : ` +
-    `ton code secret reste inchangé.\n\n— L'équipe Frutiparc`;
+//
+// `lang` : la langue du COMPTE (le sujet, le texte et le HTML). Les gabarits
+// HTML (mail.reset.*Html) reçoivent leurs paramètres déjà échappés ; le style
+// reste ici, hors des phrases.
+async function sendResetEmail(toEmail, username, link, lang = 'fr') {
+  const subject = t(lang, 'mail.reset.sujet', 'Frutiparc — réinitialise ton code secret');
+  const text = t(lang, 'mail.reset.texte',
+    "Salut {nom} !\n\n" +
+    "Tu as demandé à réinitialiser ton code secret Frutiparc.\n" +
+    "Clique sur ce lien (valable 1 heure) pour en choisir un nouveau :\n\n{lien}\n\n" +
+    "Si tu n'es pas à l'origine de cette demande, ignore simplement cet e-mail : " +
+    "ton code secret reste inchangé.\n\n— L'équipe Frutiparc", { nom: username, lien: link });
+  const h = { nom: escapeXml(username), lien: escapeXml(link) };
   const html =
     `<div style="font-family:Verdana,Arial,sans-serif;color:#2C4A0F">` +
-    `<p>Salut <b>${escapeXml(username)}</b> !</p>` +
-    `<p>Tu as demandé à réinitialiser ton <b>code secret</b> Frutiparc.</p>` +
+    `<p>${t(lang, 'mail.reset.salutHtml', 'Salut <b>{nom}</b> !', h)}</p>` +
+    `<p>${t(lang, 'mail.reset.demandeHtml', 'Tu as demandé à réinitialiser ton <b>code secret</b> Frutiparc.')}</p>` +
     `<p><a href="${escapeXml(link)}" style="display:inline-block;background:#2C4A0F;color:#CFF599;` +
-    `padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:bold">Choisir un nouveau code secret</a></p>` +
-    `<p style="font-size:12px;color:#5a8a20">Ce lien est valable 1 heure. Si tu n'es pas à l'origine de ` +
-    `cette demande, ignore cet e-mail — ton code secret reste inchangé.</p>` +
-    `<p style="font-size:12px;color:#5a8a20">Ou copie ce lien : <br>${escapeXml(link)}</p></div>`;
+    `padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:bold">${t(lang, 'mail.reset.bouton', 'Choisir un nouveau code secret')}</a></p>` +
+    `<p style="font-size:12px;color:#5a8a20">${t(lang, 'mail.reset.validiteHtml', "Ce lien est valable 1 heure. Si tu n'es pas à l'origine de " +
+    'cette demande, ignore cet e-mail — ton code secret reste inchangé.')}</p>` +
+    `<p style="font-size:12px;color:#5a8a20">${t(lang, 'mail.reset.copieHtml', 'Ou copie ce lien : <br>{lien}', h)}</p></div>`;
 
   if (!RESEND_API_KEY) {
     console.log(`[RESET] (no RESEND_API_KEY) reset link for ${username} <${toEmail}>: ${link}`);
     return false;
   }
   try {
-    const resp = await fetch('https://api.resend.com/emails', {
+    const resp = await fetch(RESEND_API_URL, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ from: RESET_FROM, to: [toEmail], subject, text, html }),
@@ -10287,7 +10466,11 @@ app.post('/api/auth/forgot', async (req, res) => {
       const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MS);
       await db.createPasswordReset(row.id, hashResetToken(token), expiresAt);
       const link = `${buildPublicBase(req)}/reset?token=${token}`;
-      await sendResetEmail(row.email, getDisplayName(row.username), link);
+      // Dans la langue du compte : celle de la mémoire s'il y est chargé, sinon
+      // celle de la base ; à défaut, celle de la requête.
+      const enMemoire = users[String(row.username).toLowerCase()];
+      const lang = (enMemoire && FPI18n.valide(enMemoire.lang)) || FPI18n.valide(row.lang) || langueDeRequete(req);
+      await sendResetEmail(row.email, getDisplayName(row.username), link, lang);
     } else {
       console.log(`[RESET] forgot request for unknown email ${email} (no-op, generic response)`);
     }
@@ -10700,8 +10883,8 @@ async function swapouEnregistrerScore(res, o) {
     // Le rejeu tarde : le joueur l'apprend, et le saura à la fin.
     travail.then(({ v, result }) => {
       addAndNotifyUserLog(username, { type: USER_LOG_TYPE.PICTO, content: result
-        ? `Swapou : ta partie à ${scoreVal} points est vérifiée et classée.`
-        : `Swapou : ta partie à ${scoreVal} points n’a pas pu être vérifiée, elle n’est pas classée.` });
+        ? { k: 'historique.swapouVerifiee', fr: 'Swapou : ta partie à {score} points est vérifiée et classée.', p: { score: scoreVal } }
+        : { k: 'historique.swapouNonVerifiee', fr: 'Swapou : ta partie à {score} points n’a pas pu être vérifiée, elle n’est pas classée.', p: { score: scoreVal } } });
       void v;
     }).catch((e) => console.error('[SWAPOU] vérification différée :', e.message));
     return res.json({ ok: true, enVerification: true, updated: false, newScore: scoreVal, oldScore: 0,
@@ -10804,7 +10987,7 @@ function swapouDonnerPicto(username, n) {
   u.gameItems.push(nom);
   if (u._dbId) db.addGameItem(u._dbId, nom).catch((e) => console.error('[DB] addGameItem:', e.message));
   const info = GAME_ITEM_INFO[nom];
-  addAndNotifyUserLog(username, { type: USER_LOG_TYPE.PICTO, content: `Nouveau picto débloqué sur ${info ? info.game : 'Swapou'} : ${info ? info.name : nom} !` });
+  addAndNotifyUserLog(username, { type: USER_LOG_TYPE.PICTO, content: textePicto(info ? info.game : 'Swapou', info ? info.name : nom) });
   console.log(`[SWAPOU] picto ${nom} donné à ${username} (cinquième combo vérifié)`);
   return true;
 }
@@ -12054,6 +12237,14 @@ function parisMatchCommence(t, m) {
   if (t.format === 'duel') return (Number(m.score1) || 0) + (Number(m.score2) || 0) > 0;
   return m.score1 != null || m.score2 != null;
 }
+// Le motif d'un pari réglé, pour l'Historique Kikooz : « un pari gagné (…) »,
+// « un pari remboursé (…) » — un code, le pari en paramètre.
+function motifPari(statut, quoi) {
+  const gagne = statut === 'gagne';
+  return quoi
+    ? { k: 'historique.kikooz.motif.' + (gagne ? 'pariGagneQuoi' : 'pariRembourseQuoi'), fr: (gagne ? 'un pari gagné' : 'un pari remboursé') + ' ({quoi})', p: { quoi } }
+    : { k: 'historique.kikooz.motif.' + (gagne ? 'pariGagne' : 'pariRembourse'), fr: gagne ? 'un pari gagné' : 'un pari remboursé' };
+}
 // Les kikooz du pari qui reviennent : en mémoire si le joueur y est (c'est
 // alors elle qui fait foi), sinon par un incrément atomique en base.
 function parisCrediter(username, k, libelle) {
@@ -12066,7 +12257,7 @@ function parisCrediter(username, k, libelle) {
     notifyKikoozUpdate(username, user.kikooz);
   } else if (process.env.DATABASE_URL) {
     db.incrementKikooz(username, k).catch(dbErr('incrementKikooz pari'));
-    db.addKikoozLogEntryByUsername(username, { type: 'c', k, label: libelle }).catch(dbErr('kikooz_log pari'));
+    db.addKikoozLogEntryByUsername(username, motifKikoozEnBase('c', k, libelle)).catch(dbErr('kikooz_log pari'));
   }
 }
 function parisRecaler(tid) {
@@ -12122,14 +12313,21 @@ async function parisRecalerMaintenant(tid) {
   const faits = await db.reglerParis(decisions, { plafondCagnotte: parisChallengeReglages.plafondCagnotte });
   for (const f of faits) {
     const quoi = f.affiche ? ` (${f.affiche})` : '';
-    if (f.statut === 'gagne') parisCrediter(f.username, f.gain, 'un pari gagné' + quoi);
-    else if (f.statut === 'rembourse') parisCrediter(f.username, f.gain, 'un pari remboursé' + quoi);
+    if (f.statut === 'gagne') parisCrediter(f.username, f.gain, motifPari('gagne', f.affiche));
+    else if (f.statut === 'rembourse') parisCrediter(f.username, f.gain, motifPari('rembourse', f.affiche));
     console.log(`[PARIS] #${tid} ${f.username} ${f.statut} : mise ${f.mise}, reçoit ${f.gain}${quoi}`);
   }
   dimitriAnnoncer(faits.map((f) => ({
     id: 't' + f.id, statut: f.statut, username: f.username, choix: f.choix, mise: f.mise, gain: f.gain,
     cote: f.cote == null ? null : Number(f.cote),
-    quoi: (nom) => `la victoire de ${nom}${f.affiche ? ` (${f.affiche}${t && t.name ? `, ${t.name}` : ''})` : ''}`,
+    // Le pari, dans la langue du message (Dimitri écrit en deux langues).
+    quoi: (nom, lang) => {
+      const affiche = f.affiche ? `${f.affiche}${t && t.name ? `, ${t.name}` : ''}` : '';
+      const fr = `la victoire de ${nom}${affiche ? ` (${affiche})` : ''}`;
+      if (!lang || lang === 'fr') return fr;
+      return texteDe(lang, affiche ? { k: 'forumbots.dimitri.quoiTournoiAffiche', fr, p: { nom, affiche } }
+        : { k: 'forumbots.dimitri.quoiTournoi', fr, p: { nom } });
+    },
   })));
 }
 // Après chaque action de l'organisateur sur un tournoi (vainqueur, scores,
@@ -12305,8 +12503,9 @@ app.post('/api/paris', async (req, res) => {
     quetesEvenement(moi, { type: 'pari', mise: Number(pari.mise) || mise });
     if (Number(pari.mise) === mise) {
       trackXpAction(moi, 'pari');
-      prunosticPrevenir(choix, moi, `Un Frutiz prunostique ta victoire : ${mise} kikooz misés sur toi`
-        + ` (${affiche}${t.name ? `, ${t.name}` : ''}). À toi de jouer !`);
+      prunosticPrevenir(choix, moi, { k: 'historique.prunosticVictoire',
+        fr: 'Un Frutiz prunostique ta victoire : {mise} kikooz misés sur toi ({quoi}). À toi de jouer !',
+        p: { mise, quoi: `${affiche}${t.name ? `, ${t.name}` : ''}` } });
     }
     console.log(`[PARIS] #${t.id} ${moi} mise ${mise} sur ${choix}${cote ? ` à ×${cote}` : ' (mutuel)'} (${affiche}) — total ${pari.mise}`);
     // Le match a pu se jouer entre la vérification et l'écriture : le
@@ -12591,16 +12790,18 @@ async function parisChallengeAppliquer(decisions) {
   const faits = await db.reglerParisChallenge(decisions, { plafondCagnotte: parisChallengeReglages.plafondCagnotte });
   const jeux = jeuxChallengeParis();
   for (const f of faits) {
-    const quoi = ` (${libellePariChallenge(f, jeux)})`;
-    if (f.statut === 'gagne') parisCrediter(f.username, f.gain, 'un pari gagné' + quoi);
-    else if (f.statut === 'rembourse') parisCrediter(f.username, f.gain, 'un pari remboursé' + quoi);
+    const quoi = libellePariChallenge(f, jeux);
+    if (f.statut === 'gagne') parisCrediter(f.username, f.gain, motifPari('gagne', quoi));
+    else if (f.statut === 'rembourse') parisCrediter(f.username, f.gain, motifPari('rembourse', quoi));
     console.log(`[PARIS] Challenge ${f.jour} ${f.jeu}/${f.type} ${f.username} ${f.statut} : mise ${f.mise}, reçoit ${f.gain}`);
   }
   dimitriAnnoncer(faits.map((f) => {
     const j = jeux.find((x) => x.cle === f.jeu);
     return { id: 'c' + f.id, statut: f.statut, username: f.username, choix: f.choix, mise: f.mise, gain: f.gain,
       cote: f.cote == null ? null : Number(f.cote),
-      quoi: (nom) => quoiPariChallenge(f.type, nom, j ? j.nom : f.jeu) };
+      quoi: (nom, lang) => (lang && lang !== 'fr'
+        ? texteDe(lang, { k: 'forumbots.dimitri.quoi.' + f.type, fr: quoiPariChallenge(f.type, nom, j ? j.nom : f.jeu), p: { nom, jeu: j ? j.nom : f.jeu } })
+        : quoiPariChallenge(f.type, nom, j ? j.nom : f.jeu)) };
   }));
   return faits;
 }
@@ -12877,7 +13078,11 @@ function moisDecale(cle, n) {
  * l'admin lui en a donné un autre entre-temps.
  */
 const TITRE_ETAT = 'prunostics_titre';
-const titreDuMois = (gender) => (gender === 'F' ? 'Prunostiqueuse du mois' : 'Prunostiqueur du mois');
+// Le titre se range en CODE (cf. FRUTIJOB_TITRES) et se dit à l'affichage.
+const titreDuMois = (gender) => (gender === 'F' ? '[prunostiqueuse]' : '[prunostiqueur]');
+// Avant le code, le titre était rangé en toutes lettres : un sacre d'avant la
+// mise à jour se reconnaît encore, et se rend pareil.
+const TITRES_DU_MOIS_ANCIENS = ['Prunostiqueuse du mois', 'Prunostiqueur du mois'];
 async function poserFrutijob(username, job) {
   await db.updateUser(username, { frutijob: job });
   if (users[username]) users[username].frutijob = job;
@@ -12900,7 +13105,7 @@ async function donnerLeTitre(username, mois) {
   const titre = titreDuMois(row.gender);
   // L'ancien titre d'un double sacre ne doit pas devenir « son » frutijob.
   let ancien = String(row.frutijob || '');
-  if (ancien === titreDuMois('F') || ancien === titreDuMois('M')) ancien = '';
+  if (ancien === titreDuMois('F') || ancien === titreDuMois('M') || TITRES_DU_MOIS_ANCIENS.includes(ancien)) ancien = '';
   await db.setAppState(TITRE_ETAT, JSON.stringify({ username, mois, titre, ancien }));
   await poserFrutijob(username, titre);
   return titre;
@@ -12952,17 +13157,19 @@ async function prunostiqueurDuMois(opts) {
   let cagnotte = 0;
   try {
     cagnotte = await db.prunosticsCagnotteVider();
-    if (cagnotte > 0) parisCrediter(premier.username, cagnotte, 'la cagnotte des Prunostics');
+    if (cagnotte > 0) parisCrediter(premier.username, cagnotte, { k: 'historique.kikooz.motif.cagnotte', fr: 'la cagnotte des Prunostics' });
   } catch (e) { console.error('[PARIS] cagnotte du mois :', e.message); cagnotte = 0; }
   // Le titre, porté tout le mois en cours.
   let titre = null;
   try { titre = await donnerLeTitre(premier.username, moisDecale(mois.cle, 1)); }
   catch (e) { console.error('[PARIS] titre du mois :', e.message); }
-  const contenu = Dimitri.messageMois({
-    mois: mois.lisible, objet, cagnotte, titre,
+  // Le titre est un code (« [prunostiqueur] ») : Dimitri le dit en toutes
+  // lettres, dans chacune des deux langues de son message.
+  const contenu = Dimitri.messageBilingue((lang) => Dimitri.messageMois({
+    mois: mois.lisible, cle: mois.cle, objet, cagnotte, titre: titre ? frutijobTitres(titre, lang) : null,
     gagnant: { nom: nomDe(premier.username), net: premier.net, paris: premier.paris, gagnes: premier.gagnes },
     suivants: classement.slice(1, 3).map((c) => ({ nom: nomDe(c.username), net: c.net })),
-  });
+  }, lang));
   await dimitriFile(async () => {
     const topic = await dimitriSujet();
     if (!topic) return;
@@ -12970,7 +13177,7 @@ async function prunostiqueurDuMois(opts) {
     await dimitriPublier(topic, contenu);
   }, 'Prunostiqueur du mois');
   console.log(`[PARIS] Prunostiqueur du mois ${mois.cle} : ${premier.username} (+${premier.net})${objet ? ' — ' + objet : ''}${cagnotte ? ` — cagnotte ${cagnotte}` : ''}${titre ? ` — « ${titre} »` : ''}`);
-  return { mois, gagnant: Object.assign({ nom: nomDe(premier.username), objet, cagnotte, titre }, premier) };
+  return { mois, gagnant: Object.assign({ nom: nomDe(premier.username), objet, cagnotte, titre: titre ? frutijobTitres(titre, 'fr') : null }, premier) };
 }
 app.post('/api/admin/paris-challenge/mois', adminScope('challenge'), async (req, res) => {
   try {
@@ -13519,10 +13726,13 @@ function quetesAccomplir(username, def, p, lundi) {
   const payer = () => {
     const titre = Quetes.titre(def);
     const quoi = def.contrat ? 'Contrat rempli' : 'Quête accomplie';
-    if (gain > 0) parisCrediter(username, gain, `${def.contrat ? 'le contrat' : 'la quête'} « ${titre} » (Gromelin)`);
+    if (gain > 0) parisCrediter(username, gain, def.contrat ? { k: 'historique.kikooz.motif.contrat', fr: 'le contrat « {titre} » (Gromelin)', p: { titre } }
+      : { k: 'historique.kikooz.motif.quete', fr: 'la quête « {titre} » (Gromelin)', p: { titre } });
+    // Contrat ou quête, avec ou sans paie : quatre phrases, une clé chacune.
+    const cle = 'historique.' + (def.contrat ? 'contratRempli' : 'queteAccomplie') + (gain > 0 ? 'Paye' : '');
     addAndNotifyUserLog(username, {
       type: USER_LOG_TYPE.QUETE,
-      content: gain > 0 ? `${quoi} : « ${titre} ». Gromelin te verse ${gain} kikooz.` : `${quoi} : « ${titre} ».`,
+      content: { k: cle, fr: gain > 0 ? quoi + ' : « {titre} ». Gromelin te verse {gain} kikooz.' : quoi + ' : « {titre} ».', p: { titre, gain } },
       flNew: true,
     });
     console.log(`[QUETES] ${username} : « ${titre} » faite (+${gain} kikooz)`);
@@ -13552,7 +13762,8 @@ function quetesBonusPeutEtre(u, lundi) {
   const verser = () => {
     awardImmediateXp(u, xp, 'quêtes de la semaine');
     addAndNotifyUserLog(u, { type: USER_LOG_TYPE.QUETE,
-      content: `Toutes tes quêtes de la semaine sont faites. Gromelin te verse un bonus de ${Quetes.nombre(xp)} XP.`, flNew: true });
+      content: { k: 'historique.quetesSemaine', fr: 'Toutes tes quêtes de la semaine sont faites. Gromelin te verse un bonus de {xp} XP.',
+        p: { xp: Quetes.nombre(xp), nb: xp } }, flNew: true });
     console.log(`[QUETES] ${u} : semaine complète (+${xp} XP)`);
   };
   if (!process.env.DATABASE_URL) return verser();
@@ -13624,7 +13835,8 @@ async function gromelinConfierBricole(username, cle) {
   if (process.env.DATABASE_URL && !(await db.quetesRemplacerIndividuelles(S.lundi, u, quetes, l.reserve, l.niveaux))) return null;
   l.quetes = quetes;
   addAndNotifyUserLog(u, { type: USER_LOG_TYPE.QUETE, flNew: true,
-    content: `Gromelin t'a confié une bricole au salon : « ${Quetes.titre(def)} » (${gain} kikooz, avant dimanche minuit).` });
+    content: { k: 'historique.bricole', fr: "Gromelin t'a confié une bricole au salon : « {titre} » ({gain} kikooz, avant dimanche minuit).",
+      p: { titre: Quetes.titre(def), gain } } });
   console.log(`[QUETES] ${u} : bricole de Gromelin « ${Quetes.titre(def)} » (${gain} kikooz)`);
   return def;
 }
@@ -13873,10 +14085,12 @@ function quetesPrimeScore(u, evt) {
   if (!ancien && !quetesPrimesEtat.has(evt.rk)) { quetesPrimesEtat.set(evt.rk, { base: R.gain, depuis: parisDayKey() }); quetesPrimesEtatEnregistrer(); }
   if (issue === 'propre') {
     addAndNotifyUserLog(u, { type: USER_LOG_TYPE.QUETE, flNew: true,
-      content: `Nouveau record absolu (${nomRk}) : bravo ! C'était déjà le tien, et la mise à prix ne paie que si l'on détrône quelqu'un d'autre.` });
+      content: { k: 'historique.recordPropre', p: { record: nomRk },
+        fr: "Nouveau record absolu ({record}) : bravo ! C'était déjà le tien, et la mise à prix ne paie que si l'on détrône quelqu'un d'autre." } });
   } else if (issue === 'prise') {
     addAndNotifyUserLog(u, { type: USER_LOG_TYPE.QUETE, flNew: true,
-      content: `Nouveau record absolu (${nomRk}), devant ${getDisplayName(ancien.username)} : bravo ! La prime de cette semaine sur ce record a déjà été prise par ${getDisplayName(deja.username)} ; une nouvelle s'ouvre lundi.` });
+      content: { k: 'historique.recordPrimePrise', p: { record: nomRk, ancien: getDisplayName(ancien.username), par: getDisplayName(deja.username) },
+        fr: "Nouveau record absolu ({record}), devant {ancien} : bravo ! La prime de cette semaine sur ce record a déjà été prise par {par} ; une nouvelle s'ouvre lundi." } });
   }
   if (issue !== 'payee') {
     console.log(`[QUETES] ${u} bat le record ${evt.rk} (${ancien ? `${ancien.username} : ${ancien.score}` : 'aucun'} → ${n}) : pas de prime (${issue})`);
@@ -13889,9 +14103,10 @@ function quetesPrimeScore(u, evt) {
   quetesPrimesEtatEnregistrer();
   const payer = () => {
     const nom = (RANKINGS[evt.rk] && RANKINGS[evt.rk].name) || evt.rk;
-    parisCrediter(u, valeur, `la mise à prix du record « ${nom} » (Gromelin)`);
+    parisCrediter(u, valeur, { k: 'historique.kikooz.motif.record', fr: 'la mise à prix du record « {record} » (Gromelin)', p: { record: nom } });
     addAndNotifyUserLog(u, { type: USER_LOG_TYPE.QUETE, flNew: true,
-      content: `Record absolu battu (${nom}), devant ${getDisplayName(ancien.username)} ! Gromelin te verse la mise à prix : ${valeur} kikooz.` });
+      content: { k: 'historique.recordPrime', p: { record: nom, ancien: getDisplayName(ancien.username), gain: valeur },
+        fr: 'Record absolu battu ({record}), devant {ancien} ! Gromelin te verse la mise à prix : {gain} kikooz.' } });
     console.log(`[QUETES] ${u} bat le record ${evt.rk} (${ancien.username} : ${ancien.score} → ${n}) : prime de ${valeur} kikooz`);
   };
   if (!process.env.DATABASE_URL) return payer();
@@ -14938,8 +15153,11 @@ app.post('/api/paris/challenge', async (req, res) => {
     quetesEvenement(moi, { type: 'pari', mise: Number(pari.mise) || mise });
     if (Number(pari.mise) === mise) {
       trackXpAction(moi, 'pari');
-      prunosticPrevenir(choix, moi, `Un Frutiz prunostique ${type === 'or' ? 'ta médaille d’or' : 'ton podium'}`
-        + ` à ${jeu.nom} au Challenge de demain : ${mise} kikooz misés sur toi. Ne le déçois pas !`);
+      prunosticPrevenir(choix, moi, type === 'or'
+        ? { k: 'historique.prunosticOr', p: { jeu: jeu.nom, mise },
+          fr: 'Un Frutiz prunostique ta médaille d’or à {jeu} au Challenge de demain : {mise} kikooz misés sur toi. Ne le déçois pas !' }
+        : { k: 'historique.prunosticPodium', p: { jeu: jeu.nom, mise },
+          fr: 'Un Frutiz prunostique ton podium à {jeu} au Challenge de demain : {mise} kikooz misés sur toi. Ne le déçois pas !' });
     }
     console.log(`[PARIS] Challenge ${jour} ${jeu.cle}/${type} : ${moi} mise ${mise} sur ${choix}`);
     // Le pot après la mise, et ce qu'elle rapporterait s'il en restait là.
@@ -16284,22 +16502,26 @@ app.post('/api/light/compte/suppression', async (req, res) => {
  * la clé est là, le journal du serveur sinon (et le compte n'est alors PAS
  * compté comme averti — on ne fait pas semblant d'avoir prévenu).
  */
-async function envoyerPreavisInactivite(toEmail, username, dansJours) {
-  const subject = 'Frutiparc — ton compte va être supprimé';
+// `lang` : la langue du compte (users.lang).
+async function envoyerPreavisInactivite(toEmail, username, dansJours, lang = 'fr') {
+  const subject = t(lang, 'mail.preavis.sujet', 'Frutiparc — ton compte va être supprimé');
   const base = PUBLIC_HOST ? `https://${PUBLIC_HOST}` : '';
-  const text =
-    `Salut ${username} !\n\n` +
-    `Tu ne t'es pas connecté au parc depuis longtemps. Comme on ne garde pas les comptes ` +
-    `inactifs plus de ${Math.round(RGPD_INACTIVITE_JOURS / 365)} ans, le tien — et tout ce qu'il ` +
-    `contient : scores, inventaire, bouille, courrier — sera supprimé dans ${dansJours} jours.\n\n` +
-    `Pour le garder, il suffit de te reconnecter une fois${base ? ' : ' + base : ''}.\n\n` +
-    `Si tu ne veux plus de ton compte, tu n'as rien à faire.\n\n— L'équipe Frutiparc`;
+  // `suite` est la ponctuation française (« : » précédé d'une espace) ;
+  // l'anglais refait la sienne avec `adresse`.
+  const text = t(lang, 'mail.preavis.texte',
+    "Salut {nom} !\n\n" +
+    "Tu ne t'es pas connecté au parc depuis longtemps. Comme on ne garde pas les comptes " +
+    "inactifs plus de {ans} ans, le tien — et tout ce qu'il " +
+    "contient : scores, inventaire, bouille, courrier — sera supprimé dans {jours} jours.\n\n" +
+    "Pour le garder, il suffit de te reconnecter une fois{suite}.\n\n" +
+    "Si tu ne veux plus de ton compte, tu n'as rien à faire.\n\n— L'équipe Frutiparc",
+    { nom: username, ans: Math.round(RGPD_INACTIVITE_JOURS / 365), jours: dansJours, suite: base ? ' : ' + base : '', adresse: base });
   if (!RESEND_API_KEY) {
     console.log(`[RGPD] (no RESEND_API_KEY) préavis d'inactivité pour ${username} <${toEmail}> non envoyé`);
     return false;
   }
   try {
-    const resp = await fetch('https://api.resend.com/emails', {
+    const resp = await fetch(RESEND_API_URL, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ from: RESET_FROM, to: [toEmail], subject, text }),
@@ -16330,7 +16552,7 @@ async function rgpdBalayage() {
     const { aAvertir, aEffacer } = await db.comptesInactifs(RGPD_INACTIVITE_JOURS, RGPD_PREAVIS_JOURS);
     for (const r of aAvertir) {
       try {
-        if (await envoyerPreavisInactivite(r.email, r.username, RGPD_PREAVIS_JOURS)) {
+        if (await envoyerPreavisInactivite(r.email, r.username, RGPD_PREAVIS_JOURS, FPI18n.valide(r.lang) || 'fr')) {
           await db.marquerPreavisInactivite(r.id);
           bilan.preavis++;
         }
@@ -17914,7 +18136,8 @@ app.post('/api/admin/donner', adminAuth, async (req, res) => {
   const pseudo = String(b.username || '').trim();
   if (!pseudo) return res.status(400).json({ ok: false, code: 'inconnu', error: 'Pseudo requis.' });
   const message = b.silencieux ? ''
-    : (String(b.message || '').trim().slice(0, 300) || `Un cadeau pour toi ! L'accessoire ${pack.name} t'attend dans ton inventaire.`);
+    : (String(b.message || '').trim().slice(0, 300)
+      || { k: 'historique.cadeau', fr: "Un cadeau pour toi ! L'accessoire {nom} t'attend dans ton inventaire.", p: { nom: pack.name } });
   try {
     const r = await donnerArticle(pseudo, pack, { message, force: !!b.force });
     if (!r.ok) {
@@ -18425,7 +18648,7 @@ app.post('/api/minifever/score', async (req, res) => {
       if (dbId) db.addGameItem(dbId, e.item).catch((x) => console.error('[DB] addGameItem:', x.message));
       addAndNotifyUserLog(username, {
         type: USER_LOG_TYPE.PICTO,
-        content: `Nouveau picto débloqué sur Mini-Fever : ${e.nom} !`,
+        content: textePicto('Mini-Fever', e.nom),
       });
     }
   }
@@ -19504,8 +19727,8 @@ app.post('/api/admin/triche/bans', adminAuth, async (req, res) => {
       details: { ban: ligne.id, jeu, jours, fin, echelon, retires } });
     if (b.prevenir !== false && b.prevenir !== 'false' && users[u]) {
       addAndNotifyUserLog(u, { type: USER_LOG_TYPE.BAN,
-        content: `Tes scores à ${nomDuJeu(jeu)} ne sont plus classés ${finDuBanLisible(ligne)} (classements, médailles et tournois). `
-          + `Motif : ${motif}. Tu peux continuer à y jouer.` });
+        content: { k: 'historique.banJeu', p: { jeu: nomDuJeu(jeu), quand: finDuBanLisible(ligne), fin: ligne.fin || '', motif },
+          fr: 'Tes scores à {jeu} ne sont plus classés {quand} (classements, médailles et tournois). Motif : {motif}. Tu peux continuer à y jouer.' } });
     }
     await cloreAlerteTriche(b.alerte, motif);
     res.json({ ok: true, ban: banPourAdmin(ligne), retires });
@@ -19532,7 +19755,7 @@ app.post('/api/admin/triche/bans/:id/lever', adminAuth, async (req, res) => {
       details: { ban: ban.id } });
     if (b.prevenir !== false && b.prevenir !== 'false' && users[ban.username]) {
       addAndNotifyUserLog(ban.username, { type: USER_LOG_TYPE.BAN,
-        content: `Tes scores à ${nomDuJeu(ban.jeu)} sont de nouveau classés.` });
+        content: { k: 'historique.banJeuLeve', fr: 'Tes scores à {jeu} sont de nouveau classés.', p: { jeu: nomDuJeu(ban.jeu) } } });
     }
     res.json({ ok: true, ban: banPourAdmin(ban) });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
@@ -20158,7 +20381,7 @@ function jamaDonnerPictos(username, etat) {
       if (!l.acquis || u.gameItems.includes(l.id)) continue;
       u.gameItems.push(l.id);
       if (u._dbId) db.addGameItem(u._dbId, l.id).catch((e) => console.error('[DB] addGameItem jama:', e.message));
-      addAndNotifyUserLog(username, { type: USER_LOG_TYPE.PICTO, content: `Nouveau picto débloqué sur JamaJama : ${l.nom} !` });
+      addAndNotifyUserLog(username, { type: USER_LOG_TYPE.PICTO, content: textePicto('JamaJama', l.nom) });
       console.log(`[JAMA]  picto ${l.id} « ${l.nom} » pour ${username}`);
       noms.push(l.nom);
     }
@@ -22376,7 +22599,7 @@ app.post('/api/admin/custom-pictos/:name/grant', adminAuth, async (req, res) => 
   const info = CUSTOM_PICTOS[name];
   if (!info) return res.status(404).json({ ok: false, error: 'not_found' });
   if (!process.env.DATABASE_URL) return res.status(503).json({ ok: false, error: 'no_db' });
-  const logMsg = `Nouveau picto débloqué : ${info.displayName} !`;
+  const logMsg = { k: 'historique.pictoSansJeu', fr: 'Nouveau picto débloqué : {nom} !', p: { nom: info.displayName } };
   const syncMemory = (username) => {
     const mem = users[username];
     if (!mem) return false;
@@ -22397,7 +22620,7 @@ app.post('/api/admin/custom-pictos/:name/grant', adminAuth, async (req, res) => 
       }
       for (let i = 0; i < offline.length; i += 25) {
         await Promise.all(offline.slice(i, i + 25).map((id) =>
-          db.addUserLogEntry(id, 'user', USER_LOG_TYPE.PICTO, logMsg, true).catch(() => {})));
+          db.addUserLogEntry(id, 'user', USER_LOG_TYPE.PICTO, texteDe('fr', logMsg), true, logMsg.k, parametresRanges(logMsg)).catch(() => {})));
       }
       console.log(`[ADMIN] Picto "${name}" donné à tout le monde : +${grantedRows.length}`);
       return res.json({ ok: true, granted: grantedRows.length, alreadyHad: null, notFound: [] });
@@ -23301,11 +23524,14 @@ async function mb2StoreCurrentFromDisk(seed, why) {
 // l'admin sur la même graine. Les appels sont sérialisés : deux chemins qui
 // se croisent (boot et roll à minuit pile) ne postent pas deux fois.
 const MB2_SUJET_FORUM = 'Map Challenge Motion-Ball 2';
+const ForumBilingue = require('./forumBilingue.js');
 const MB2_RUBRIQUE_FORUM = 'Jeux Frutiparc';
 const MB2_CARTOGRAPHE = 'vieuxpruneau';
 let mb2PublicationEnCours = Promise.resolve();
-function mb2JourLisible(d = new Date()) {
-  return new Intl.DateTimeFormat('fr-FR', {
+// Le jour en toutes lettres, en français — ou dans `lang` pour la version
+// anglaise du message (« Saturday, November 28, 2026 »).
+function mb2JourLisible(d = new Date(), lang = 'fr') {
+  return new Intl.DateTimeFormat(lang === 'fr' ? 'fr-FR' : lang === 'en' ? 'en-US' : lang, {
     timeZone: 'Europe/Paris', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
   }).format(d);
 }
@@ -23340,7 +23566,9 @@ async function mb2PublierCarteDuJourMaintenant(why, opts) {
   if (topic && topic.is_locked) topic = null;
   if (!topic) {
     const intro = `Chaque nuit, la map du Challenge de Motion Ball 2 change. Chaque matin, je la relève et je la poste ici : la carte du donjon telle que le jeu la montre, et le détail — le départ, la salle du boss, où trouver chaque bille et chaque bonus, les portes, les passages invisibles.\n\nGardez ce sujet sous le coude : la map du jour est toujours dans le dernier message.`;
-    topic = await db.forumCreateTopic(board.id, MB2_CARTOGRAPHE, MB2_SUJET_FORUM, intro, bouille, null);
+    // Le mot d'ouverture, comme les cartes : le français, puis l'anglais.
+    topic = await db.forumCreateTopic(board.id, MB2_CARTOGRAPHE, MB2_SUJET_FORUM,
+      ForumBilingue.postBilingue(intro, ForumBilingue.traduire('en', 'forumbots.pruneau.intro', '')), bouille, null);
     neuf = true;
     console.log(`[MB2] VieuxPruneau ouvre le sujet #${topic.id} « ${MB2_SUJET_FORUM} » dans « ${board.name} »`);
   }
@@ -23363,7 +23591,11 @@ async function mb2PublierCarteDuJourMaintenant(why, opts) {
   forumImageCache.set(hash + '.svg', { mime: 'image/svg+xml', buf });
   const urlImage = `/forum-uploads/${hash}.svg`;
 
-  const contenu = Carte.messageForum(donjon, { graine, jour, urlImage, changement: !!opts.changement });
+  // UN message, deux langues : le français (le plan, le détail, la marque de la
+  // graine), puis sa version anglaise courte, sous un trait (forumBilingue.js).
+  const infosCarte = { graine, jour, urlImage, changement: !!opts.changement };
+  const contenu = ForumBilingue.postBilingue(Carte.messageForum(donjon, infosCarte),
+    Carte.messageForum(donjon, Object.assign({}, infosCarte, { jour: mb2JourLisible(new Date(), 'en') }), 'en'));
   const post = await db.forumCreatePost(topic.id, MB2_CARTOGRAPHE, contenu, bouille, null);
   // Le voyant du forum, comme pour n'importe quelle réponse.
   const suiveurs = await db.forumTopicFollowers(topic.id).catch(() => []);
@@ -23414,8 +23646,9 @@ async function natachaAccueillirMaintenant(username, parrain) {
     console.log(`[NATACHA] ouvre le sujet #${topic.id} « ${Natacha.SUJET} » dans « ${board.name} »`);
   }
   const numero = await db.countUsers().catch(() => 0);
+  // Dans la langue du NOUVEAU : c'est à lui qu'elle s'adresse.
   const contenu = Natacha.messageBienvenue(getDisplayName(qui), {
-    numero, parrain: parrain ? getDisplayName(String(parrain).toLowerCase()) : null,
+    numero, parrain: parrain ? getDisplayName(String(parrain).toLowerCase()) : null, lang: langueDe(qui),
   });
   const post = await db.forumCreatePost(topic.id, Natacha.PSEUDO_NPC, contenu, bouille, null);
   const suiveurs = await db.forumTopicFollowers(topic.id).catch(() => []);
@@ -23500,7 +23733,9 @@ async function dimitriSujet(o) {
     return null;
   }
   if (!board) board = await rubrique();
-  topic = await db.forumCreateTopic(board.id, Dimitri.PSEUDO_NPC, Dimitri.SUJET, Dimitri.INTRO,
+  // Le mot d'accueil, comme ses annonces : le français, puis l'anglais.
+  topic = await db.forumCreateTopic(board.id, Dimitri.PSEUDO_NPC, Dimitri.SUJET,
+    ForumBilingue.postBilingue(Dimitri.INTRO, ForumBilingue.traduire('en', 'forumbots.dimitri.intro', '')),
     users[Dimitri.PSEUDO_NPC].fbouille, Dimitri.HUMEUR);
   await db.setAppState(DIMITRI_SUJET_ETAT, topic.id);
   console.log(`[DIMITRI] ouvre le sujet #${topic.id} « ${Dimitri.SUJET} » dans « ${board.name} »`);
@@ -23525,9 +23760,10 @@ async function dimitriAnnoncerMaintenant(gros) {
   const cles = [...new Set(gros.flatMap((c) => [String(c.username).toLowerCase(), String(c.choix).toLowerCase()]))];
   try { for (const r of await db.fichesComptes(cles)) noms.set(r.username, r.display_name || getDisplayName(r.username)); } catch (e) { /* noms par défaut */ }
   const nomDe = (u) => noms.get(String(u).toLowerCase()) || getDisplayName(String(u).toLowerCase());
-  const contenu = Dimitri.messageGrosCoups(gros.map((c) => ({
-    id: c.id, parieur: nomDe(c.username), quoi: c.quoi(nomDe(c.choix)), mise: c.mise, cote: c.cote, gain: c.gain,
-  })));
+  // Un message, deux langues : `quoi(nom, lang)` dit le pari dans chacune.
+  const contenu = Dimitri.messageBilingue((lang) => Dimitri.messageGrosCoups(gros.map((c) => ({
+    id: c.id, parieur: nomDe(c.username), quoi: c.quoi(nomDe(c.choix), lang), mise: c.mise, cote: c.cote, gain: c.gain,
+  })), lang));
   const r = await dimitriPublier(topic, contenu);
   console.log(`[DIMITRI] annonce ${gros.length} gros coup(s) — message #${r.postId}${r.complete ? ' (complété)' : ''}, sujet #${topic.id}`);
   return r;
@@ -24024,9 +24260,19 @@ app.patch('/api/admin/channels/:name', adminScope('channels'), async (req, res) 
  * annonces ; les événements que le site produit tout seul — l'anniversaire du
  * jour — passent par la même porte.
  */
-function diffuserEvenementSite({ message, type = 1, chatToo = false }) {
+//
+// `message` est un TEXTE TRADUISIBLE : l'annonce que l'admin a tapée (une
+// chaîne, la même pour tous), ou un gabarit { k, fr, p } — l'anniversaire du
+// jour —, qui part dans la langue de chacun et se range avec sa clé. Le
+// français reste la référence : c'est lui que l'admin relit, que la
+// suppression d'un événement cherche en base, et que le garde-fou de
+// l'anniversaire reconnaît (sa marque 🎂 en tête).
+function diffuserEvenementSite({ message: texte, type = 1, chatToo = false }) {
   const eventId = genEventId();
   const time = nowSqlTimestamp();
+  const message = texteDe('fr', texte);
+  const gabarit = estTexteCle(texte) ? { c: message, k: texte.k, kp: parametresRanges(texte) } : null;
+  const dansLaLangue = (lang) => (gabarit ? texteEntree(lang, gabarit) : message);
 
   // The Flash client's addSiteLog checks (obj.time > this.previousTime) to
   // decide flNew — onNewSiteLog doesn't pass flNew explicitly unlike
@@ -24034,12 +24280,17 @@ function diffuserEvenementSite({ message, type = 1, chatToo = false }) {
   // Include milliseconds so the wire date is always strictly > previousTime.
   const wireDate = new Date().toISOString().replace('T', ' ').replace('Z', '');
 
-  // Live notification to connected sockets via newsitelog (bl)
-  const xml = `<${CMD.newsitelog} date="${escapeXml(wireDate)}" type="${type}">${escapeXml(message)}</${CMD.newsitelog}>`;
+  // Live notification to connected sockets via newsitelog (bl) — une trame
+  // par langue, rendue une fois.
+  const trames = new Map();
+  const trameDansLaLangue = (lang) => {
+    if (!trames.has(lang)) trames.set(lang, `<${CMD.newsitelog} date="${escapeXml(wireDate)}" type="${type}">${escapeXml(dansLaLangue(lang))}</${CMD.newsitelog}>`);
+    return trames.get(lang);
+  };
   let notified = 0;
   for (const [sock, client] of xmlSocketClients) {
     if (client.logged) {
-      sendToClient(sock, xml);
+      sendToClient(sock, trameDansLaLangue(langueClient(client)));
       notified++;
     }
   }
@@ -24048,7 +24299,7 @@ function diffuserEvenementSite({ message, type = 1, chatToo = false }) {
   // notifications. Les connectés viennent de recevoir la trame ci-dessus.
   pousserNotifATous({
     t: '📣 Frutiparc',
-    c: String(message).slice(0, 160),
+    c: (lang) => dansLaLangue(lang).slice(0, 160),
     u: '/light?ouvre=evenements',
     tag: 'evenement',
   }, PUSH_TTL.evenement);
@@ -24060,7 +24311,8 @@ function diffuserEvenementSite({ message, type = 1, chatToo = false }) {
     const user = users[username];
     if (!user) continue;
     if (!Array.isArray(user.siteLog)) user.siteLog = [];
-    user.siteLog.unshift({ d: time, t: type, c: message, n: 1, bid: eventId });
+    user.siteLog.unshift(Object.assign({ d: time, t: type, c: message, n: 1, bid: eventId },
+      gabarit ? { k: gabarit.k, kp: gabarit.kp } : null));
     if (user.siteLog.length > 200) user.siteLog.length = 200;
     historyCount++;
   }
@@ -24068,7 +24320,7 @@ function diffuserEvenementSite({ message, type = 1, chatToo = false }) {
   // Persist to DB for ALL registered users (including those not in memory).
   // Single bulk INSERT reaches offline users who will see it on next login.
   if (process.env.DATABASE_URL) {
-    db.broadcastSiteLogToAllUsers(type, message)
+    db.broadcastSiteLogToAllUsers(type, message, gabarit && gabarit.k, gabarit && gabarit.kp)
       .catch((e) => console.error('[DB] broadcast bulk site log error:', e.message));
   }
 
@@ -24578,7 +24830,7 @@ function extractGameItemsFromSlot(username, game, dataStr, { silent = false, use
         const info = GAME_ITEM_INFO[item];
         const label = info ? info.name : item;
         const gameName = info ? info.game : game;
-        addAndNotifyUserLog(username, { type: USER_LOG_TYPE.PICTO, content: `Nouveau picto débloqué sur ${gameName} : ${label} !` });
+        addAndNotifyUserLog(username, { type: USER_LOG_TYPE.PICTO, content: textePicto(gameName, label) });
       }
     }
   }
@@ -27641,7 +27893,7 @@ app.post('/api/kaluga/accessoire', (req, res) => {
   if (user._dbId) db.addAccessory(user._dbId, entry).catch(dbErr('addAccessory'));
   addAndNotifyUserLog(username, {
     type: USER_LOG_TYPE.PICTO,
-    content: `Épreuves de Kaluga : bravo ! L'accessoire ${pack.name} t'attend dans ton inventaire.`,
+    content: { k: 'historique.kaluga', fr: "Épreuves de Kaluga : bravo ! L'accessoire {nom} t'attend dans ton inventaire.", p: { nom: pack.name } },
   });
   console.log(`[KALUGA] ${username} gagne l'accessoire #${pack.id} (${pack.name}) — ${cle}`);
   res.json({ ok: true, accorde: true, nom: pack.name, accessoire: entry });
@@ -28491,6 +28743,9 @@ app.post('/api/light/langue', (req, res) => {
   users[username].lang = lang;
   // Ses sockets light suivent (le bureau Flash reste en français, cf. l'ident).
   for (const [, cl] of xmlSocketClients) if (cl && cl.username === username && cl.estLight) cl.lang = lang;
+  // Ses appareils abonnés aux notifications aussi.
+  for (const abo of pushAbonnements.values()) if (abo.username === username) abo.lang = lang;
+  if (process.env.DATABASE_URL) db.setPushSubscriptionsLang(username, lang).catch((e) => console.error('[DB] lang push:', e.message));
   if (users[username]._dbId) db.updateUser(username, { lang }).catch((e) => console.error('[DB] lang:', e.message));
   res.json({ ok: true, lang });
 });
@@ -29231,7 +29486,8 @@ function purchaseShopPack(user, username, packIdRaw) {
     notifyKikoozUpdate(username, user.kikooz);
     addAndNotifyUserLog(username, {
       type: USER_LOG_TYPE.CHAT,
-      content: `${pack.name} acheté : tu as désormais droit à ${fdAllowanceBase(user, pack.fdPassGame)} parties par jour sur la course du jour !`,
+      content: { k: 'historique.passAchete', fr: '{nom} acheté : tu as désormais droit à {n} parties par jour sur la course du jour !',
+        p: { nom: pack.name, n: fdAllowanceBase(user, pack.fdPassGame) } },
     });
     console.log(`[ft/buy] ${username} bought PASS #${pack.id} (${pack.name}) — pass=${passes}, kikooz now ${user.kikooz}`);
     return { ok: true, kikooz: user.kikooz, isPass: true, pack, passes, allowance: fdAllowanceBase(user, pack.fdPassGame) };
@@ -29246,7 +29502,8 @@ function purchaseShopPack(user, username, packIdRaw) {
     notifyKikoozUpdate(username, user.kikooz);
     addAndNotifyUserLog(username, {
       type: USER_LOG_TYPE.CHAT,
-      content: `${pack.name} acheté ! Pour écrire en couleurs dans les salons : sur mobile, choisis-le dans la palette de feutres ; sur le bureau, tape /multipen.`,
+      content: { k: 'historique.feutreAchete', p: { nom: pack.name },
+        fr: '{nom} acheté ! Pour écrire en couleurs dans les salons : sur mobile, choisis-le dans la palette de feutres ; sur le bureau, tape /multipen.' },
     });
     console.log(`[ft/buy] ${username} bought FEUTRE #${pack.id} (${pack.feutrePen}) — kikooz now ${user.kikooz}`);
     return { ok: true, kikooz: user.kikooz, isFeutre: true, feutre: pack.feutrePen, pack };
@@ -29262,8 +29519,10 @@ function purchaseShopPack(user, username, packIdRaw) {
     const opt = GAME_FEATURES[pack.gameFeature];
     addAndNotifyUserLog(username, {
       type: USER_LOG_TYPE.CHAT,
-      content: (opt && opt.annonce)
-        || `${pack.name} acheté ! Le ${opt ? opt.label : 'tableau de bord'} s'affiche désormais tout seul dès que tu lances une partie.`,
+      // L'annonce propre à une option (le mode nuit) a sa clé, par option.
+      content: (opt && opt.annonce) ? { k: 'historique.option.' + pack.gameFeature, fr: opt.annonce }
+        : { k: 'historique.optionAchetee', fr: "{nom} acheté ! Le {option} s'affiche désormais tout seul dès que tu lances une partie.",
+          p: { nom: pack.name, option: opt ? opt.label : { k: 'historique.tableauDeBord', fr: 'tableau de bord' } } },
     });
     console.log(`[ft/buy] ${username} bought OPTION #${pack.id} (${pack.gameFeature}) — kikooz now ${user.kikooz}`);
     return { ok: true, kikooz: user.kikooz, isGameFeature: true, feature: pack.gameFeature, pack };
@@ -29330,7 +29589,8 @@ function verserCommission(pack, acheteur) {
   createur.kikooz = (typeof createur.kikooz === 'number' ? createur.kikooz : 0) + part;
   if (createur._dbId) db.updateUser(nom, { kikooz: createur.kikooz }).catch(dbErr('updateUser'));
   // Dans son historique, du côté des kikooz REÇUS : « k kikooz obtenus par … ».
-  journalKikooz(createur, { type: 'c', k: part, c: `la vente de "${pack.name}" à ${getDisplayName(acheteur)}` });
+  journalKikooz(createur, { type: 'c', k: part,
+    c: { k: 'historique.kikooz.motif.vente', fr: 'la vente de "{nom}" à {acheteur}', p: { nom: pack.name, acheteur: getDisplayName(acheteur) } } });
   notifyKikoozUpdate(nom, createur.kikooz);
   console.log(`[commission] ${nom} +${part} kikooz — "${pack.name}" acheté par ${acheteur}`);
   return part;
@@ -29351,7 +29611,10 @@ function verserCommission(pack, acheteur) {
  */
 const REVENTE_OFFERT = 30;
 const REVENTE_PART = 0.5;
-const reventeLibelle = (pack) => `la revente de "${pack.name}"`;
+// Le motif d'une revente (un code), et son libellé français — celui que la
+// revente cherche dans le journal pour compter ce qui a déjà été revendu.
+const reventeMotif = (pack) => ({ k: 'historique.kikooz.motif.revente', fr: 'la revente de "{nom}"', p: { nom: pack.name } });
+const reventeLibelle = (pack) => texteDe('fr', reventeMotif(pack));
 function accessoireRevendable(user, pack) {
   if (!user || !pack || pack.wallpaperId || pack.picto || pack.fdPassGame || pack.feutrePen || pack.gameFeature) return null;
   if (shopCategoryOwnedByDefault(pack.category) && !pack.notDefault) return null;
@@ -30639,8 +30902,10 @@ function applyBan(targetUser, byUser, expiry, reason) {
   addAndNotifyUserLog(targetUser, {
     type: USER_LOG_TYPE.BAN,
     content: info.permanent
-      ? `Tu as été banni définitivement par ${getDisplayName(byUser || 'admin')}. Tu ne peux plus rejoindre les salons publics ni poster sur le forum.`
-      : `Tu as été banni jusqu'au ${info.untilDisplay} par ${getDisplayName(byUser || 'admin')}. Tu ne peux plus rejoindre les salons publics ni poster sur le forum.`,
+      ? { k: 'historique.banniDefinitif', p: { par: getDisplayName(byUser || 'admin') },
+        fr: 'Tu as été banni définitivement par {par}. Tu ne peux plus rejoindre les salons publics ni poster sur le forum.' }
+      : { k: 'historique.banni', p: { quand: info.untilDisplay, fin: info.until, par: getDisplayName(byUser || 'admin') },
+        fr: "Tu as été banni jusqu'au {quand} par {par}. Tu ne peux plus rejoindre les salons publics ni poster sur le forum." },
   });
   console.log(`[BAN] ${targetUser} banned by ${byUser || 'admin'} until ${iso}${info.permanent ? ' (permanent)' : ''} — ${reason || ''}`);
   return true;
@@ -30663,7 +30928,8 @@ function liftBan(targetUser, byUser) {
     }
   }
   if (wasBanned) {
-    addAndNotifyUserLog(targetUser, { type: USER_LOG_TYPE.BAN, content: `Ton bannissement a été levé par ${getDisplayName(byUser || 'admin')}.` });
+    addAndNotifyUserLog(targetUser, { type: USER_LOG_TYPE.BAN,
+      content: { k: 'historique.banLeve', fr: 'Ton bannissement a été levé par {par}.', p: { par: getDisplayName(byUser || 'admin') } } });
   }
   console.log(`[BAN] ${targetUser} unbanned by ${byUser || 'admin'}`);
   return true;
@@ -33072,7 +33338,9 @@ const LIGHT_HISTORY_KINDS = {
 // Les deux journaux ont la même forme : { d: date, t: type, c: texte, n: neuf }.
 // Une seule paire de fonctions les sert donc, pour que les deux rubriques ne
 // puissent pas diverger sur le tri, l'horodatage ou le comptage.
-function lightLogRows(user, champ, kinds) {
+// `lang` : celle du lecteur — une entrée faite d'un gabarit s'y refait
+// (texteEntree) ; les autres se lisent telles qu'elles ont été écrites.
+function lightLogRows(user, champ, kinds, lang) {
   const list = Array.isArray(user && user[champ]) ? user[champ] : [];
   const defaut = kinds[1];
   return list
@@ -33090,7 +33358,7 @@ function lightLogRows(user, champ, kinds) {
         kind: kind.icone,
         kindExt: kind.ext || 'svg',
         kindLabel: kind.titre,
-        text: String(e.c || ''),
+        text: texteEntree(lang, e),
         nouveau: Number(e.n) === 1,
       };
     });
@@ -33115,7 +33383,7 @@ app.get('/api/light/events', (req, res) => {
   const user = users[username] || {};
   res.json({
     ok: true,
-    events: lightLogRows(user, 'siteLog', LIGHT_EVENT_KINDS),
+    events: lightLogRows(user, 'siteLog', LIGHT_EVENT_KINDS, FPI18n.valide(req.query.lang) || langueDeRequete(req)),
     unread: lightLogUnread(user, 'siteLog'),
   });
 });
@@ -33136,7 +33404,7 @@ app.get('/api/light/history', (req, res) => {
   const user = users[username] || {};
   res.json({
     ok: true,
-    events: lightLogRows(user, 'userLog', LIGHT_HISTORY_KINDS),
+    events: lightLogRows(user, 'userLog', LIGHT_HISTORY_KINDS, FPI18n.valide(req.query.lang) || langueDeRequete(req)),
     unread: lightLogUnread(user, 'userLog'),
   });
 });
@@ -33213,6 +33481,18 @@ const LIGHT_KIKOOZ_KINDS = {
 function kikoozLigneEpoque(e) {
   return e && e.type === 'p' ? { type: 'b', t: e.t, k: e.k, n: 'Pari : ' + (e.n || '') } : e;
 }
+// LA PHRASE DANS LA LANGUE DU LECTEUR. Le français est celui de la table
+// d'époque, ci-dessus ; une autre langue a sa phrase par nœud
+// (historique.kikooz.b, .c, .g, .a), le motif d'un « obtenus par » dit dans
+// cette langue quand il a son code (motifKikoozDans), et la mise de pari son
+// « Pari : » à elle. `brut` : l'entrée telle qu'elle est rangée ; `e` : la
+// même, lue comme un nœud d'époque.
+function phraseKikooz(lang, brut, e, d) {
+  const fr = d.phrase(e);
+  if (lang === 'fr') return fr;
+  const n = brut.type === 'p' ? t(lang, 'historique.kikooz.pari', 'Pari : {n}', { n: brut.n || '' }) : (e.n || '');
+  return t(lang, 'historique.kikooz.' + e.type, fr, { n, k: Number(e.k) || 0, c: motifKikoozDans(lang, e), f: e.f || '' });
+}
 
 app.get('/api/light/kikooz', (req, res) => {
   const username = resolveUsernameFromSid(req.query.sid || '');
@@ -33221,12 +33501,13 @@ app.get('/api/light/kikooz', (req, res) => {
   const brut = Array.isArray(user.kikoozLog) ? user.kikoozLog : [];
   // Un nœud d'un type inconnu est IGNORÉ, pas affiché en clair : `onLog` fait
   // pareil (son dernier `else` saute le `push` et passe au frère suivant).
-  const events = brut.map(kikoozLigneEpoque).map((e) => {
+  const lang = FPI18n.valide(req.query.lang) || langueDeRequete(req);
+  const events = brut.map((x) => [x, kikoozLigneEpoque(x)]).map(([x, e]) => {
     const d = LIGHT_KIKOOZ_KINDS[e.type];
     if (!d) return null;
     return {
       date: e.t || '',
-      text: d.phrase(e),
+      text: phraseKikooz(lang, x, e, d),
       type: d.type,
       kind: d.icone,
       kindExt: 'svg',
@@ -34122,6 +34403,8 @@ app.get('/api/light/fiche', async (req, res) => {
   // puis `external`, et ne retombe sur la présence qu'à défaut des deux.
   const absence = enLigne ? statusExternalOf(u) : '';
   const lieuDit = nomsPaysRegion(ud);
+  // Le frutijob d'un titre en code se dit dans la langue de qui lit.
+  const langueFiche = FPI18n.valide(req.query.lang) || langueDeRequete(req);
   res.json({
     ok: true,
     pseudo: getDisplayName(u),
@@ -34143,8 +34426,8 @@ app.get('/api/light/fiche', async (req, res) => {
       ville: ud.city || '', sexe: ud.gender || 'M' },
     frutiz: {
       // Le texte (codes de jeu traduits), et les morceaux pour les icônes.
-      job: frutijobEnTexte(getFrutizJob(u, ud)),
-      jobMorceaux: frutijobMorceaux(getFrutizJob(u, ud)),
+      job: frutijobEnTexte(getFrutizJob(u, ud), langueFiche),
+      jobMorceaux: frutijobMorceaux(getFrutizJob(u, ud), langueFiche),
       signe: signe(ud.frutiSign),
       ascendant: signe(ud.frutiSignB),
       consecration: cons.overall || 0,
@@ -34555,7 +34838,7 @@ app.post('/api/light/shop/vendre', async (req, res) => {
     }
     user.kikooz = (typeof user.kikooz === 'number' ? user.kikooz : 0) + offre.prix;
     if (user._dbId) db.updateUser(username, { kikooz: user.kikooz }).catch(dbErr('updateUser'));
-    journalKikooz(user, { type: 'c', k: offre.prix, c: reventeLibelle(pack) });
+    journalKikooz(user, { type: 'c', k: offre.prix, c: reventeMotif(pack) });
     if (process.env.DATABASE_URL) {
       db.insertShopSale({ username, packId: pack.id, packName: pack.name, price: offre.prix }).catch(dbErr('insertShopSale'));
     }
@@ -34894,6 +35177,7 @@ async function boot() {
             username: String(a.username).toLowerCase(),
             endpoint: a.endpoint,
             keys: { p256dh: a.p256dh, auth: a.auth },
+            lang: FPI18n.valide(a.lang) || null,
           });
         }
         pushInit(clesVapid, pushAbonnements.size);
@@ -36185,9 +36469,9 @@ function gaspardAccueillir(g, username) {
   const nom = getDisplayName(username);
   if (k > 0) {
     user.kikooz = (Number(user.kikooz) || 0) + k;
-    journalKikooz(user, { type: 'c', k, c: 'bienvenue de Gaspard' });
+    journalKikooz(user, { type: 'c', k, c: { k: 'historique.kikooz.motif.gaspard', fr: 'bienvenue de Gaspard' } });
     notifyKikoozUpdate(u, user.kikooz);
-    addAndNotifyUserLog(u, { type: USER_LOG_TYPE.CHAT, content: `Gaspard t'offre ${k} kikooz de bienvenue !` });
+    addAndNotifyUserLog(u, { type: USER_LOG_TYPE.CHAT, content: { k: 'historique.gaspardBienvenue', fr: "Gaspard t'offre {k} kikooz de bienvenue !", p: { k } } });
   }
   if (user._dbId) db.updateUser(u, { kikooz: user.kikooz, gaspard_accueil_at: quand }).catch(dbErr('updateUser gaspard'));
   setTimeout(() => {
@@ -36255,11 +36539,10 @@ async function mdamirmaReveal(salon, pasMs) {
   }
 
   const displayTarget = getDisplayName(target);
-  const signName = FRUTI_SIGN_NAMES[sign];
-  const signBName = FRUTI_SIGN_NAMES[signB];
   addUserHistoryEntry(ud, {
     type: USER_LOG_TYPE.CHAT,
-    content: `mdamirma a révélé ton FrutiSigne : ${signName} ascendant ${signBName} !`,
+    content: { k: 'historique.irmaFrutisigne', fr: 'mdamirma a révélé ton FrutiSigne : {signe} ascendant {ascendant} !',
+      p: { signe: nomDeFrutisigne(sign), ascendant: nomDeFrutisigne(signB) } },
     flNew: true,
   });
 
@@ -36426,21 +36709,36 @@ async function frutizDuJour(quand = new Date()) {
     .map((r) => r.display_name || getDisplayName(r.username) || r.username);
 }
 
-/** « 🎂 Aujourd'hui, c'est l'anniversaire de Bob et Carol. Joyeux anniversaire ! » */
-function annivMessage(noms) {
+/**
+ * « 🎂 Aujourd'hui, c'est l'anniversaire de Bob et Carol. Joyeux anniversaire ! »
+ *
+ * Un GABARIT (un texte à clé) : l'annonce part dans la langue de chacun et se
+ * range avec sa clé. `qui` et `de` sont la grammaire française (la liste en
+ * « et », l'élision) ; l'anglais refait la sienne avec `noms` et `reste`.
+ */
+function annivTexte(noms) {
   const parts = noms.slice(0, ANNIV_NOMS_MAX);
   const reste = noms.length - parts.length;
+  const morceaux = parts.slice();
   // Le trop-plein compte comme un dernier nom : « …, F12 et 3 autres frutiz ».
-  if (reste > 0) parts.push(`${reste} autre${reste > 1 ? 's' : ''} frutiz`);
-  const qui = parts.length > 1
-    ? parts.slice(0, -1).join(', ') + ' et ' + parts[parts.length - 1]
-    : parts[0];
+  if (reste > 0) morceaux.push(`${reste} autre${reste > 1 ? 's' : ''} frutiz`);
+  const qui = morceaux.length > 1
+    ? morceaux.slice(0, -1).join(', ') + ' et ' + morceaux[morceaux.length - 1]
+    : morceaux[0];
   // « l'anniversaire d'Alice », pas « de Alice » : l'élision devant une
   // voyelle (ou un h muet, dont on ne saura jamais rien — on l'élide aussi,
   // c'est le cas le plus fréquent).
   const de = /^[aeiouyàâäéèêëîïôöùûüh]/i.test(qui) ? "d'" : 'de ';
-  return `${ANNIV_MARQUE} Aujourd'hui, c'est l'anniversaire ${de}${qui}. `
-    + (noms.length > 1 ? 'Joyeux anniversaire à eux !' : 'Joyeux anniversaire !');
+  const p = { de, qui, noms: parts, reste };
+  return noms.length > 1
+    ? { k: 'historique.anniversaires', fr: `${ANNIV_MARQUE} Aujourd'hui, c'est l'anniversaire {de}{qui}. Joyeux anniversaire à eux !`, p }
+    : { k: 'historique.anniversaire', fr: `${ANNIV_MARQUE} Aujourd'hui, c'est l'anniversaire {de}{qui}. Joyeux anniversaire !`, p };
+}
+function annivMessage(noms) {
+  // Le français du gabarit, rendu sur place : la phrase reste une fonction
+  // pure, sans le reste du serveur (test/anniversaires.test.js l'éprouve seule).
+  const x = annivTexte(noms);
+  return x.fr.replace(/\{(de|qui)\}/g, (m, k) => x.p[k]);
 }
 
 /**
@@ -36468,7 +36766,7 @@ async function annoncerAnniversaires({ quand = new Date(), force = false } = {})
   annivRdv.cle = jour;
   if (!noms.length) return { annonce: false, raison: 'personne', noms };
   const message = annivMessage(noms);
-  const { notified, historyCount } = diffuserEvenementSite({ message, type: 1 });
+  const { notified, historyCount } = diffuserEvenementSite({ message: annivTexte(noms), type: 1 });
   console.log(`[ANNIV] ${jour} : ${noms.length} frutiz fêté(s) → ${notified} connectés, ${historyCount} journaux`);
   return { annonce: true, noms, message };
 }
@@ -36816,8 +37114,8 @@ function kilouteAwardKikooz(username, amount, quizName) {
   // Les quêtes : la Question à 60 kikooz du soir, ou un quiz lancé.
   quetesEvenement(username, { type: 'action', action: name ? 'quiz' : 'kiloute' });
   const content = name
-    ? `Tu as gagné ${amount} kikooz au quiz « ${name} » de ${ANIM_NAME} !`
-    : `Tu as gagné ${amount} kikooz à la Question à 60 kikooz de ${ANIM_NAME} !`;
+    ? { k: 'historique.quizGagne', fr: 'Tu as gagné {k} kikooz au quiz « {quiz} » de {anim} !', p: { k: amount, quiz: name, anim: ANIM_NAME } }
+    : { k: 'historique.questionGagnee', fr: 'Tu as gagné {k} kikooz à la Question à 60 kikooz de {anim} !', p: { k: amount, anim: ANIM_NAME } };
   addUserHistoryEntry(u, {
     type: USER_LOG_TYPE.CHAT,
     content,
@@ -37876,7 +38174,8 @@ function lgPayer(p, e) {
     if (cible._dbId) db.updateUser(u, { kikooz: cible.kikooz }).catch(dbErr('updateUser kikooz loupgarou'));
     journalKikooz(cible, { type: 'a', k: part, f: getDisplayName(donneur) });
     notifyKikoozUpdate(u, cible.kikooz);
-    addAndNotifyUserLog(u, { type: USER_LOG_TYPE.CHAT, content: `Victoire au loup-garou ! ${getDisplayName(donneur)} t'offre ${part} kikooz.` });
+    addAndNotifyUserLog(u, { type: USER_LOG_TYPE.CHAT,
+      content: { k: 'historique.loupgarou', fr: "Victoire au loup-garou ! {nom} t'offre {k} kikooz.", p: { nom: getDisplayName(donneur), k: part } } });
     if (process.env.DATABASE_URL) {
       db.addKikoozGift({ giver: donneur, recipient: u, amount: part, reason: 'loup-garou',
         giverRole: 'animateur', source: 'enveloppe', weekKey: parisWeekKey() })
@@ -38023,6 +38322,10 @@ function piocherIdentiteBot(deja, rng) {
 // un écran —, et les hooks communs aux deux jeux.
 // ─────────────────────────────────────────────
 const NOMS_JEU_DIFFERE = { grapiz: 'Grapiz', bandas: 'Frutibandas' };
+// « à Frutibandas », « au Grapiz » : l'article contracté est une affaire de
+// FRANÇAIS (le genre du nom du jeu). Il entre dans les phrases comme un
+// paramètre de plus ; l'anglais, qui n'en a pas besoin, dit {jeu}.
+function auJeuDiffere(jeu) { return jeu === 'bandas' ? 'à Frutibandas' : 'au Grapiz'; }
 function notifierDiffere(n) {
   const p = n.partie;
   const jeu = NOMS_JEU_DIFFERE[p.jeu] || p.jeu;
@@ -38031,50 +38334,56 @@ function notifierDiffere(n) {
   const moi = p.joueurs.indexOf(vers);
   const adv = getDisplayName(p.joueurs[1 - moi] || '');
   const de = n.de ? getDisplayName(n.de) : adv;
-  const mode = p.salle === 'champ' ? 'championnat' : 'amical';
-  const au = p.jeu === 'bandas' ? 'à Frutibandas' : 'au Grapiz';
+  const mode = p.salle === 'champ'
+    ? { k: 'notif.differe.mode.championnat', fr: 'championnat' } : { k: 'notif.differe.mode.amical', fr: 'amical' };
+  const au = auJeuDiffere(p.jeu);
+  // Le titre et le corps de chaque cas : des textes à clé (notif.differe.*),
+  // rendus dans la langue du destinataire — pour l'historique comme pour le
+  // téléphone. `x(cas, fr)` en fabrique un, avec les paramètres communs.
+  const pa = { de, jeu, au, adv, mode };
+  const x = (cas, fr) => ({ k: 'notif.differe.' + cas, fr, p: pa });
   let emoji = '', titre, corps, urgence = 'high';
   switch (n.type) {
     case 'invitation':
-      emoji = '🎲 '; titre = `${de} t'invite à une partie de ${jeu}`;
-      corps = `En différé (${mode}) : trois jours par coup, tu joues quand tu passes.`; break;
+      emoji = '🎲 '; titre = x('invitation.titre', "{de} t'invite à une partie de {jeu}");
+      corps = x('invitation.corps', 'En différé ({mode}) : trois jours par coup, tu joues quand tu passes.'); break;
     case 'acceptee':
-      titre = `${de} a accepté ta partie de ${jeu}`;
-      corps = p.tour === moi ? `À toi d'ouvrir la partie !` : `${de} ouvre la partie ; tu seras prévenu à ton tour.`; break;
+      titre = x('acceptee.titre', '{de} a accepté ta partie de {jeu}');
+      corps = p.tour === moi ? x('acceptee.aToi', "À toi d'ouvrir la partie !") : x('acceptee.aLui', '{de} ouvre la partie ; tu seras prévenu à ton tour.'); break;
     case 'tour':
-      titre = `${de} a joué ! À ton tour ${au}`;
-      corps = `Tu as trois jours pour répondre (${mode}).`; break;
+      titre = x('tour.titre', '{de} a joué ! À ton tour {au}');
+      corps = x('tour.corps', 'Tu as trois jours pour répondre ({mode}).'); break;
     case 'rappel':
-      emoji = '⏳ '; titre = `Plus qu'un jour pour jouer ${au}`;
-      corps = `${adv} attend ton coup : passé demain, la partie est perdue.`; urgence = 'normal'; break;
+      emoji = '⏳ '; titre = x('rappel.titre', "Plus qu'un jour pour jouer {au}");
+      corps = x('rappel.corps', '{adv} attend ton coup : passé demain, la partie est perdue.'); urgence = 'normal'; break;
     case 'fin': {
       const gagne = p.gagnant === moi, nul = p.gagnant !== 0 && p.gagnant !== 1;
       emoji = gagne ? '🏆 ' : '';
-      titre = nul ? `Égalité ${au} contre ${adv}` : gagne ? `Victoire ${au} contre ${adv} !` : `Défaite ${au} contre ${adv}`;
-      corps = p.raison === 'forfeit' ? (gagne ? `${adv} a abandonné la partie.` : `Tu as abandonné la partie.`)
-        : `La partie en différé (${mode}) est terminée.`; break;
+      titre = nul ? x('fin.nul', 'Égalité {au} contre {adv}') : gagne ? x('fin.victoire', 'Victoire {au} contre {adv} !') : x('fin.defaite', 'Défaite {au} contre {adv}');
+      corps = p.raison === 'forfeit' ? (gagne ? x('fin.abandonAdv', '{adv} a abandonné la partie.') : x('fin.abandonMoi', 'Tu as abandonné la partie.'))
+        : x('fin.corps', 'La partie en différé ({mode}) est terminée.'); break;
     }
     case 'delai': {
       const gagne = p.gagnant === moi;
       emoji = gagne ? '🏆 ' : '';
-      titre = gagne ? `${adv} n'a pas joué : tu gagnes ${au}` : `Trois jours sans jouer : partie de ${jeu} perdue`;
-      corps = gagne ? `Victoire par forfait (${mode}).` : `${adv} gagne par forfait (${mode}).`; break;
+      titre = gagne ? x('delai.gagne', "{adv} n'a pas joué : tu gagnes {au}") : x('delai.perdu', 'Trois jours sans jouer : partie de {jeu} perdue');
+      corps = gagne ? x('delai.gagneCorps', 'Victoire par forfait ({mode}).') : x('delai.perduCorps', '{adv} gagne par forfait ({mode}).'); break;
     }
     case 'refus':
-      titre = `${de} décline ta partie de ${jeu}`; corps = `Ton invitation en différé n'a pas été acceptée.`; urgence = 'normal'; break;
+      titre = x('refus.titre', '{de} décline ta partie de {jeu}'); corps = x('refus.corps', "Ton invitation en différé n'a pas été acceptée."); urgence = 'normal'; break;
     case 'expiree':
-      titre = `${adv} n'a pas répondu à ton invitation ${au}`; corps = `Trois jours sans réponse : l'invitation est retirée.`; urgence = 'normal'; break;
+      titre = x('expiree.titre', "{adv} n'a pas répondu à ton invitation {au}"); corps = x('expiree.corps', "Trois jours sans réponse : l'invitation est retirée."); urgence = 'normal'; break;
     default: return;
   }
   // Dans l'appli : une entrée d'historique (la cloche s'allume, et elle
   // attend un joueur déconnecté à sa prochaine connexion).
-  addAndNotifyUserLog(vers, { type: USER_LOG_TYPE.DIFFERE, content: `${titre} — ${corps}` });
+  addAndNotifyUserLog(vers, { type: USER_LOG_TYPE.DIFFERE, content: { k: 'historique.differe', fr: '{titre} — {corps}', p: { titre, corps } } });
   // Sur le téléphone, si personne n'est devant un écran.
   if (!pushPret) return;
   if (estJoignableEnDirect(vers)) { noterDecisionPush(vers, 'differe_' + p.jeu, false, 'présent (socket fraîche au premier plan)'); return; }
   noterDecisionPush(vers, 'differe_' + p.jeu, true, 'absent → envoyé');
   pousserNotif(vers, {
-    t: emoji + titre, c: corps,
+    t: (lang) => emoji + texteDe(lang, titre), c: corps,
     u: `/light?ouvre=${p.jeu}&partie=${encodeURIComponent(p.id)}`,
     tag: 'differe_' + p.id,
   }, PUSH_TTL.differe, urgence);
@@ -39449,10 +39758,11 @@ function kickUserFromChannel(channelName, targetUser, byUser, reason = 'kick') {
   notifyTraceSubscribers(targetUser);
 
   if (!CONNECTED_NPCS.has(targetUser)) {
-    const actionLabel = isBan ? 'banni' : 'expulsé';
     addAndNotifyUserLog(targetUser, {
       type: isBan ? USER_LOG_TYPE.BAN : USER_LOG_TYPE.KICK,
-      content: `Tu as été ${actionLabel} du salon ${channelName} par ${getDisplayName(byUser)}.`,
+      content: isBan
+        ? { k: 'historique.banniDuSalon', fr: 'Tu as été banni du salon {salon} par {par}.', p: { salon: channelName, par: getDisplayName(byUser) } }
+        : { k: 'historique.expulseDuSalon', fr: 'Tu as été expulsé du salon {salon} par {par}.', p: { salon: channelName, par: getDisplayName(byUser) } },
     });
     if (process.env.DATABASE_URL) db.addModerationLog(targetUser, byUser, reason, `salon ${channelName}`).catch(e => console.error('[DB] modlog error:', e.message));
   }
@@ -40121,7 +40431,7 @@ async function handleCBeeMessage(socket, rawXml) {
       if (user.hasWelcomeUserLog !== true) {
         addUserHistoryEntry(user, {
           type: USER_LOG_TYPE.INSCRIPTION,
-          content: "Bienvenue sur Frutiparc Revival ! Tu n'as donc rien de mieux à faire ?!",
+          content: { k: 'historique.bienvenue', fr: "Bienvenue sur Frutiparc Revival ! Tu n'as donc rien de mieux à faire ?!" },
           flNew: true,
         });
         user.hasWelcomeUserLog = true;
@@ -40129,7 +40439,7 @@ async function handleCBeeMessage(socket, rawXml) {
       if (user.hasWelcomeSiteLog !== true) {
         addSiteHistoryEntry(user, {
           type: USER_LOG_TYPE.INSCRIPTION,
-          content: "Évènement: ton compte Frutiparc Revival vient d'être activé.",
+          content: { k: 'historique.compteActive', fr: "Évènement: ton compte Frutiparc Revival vient d'être activé." },
           flNew: true,
         });
         user.hasWelcomeSiteLog = true;
@@ -40191,10 +40501,7 @@ async function handleCBeeMessage(socket, rawXml) {
       if (user.userLog && user.userLog.length > 0) {
         for (const entry of user.userLog) {
           if (!entry || !entry.n) continue;
-          sendToClient(
-            socket,
-            `<${CMD.newuserlog} date="${escapeXml(entry.d || nowSqlTimestamp())}" type="${escapeXml(String(entry.t || 8))}">${escapeXml(entry.c || '')}</${CMD.newuserlog}>`,
-          );
+          sendToClient(socket, trameNouvelleEntree(socket, entry, 8));
         }
       }
       // Le voyant forum du bureau s'allume aussi À LA CONNEXION quand des
@@ -40935,7 +41242,8 @@ case 'send': {
     for (const s of getSocketsForUsername(client.username)) {
       sendToClient(s, `<${CMD.onmute} u="${escapeXml(getDisplayName(client.username))}" mt="${escapeXml(until)}" mu="${escapeXml(until)}" />`);
     }
-    addAndNotifyUserLog(client.username, { type: USER_LOG_TYPE.TOTOCHE, content: 'Tu as été totoché 10 minutes pour propos interdits (auto-modération).' });
+    addAndNotifyUserLog(client.username, { type: USER_LOG_TYPE.TOTOCHE,
+      content: { k: 'historique.totocheAuto', fr: 'Tu as été totoché 10 minutes pour propos interdits (auto-modération).' } });
     if (process.env.DATABASE_URL) db.addModerationLog(client.username, 'auto', 'totoche', 'mots interdits').catch(e => console.error('[DB] modlog error:', e.message));
     const announce = annonceTotoche(client.username);
     if (channels[g] && channels[g].users && channels[g].users.has(client.username)) {
@@ -41081,7 +41389,7 @@ case 'send': {
         for (const targetSock of getSocketsForUsername(targetUser)) {
           sendToClient(targetSock, `<${CMD.onmute} u="${escapeXml(getDisplayName(targetUser))}" mt="${escapeXml(until)}" mu="${escapeXml(until)}" />`);
         }
-        addAndNotifyUserLog(targetUser, { type: USER_LOG_TYPE.TOTOCHE, content: `Tu as été réduit au silence pendant 10 minutes par ${getDisplayName(client.username)}.` });
+        addAndNotifyUserLog(targetUser, { type: USER_LOG_TYPE.TOTOCHE, content: texteTotoche(client.username) });
         if (process.env.DATABASE_URL) db.addModerationLog(targetUser, client.username, 'totoche', `10 min`).catch(e => console.error('[DB] modlog error:', e.message));
         // Render exactly like userkicked/userjoined/userleaved: plain italic,
         // no timestamp, default color.  chat.msg_admin = "$h<i>$m</i>" so we
@@ -41506,7 +41814,8 @@ case 'send': {
       // l'équipe qui paie, pas la poche du donateur. Persisté avec le reste.
       journalKikooz(target, { type: 'a', k: amount, f: getDisplayName(client.username) });
       notifyKikoozUpdate(targetName, target.kikooz);
-      addAndNotifyUserLog(targetName, { type: USER_LOG_TYPE.CHAT, content: `${getDisplayName(client.username)} t'a offert ${amount} kikooz !` });
+      addAndNotifyUserLog(targetName, { type: USER_LOG_TYPE.CHAT,
+        content: { k: 'historique.donAnimateur', fr: "{nom} t'a offert {k} kikooz !", p: { nom: getDisplayName(client.username), k: amount } } });
       npcSay(client.username, g, { k: 'chat.don.annonce', fr: 'offre {n} kikooz à {nom} !', p: { n: amount, nom: getDisplayName(targetName) } }, 'c');
       // C'EST CE DON-LÀ que l'équipe voulait relire : celui qui puise dans
       // l'enveloppe. Il n'était nulle part — seul /donne, l'argent personnel,
@@ -41830,7 +42139,7 @@ case 'send': {
         sendToClient(targetSock, `<${CMD.onmute} u="${escapeXml(getDisplayName(targetUser))}" mt="${escapeXml(until)}" mu="${escapeXml(until)}" />`);
       }
       sendToClient(socket, `<${CMD.mute} u="${escapeXml(getDisplayName(targetUser))}" mt="${escapeXml(until)}" mu="${escapeXml(until)}" />`);
-      addAndNotifyUserLog(targetUser, { type: USER_LOG_TYPE.TOTOCHE, content: `Tu as été réduit au silence pendant 10 minutes par ${getDisplayName(client.username)}.` });
+      addAndNotifyUserLog(targetUser, { type: USER_LOG_TYPE.TOTOCHE, content: texteTotoche(client.username) });
       if (process.env.DATABASE_URL) db.addModerationLog(targetUser, client.username, 'totoche', `10 min`).catch(e => console.error('[DB] modlog error:', e.message));
 
       const announceTotoche = annonceTotoche(targetUser);
@@ -42997,8 +43306,8 @@ case 'createchannel': {
         console.log(`[FSCORE] giveItem user=${client.username} item=${itemName} total=${user.gameItems.length}`);
         const info = GAME_ITEM_INFO[itemName];
         const label = info ? info.name : itemName;
-        const gameName = info ? info.game : 'jeu';
-        addAndNotifyUserLog(client.username, { type: USER_LOG_TYPE.PICTO, content: `Nouveau picto débloqué sur ${gameName} : ${label} !` });
+        const gameName = info ? info.game : { k: 'historique.unJeu', fr: 'jeu' };
+        addAndNotifyUserLog(client.username, { type: USER_LOG_TYPE.PICTO, content: textePicto(gameName, label) });
       } else {
         console.log(`[FSCORE] giveItem user=${client.username} item=${itemName} (already owned)`);
       }

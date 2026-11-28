@@ -180,6 +180,8 @@ function decrire(d) {
 // puis on l'écrit en SVG.
 const fs = require('node:fs');
 const path = require('node:path');
+// La version anglaise du message (zone « forumbots », cf. messageForum).
+const { traduire } = require('./forumBilingue.js');
 
 const DOSSIER_MB2 = path.join(__dirname, 'public', 'mb2', 'data');
 const OBJFRAMES = [19, 22, 23, 24];                 // Pause.OBJFRAMES
@@ -390,9 +392,16 @@ function liste(items, f) { return items.map(f).join(', '); }
  * contient, rien de plus. `infos` : { graine, jour, urlImage, changement } —
  * `changement` (facultatif) quand la map a été changée en cours de journée
  * par l'équipe.
+ *
+ * `lang` (« fr » par défaut) : hors français, la VERSION COURTE qui suit le
+ * français dans le même message (forumBilingue.js) — le donjon décrit pareil,
+ * sans le plan (il est juste au-dessus), sans italique (le bloc entier l'est)
+ * et sans la marque de la graine (celle du français suffit à reconnaître le
+ * message). `jour` est alors dans cette langue.
  */
-function messageForum(d, infos) {
+function messageForum(d, infos, lang) {
   const o = infos || {};
+  if (lang && lang !== 'fr') return messageForumTraduit(d, o, lang);
   const r = decrire(d);
   const l = [];
   if (o.changement) l.push(`[b]Rebelote ![/b] L'équipe vient de changer la map du Challenge en cours de journée. Voici la nouvelle, la seule qui compte désormais.`);
@@ -415,6 +424,28 @@ function messageForum(d, infos) {
   if (r.invisibles.length) l.push(`• [b]Passages invisibles[/b] (absents de la carte) : ${liste(r.invisibles, (p) => `${p.entre[0]}–${p.entre[1]}`)}.`);
   l.push('');
   l.push(`[i](graine ${o.graine != null ? o.graine : '?'}${MARQUE_VERSION})[/i]`);
+  return l.join('\n');
+}
+
+// La version traduite : chaque ligne a sa clé (zone « forumbots »), les
+// billes et les bonus leur nom, par leur numéro.
+function messageForumTraduit(d, o, lang) {
+  const r = decrire(d);
+  const tr = (cle, params) => traduire(lang, 'forumbots.pruneau.' + cle, '', params);
+  const objetEn = (nom, c) => tr('objetEn', { nom, c });
+  const l = [];
+  l.push(o.changement ? tr('changement') : tr('titre', { jour: o.jour || '' }));
+  l.push('');
+  l.push(tr('donjon', { salles: r.salles, largeur: d.largeur, hauteur: d.hauteur, vides: r.vides }));
+  l.push(tr('depart', { c: r.depart || '?' }));
+  l.push(tr('boss', { c: r.boss || '?' }));
+  if (r.billes.length) l.push(tr('billes', { liste: liste(r.billes, (b) => objetEn(tr('nomBille.' + b.bille) || b.nom, b.case)) }));
+  const bonusBilles = r.bonus.filter((b) => b.bonus <= 1);
+  const bonusAutres = r.bonus.filter((b) => b.bonus > 1);
+  if (bonusBilles.length) l.push(tr('billesBonus', { liste: liste(bonusBilles, (b) => objetEn(tr('nomBonus.' + b.bonus) || b.nom, b.case)) }));
+  if (bonusAutres.length) l.push(tr('bonus', { liste: liste(bonusAutres, (b) => objetEn(tr('nomBonus.' + b.bonus) || b.nom, b.case)) }));
+  if (r.portes.length) l.push(tr('portes', { liste: liste(r.portes, (p) => `${p.entre[0]}–${p.entre[1]}`) }));
+  if (r.invisibles.length) l.push(tr('invisibles', { liste: liste(r.invisibles, (p) => `${p.entre[0]}–${p.entre[1]}`) }));
   return l.join('\n');
 }
 

@@ -18,6 +18,8 @@
  * server.js (natachaAccueillir) qui le poste.
  */
 
+const { traduire } = require('./forumBilingue.js');
+
 const PSEUDO_NPC = 'natacha';
 const NOM = 'Natacha';
 const BOUILLE = '0o0000010000000000000000';       // famille 24
@@ -120,46 +122,70 @@ function tirageSeme(graine) {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
-const choisir = (tirage, liste) => liste[Math.floor(tirage() * liste.length) % liste.length];
+const choisirRang = (tirage, liste) => Math.floor(tirage() * liste.length) % liste.length;
 
-// L'heure et le jour, à Paris.
+// L'heure et le jour, à Paris. Le week-end se reconnaît au NUMÉRO du jour
+// (0 dimanche … 6 samedi), pas à son nom : le nom n'est que pour la phrase
+// française (« Un samedi au parc »), et ne dépend plus de la langue.
 function momentDe(date) {
   const parts = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', hour: 'numeric', hourCycle: 'h23', weekday: 'long' }).formatToParts(date);
   const heure = Number((parts.find((x) => x.type === 'hour') || {}).value || 12);
   const jour = String((parts.find((x) => x.type === 'weekday') || {}).value || '');
   const moment = heure < 6 ? 'nuit' : heure < 11 ? 'matin' : heure < 14 ? 'midi' : heure < 18 ? 'apresmidi' : 'soir';
-  return { heure, jour, moment, weekend: jour === 'samedi' || jour === 'dimanche' };
+  const n = numeroDuJour(date);
+  return { heure, jour, moment, weekend: n === 0 || n === 6 };
 }
 function jourIso(date) {
   return new Intl.DateTimeFormat('fr-CA', { timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
 }
+// Le jour de la semaine à Paris, en chiffre (0 dimanche … 6 samedi).
+function numeroDuJour(date) {
+  return new Date(jourIso(date) + 'T12:00:00Z').getUTCDay();
+}
+// Le nom du jour pour une autre langue que le français (« Saturday »).
+function nomDuJour(date, lang) {
+  return new Intl.DateTimeFormat(lang === 'en' ? 'en-US' : lang, { timeZone: 'Europe/Paris', weekday: 'long' }).format(date);
+}
 
 /**
  * Le mot de bienvenue pour `pseudo` (tel qu'affiché : la casse est la
- * sienne). `infos` : { date, numero, parrain, tirage } — tous facultatifs :
- * `numero` est le rang d'inscription (on ne le cite que rond), `parrain` le
- * pseudo affiché du parrain, `tirage` une fonction [0, 1) pour les tests.
+ * sienne). `infos` : { date, numero, parrain, tirage, lang } — tous
+ * facultatifs : `numero` est le rang d'inscription (on ne le cite que rond),
+ * `parrain` le pseudo affiché du parrain, `tirage` une fonction [0, 1) pour
+ * les tests, `lang` la langue du NOUVEAU (« fr » par défaut) : c'est à lui
+ * que Natacha s'adresse. Le tirage ne dépend pas de la langue : les deux
+ * versions disent la même chose, morceau pour morceau (chaque morceau a sa
+ * traduction au même rang, zone « forumbots »).
  */
 function messageBienvenue(pseudo, infos) {
   const o = infos || {};
+  const lang = o.lang || 'fr';
   const date = o.date instanceof Date ? o.date : new Date();
   const tirage = typeof o.tirage === 'function' ? o.tirage : tirageSeme(hacher(String(pseudo).toLowerCase() + '|' + jourIso(date)));
+  // Le morceau tiré, dans la langue : le français tel qu'écrit plus haut, ou
+  // sa traduction (forumbots.natacha.<groupe>.<rang>).
+  const dire = (groupe, liste, arg, params) => {
+    const i = choisirRang(tirage, liste);
+    return traduire(lang, `forumbots.natacha.${groupe}.${i}`, liste[i](arg), params);
+  };
   const p = '@' + String(pseudo);
   const m = momentDe(date);
-  const phrases = [choisir(tirage, OUVERTURES)(p)];
+  const phrases = [dire('ouverture', OUVERTURES, p, { qui: p })];
   const numero = Number(o.numero) || 0;
   const rond = numero >= 100 && (numero % 100 === 0);
-  if (rond) phrases.push(choisir(tirage, JALONS)(numero));
-  if (o.parrain) phrases.push(choisir(tirage, PARRAINAGES)('@' + String(o.parrain)));
+  if (rond) phrases.push(dire('jalon', JALONS, numero, { n: numero }));
+  if (o.parrain) phrases.push(dire('parrainage', PARRAINAGES, '@' + String(o.parrain), { parrain: '@' + String(o.parrain) }));
   // Un clin d'œil au moment (quatre fois sur dix), un conseil (six fois sur
   // dix) — et au moins l'un des deux quand l'ouverture serait seule, pour
   // que le mot fasse toujours deux phrases.
   const rienDautre = phrases.length === 1;
   const clin = tirage() < 0.4, conseil = tirage() < 0.6;
-  const moment = () => (m.weekend && tirage() < 0.5 ? choisir(tirage, WEEKEND)(m.jour) : choisir(tirage, MOMENTS[m.moment])());
+  const moment = () => (m.weekend && tirage() < 0.5
+    ? dire('weekend', WEEKEND, m.jour, { jour: lang === 'fr' ? m.jour : nomDuJour(date, lang) })
+    : dire(m.moment, MOMENTS[m.moment]));
   if (clin) phrases.push(moment());
-  if (conseil) phrases.push(choisir(tirage, CONSEILS)());
-  if (rienDautre && !clin && !conseil) phrases.push(tirage() < 0.5 ? moment() : choisir(tirage, CONSEILS)());
+  if (conseil) phrases.push(dire('conseil', CONSEILS));
+  if (rienDautre && !clin && !conseil) phrases.push(tirage() < 0.5 ? moment() : dire('conseil', CONSEILS));
   return phrases.join(' ');
 }
 

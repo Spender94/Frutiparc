@@ -614,7 +614,8 @@ test('l’option existe, avec son numéro d’article et son prix', () => {
   // Le message d'achat des autres options promet un affichage « dès que tu
   // lances une partie » : faux pour un thème, qui a un interrupteur.
   assert.match(SERVEUR, /annonce: 'Son temps viendra ! Le mode nuit s’allume dans Réglages/);
-  assert.match(SERVEUR, /content: \(opt && opt\.annonce\)\s*\n\s*\|\| `\$\{pack\.name\} acheté !/);
+  // (L'annonce a sa clé, par option, pour se dire dans la langue du joueur.)
+  assert.match(SERVEUR, /content: \(opt && opt\.annonce\) \? \{ k: 'historique\.option\.' \+ pack\.gameFeature, fr: opt\.annonce \}\s*\n\s*: \{ k: 'historique\.optionAchetee', fr: "\{nom\} acheté !/);
   // 300 kikooz : le prix des trois autres options permanentes du parc.
   for (const bloc of ['snake3Hud', 'swapouMoves']) {
     const i = SERVEUR.indexOf(bloc + ': {');

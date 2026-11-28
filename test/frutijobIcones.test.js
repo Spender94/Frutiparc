@@ -131,7 +131,8 @@ test('le bureau reçoit le texte, le light les morceaux', () => {
   const fj = SRV.match(/fj="\$\{escapeXml\([^}]*\)\}"/g) || [];
   assert.strictEqual(fj.length, 2, 'les deux trames de fiche');
   for (const x of fj) assert.match(x, /frutijobEnTexte\(getFrutizJob\(/, x);
-  assert.match(SRV, /job: frutijobEnTexte\(getFrutizJob\(u, ud\)\),\s*jobMorceaux: frutijobMorceaux\(getFrutizJob\(u, ud\)\),/);
+  // (Dans la langue du lecteur : un titre rangé en code s'y dit.)
+  assert.match(SRV, /job: frutijobEnTexte\(getFrutizJob\(u, ud\), langueFiche\),\s*jobMorceaux: frutijobMorceaux\(getFrutizJob\(u, ud\), langueFiche\),/);
   assert.match(LIGHT, /ligneFiche\(T\("light\.ficheFrutiJob", "frutiJob"\), frutijobAvecIcones\(d\.frutiz\)\)/);
   assert.match(LIGHT, /function frutijobAvecIcones\(f\) \{[\s\S]*?srcVoyant\(m\.jeu\)/);
 });
