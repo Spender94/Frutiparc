@@ -4093,6 +4093,19 @@ function textePicto(jeu, nom) {
   return { k: 'historique.picto', fr: 'Nouveau picto débloqué sur {jeu} : {nom} !', p: { jeu, nom } };
 }
 
+// LES ÉCRITURES D'UN MÊME JOURNAL PARTENT DANS L'ORDRE. Deux entrées écrites
+// coup sur coup (une mise sur un podium, puis sur l'or) prenaient deux
+// connexions du pool et pouvaient se croiser en base : la ligne de la seconde
+// passait devant. Une file par joueur les range dans l'ordre des évènements.
+const fileHistoriqueEnBase = new Map();
+function ecrireHistoriqueEnBase(cle, tache) {
+  const tour = (fileHistoriqueEnBase.get(cle) || Promise.resolve()).then(tache);
+  const fin = tour.catch(() => {});
+  fileHistoriqueEnBase.set(cle, fin);
+  fin.then(() => { if (fileHistoriqueEnBase.get(cle) === fin) fileHistoriqueEnBase.delete(cle); });
+  return tour;
+}
+
 function addUserHistoryEntry(user, { type = 1, content = '', flNew = false } = {}) {
   if (!user) return;
   if (!Array.isArray(user.userLog)) user.userLog = [];
@@ -4102,8 +4115,8 @@ function addUserHistoryEntry(user, { type = 1, content = '', flNew = false } = {
 
   // Persist to DB so history survives server restarts.
   if (user._dbId) {
-    db.addUserLogEntry(user._dbId, 'user', entry.t, entry.c, !!flNew, entry.k, entry.kp)
-      .then(() => db.pruneUserLog(user._dbId, 'user', 200))
+    ecrireHistoriqueEnBase(user._dbId, () => db.addUserLogEntry(user._dbId, 'user', entry.t, entry.c, !!flNew, entry.k, entry.kp)
+      .then(() => db.pruneUserLog(user._dbId, 'user', 200)))
       .catch((e) => console.error('[DB] addUserLogEntry user error:', e.message));
   }
 }
@@ -4134,9 +4147,9 @@ function addAndNotifyUserLog(username, { type = 1, content = '', flNew = true } 
   // picto, level-up, totoché…) was silently lost.
   if (process.env.DATABASE_URL) {
     const e = entreeHistorique(type, content, flNew);
-    db.findUserByUsername(username)
+    ecrireHistoriqueEnBase('hors-ligne:' + String(username).toLowerCase(), () => db.findUserByUsername(username)
       .then((row) => row && db.addUserLogEntry(row.id, 'user', type, e.c, !!flNew, e.k, e.kp)
-        .then(() => db.pruneUserLog(row.id, 'user', 200)))
+        .then(() => db.pruneUserLog(row.id, 'user', 200))))
       .catch((e) => console.error('[DB] offline userLog persist error:', e.message));
   }
 }
