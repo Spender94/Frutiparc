@@ -38067,9 +38067,9 @@ const lgFermetures = new Map();   // salon → setTimeout du rangement d'une par
 const LG_GARDER_FINIE_MS = 15 * 60 * 1000;
 
 // Les phrases du meneur. `t` est un TEXTE TRADUISIBLE (cf. texteDe) : les
-// événements de LoupGarou sont aujourd'hui des chaînes françaises — passés en
-// { k, fr, p }, ils se diront dans la langue de chaque joueur sans rien
-// changer ici. `**gras**` et les retours à la ligne s'appliquent après
+// événements de LoupGarou portent leur forme { k, fr, p } (`tr`, zone
+// « loupgarou », i18n-serveur/en/loupgarou.js), et se disent dans la langue
+// de chaque joueur. `**gras**` et les retours à la ligne s'appliquent après
 // l'échappement (lgBalises).
 function lgBalises(html) {
   return html.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br/>');
@@ -38077,20 +38077,33 @@ function lgBalises(html) {
 function lgTexte(t, lang) {
   return lgBalises(escapeXml(texteDe(lang || 'fr', t)));
 }
-// Une ligne pour le salon : une chaîne, la même pour tous ; un texte à clé,
-// une trame par langue (qui se refait au rejeu si elle tient dans le moule
-// d'une phrase — sans gras ni retour à la ligne ; sinon, rangée en français).
-function lgLigne(t, habiller) {
-  if (typeof t === 'string' || t == null) return habiller(lgTexte(t));
-  return ligneTraduite(t, (html) => habiller(lgBalises(html)));
+// Le corps d'une ligne de salon : la phrase faite, dans son CDATA — en
+// italique pour une petite ligne grise (lgInfo).
+function lgCorps(html, info) { return info ? `<![CDATA[<i>${html}</i>]]>` : `<![CDATA[${html}]]>`; }
+/*
+ * Une ligne pour le salon : une chaîne, la même pour tous ; un texte à clé,
+ * une trame par langue. Ses phrases ont du gras et des retours à la ligne —
+ * hors du moule d'une phrase simple : la famille « loupgarou. » déclare donc
+ * son rendu, qui refait au rejeu ce que le direct a écrit (le paramètre
+ * rangé `lgInfo` dit l'italique de lgInfo).
+ */
+rendreLigne('loupgarou.', (lang, kp, k) => {
+  const texte = texteRange(lang, k, kp);
+  return texte == null ? {} : { corps: lgCorps(lgBalises(escapeXml(texte)), !!kp.lgInfo) };
+});
+function lgLigne(t, habiller, info) {
+  if (typeof t === 'string' || t == null) return habiller(lgCorps(lgTexte(t), info));
+  if (!estTexteCle(t)) return (lang) => habiller(lgCorps(lgTexte(t, lang), info));
+  const kp = Object.assign(parametresRanges(t) || {}, info ? { lgInfo: 1 } : {});
+  return { k: t.k, kp, build: (lang) => habiller(lgCorps(lgTexte(t, lang), info)) };
 }
 function lgPublic(salon, t) {
   const ta = buildChatTimeAttrs();
-  broadcastToChannel(salon, lgLigne(t, (html) => `<${CMD.send} u="admin" t="c" p="" g="${escapeXml(salon)}" h="${ta.h}" d="${ta.d}"><![CDATA[${html}]]></${CMD.send}>`));
+  broadcastToChannel(salon, lgLigne(t, (corps) => `<${CMD.send} u="admin" t="c" p="" g="${escapeXml(salon)}" h="${ta.h}" d="${ta.d}">${corps}</${CMD.send}>`));
 }
 function lgInfo(salon, t) {
   const ta = buildChatTimeAttrs();
-  broadcastToChannel(salon, lgLigne(t, (html) => `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(salon)}" h="${ta.h}" d="${ta.d}"><![CDATA[<i>${html}</i>]]></${CMD.send}>`));
+  broadcastToChannel(salon, lgLigne(t, (corps) => `<${CMD.send} u="admin" t="m" p="" g="${escapeXml(salon)}" h="${ta.h}" d="${ta.d}">${corps}</${CMD.send}>`, true));
 }
 // Une ligne pour un seul joueur — à ses fenêtres ouvertes sur le salon (à
 // toutes, s'il n'y est plus : il ne doit pas manquer son rôle). Chaque
@@ -38102,8 +38115,9 @@ function lgSecret(salon, u, t) {
   const dedans = socks.filter((s) => { const cl = xmlSocketClients.get(s); return cl && cl.channels && cl.channels.has(salon); });
   for (const s of (dedans.length ? dedans : socks)) sendToClient(s, tr.pour(langueClient(xmlSocketClients.get(s))));
 }
+// La vue d'un joueur, ses libellés dans SA langue (celle de la socket).
 function lgVueA(sock, cl, p) {
-  const v = p ? LoupGarou.vue(p, cl.username, isChannelStaff(cl.username, p.salon), Date.now()) : { ferme: true };
+  const v = p ? LoupGarou.vue(p, cl.username, isChannelStaff(cl.username, p.salon), Date.now(), langueClient(cl)) : { ferme: true };
   const json = JSON.stringify(v).replace(/]]>/g, ']]\\u003e');
   sendToClient(sock, `<${CMD.send} u="admin" t="lg" p="" g="${escapeXml(p ? p.salon : '')}" h="" d=""><![CDATA[${json}]]></${CMD.send}>`);
 }
@@ -38139,10 +38153,12 @@ function lgEnregistrer() {
 }
 function lgDiffuser(p, evts, options) {
   for (const e of evts || []) {
-    if (e.a === 'public') lgPublic(p.salon, e.t);
-    else if (e.a === 'info') lgInfo(p.salon, e.t);
-    else if (e.a === 'secret') lgSecret(p.salon, e.u, e.t);
-    else if (e.a === 'meneur') lgSecret(p.salon, p.meneur, e.t);
+    // `tr` : le texte traduisible de l'événement (le français est dans `t`).
+    const t = e.tr || e.t;
+    if (e.a === 'public') lgPublic(p.salon, t);
+    else if (e.a === 'info') lgInfo(p.salon, t);
+    else if (e.a === 'secret') lgSecret(p.salon, e.u, t);
+    else if (e.a === 'meneur') lgSecret(p.salon, p.meneur, t);
     else if (e.a === 'fin') lgPayer(p, e);
   }
   if (options && options.leger) return;      // un murmure de la meute : rien d'autre ne change
@@ -38167,13 +38183,13 @@ function lgPayer(p, e) {
   const donneur = p.meneur;
   // L'enveloppe est celle des animateurs : un modérateur qui mène une partie
   // n'en a pas (les rôles se respectent) — la gloire, mais pas les kikooz.
-  if (!isAnimator(donneur)) { lgInfo(p.salon, 'Le meneur n’a pas d’enveloppe : pas de prix cette fois.'); return; }
+  if (!isAnimator(donneur)) { lgInfo(p.salon, { k: 'loupgarou.serveur.pasDEnveloppe', fr: 'Le meneur n’a pas d’enveloppe : pas de prix cette fois.' }); return; }
   let part = prix;
   {
     const rec = getAnimatorWeekRecord(donneur);
     const reste = Math.max(0, ANIMATOR_WEEKLY_KIKOOZ - rec.given);
     part = Math.min(prix, Math.floor(reste / gagnants.length));
-    if (part <= 0) { lgInfo(p.salon, 'L’enveloppe du meneur est vide cette semaine : pas de prix, mais la gloire !'); return; }
+    if (part <= 0) { lgInfo(p.salon, { k: 'loupgarou.serveur.enveloppeVide', fr: 'L’enveloppe du meneur est vide cette semaine : pas de prix, mais la gloire !' }); return; }
     rec.given += part * gagnants.length;
     saveAnimatorKikooz();
   }
@@ -38190,7 +38206,10 @@ function lgPayer(p, e) {
         .catch((err) => console.error('[DB] kikooz gift log error:', err.message));
     }
   }
-  lgPublic(p.salon, `${part} kikooz pour chaque gagnant : ${gagnants.map((u) => getDisplayName(u)).join(', ')} !${part < prix ? ' (L’enveloppe du meneur n’en permettait pas plus.)' : ''}`);
+  const noms = gagnants.map((u) => getDisplayName(u)).join(', ');
+  lgPublic(p.salon, part < prix
+    ? { k: 'loupgarou.serveur.prixReduit', fr: '{n} kikooz pour chaque gagnant : {noms} ! (L’enveloppe du meneur n’en permettait pas plus.)', p: { n: part, noms } }
+    : { k: 'loupgarou.serveur.prix', fr: '{n} kikooz pour chaque gagnant : {noms} !', p: { n: part, noms } });
   console.log(`[LOUPGAROU] prix : ${part} kikooz × ${gagnants.length} (meneur ${donneur})`);
 }
 /** Une commande /lg (ligne = ce qui suit « /lg »). */
@@ -38201,10 +38220,12 @@ function lgCommande(client, g, ligne) {
   const mots = String(ligne || '').trim().split(/\s+/).filter(Boolean);
   const premier = LoupGarou.normaliser(mots[0] || '');
   let p = lgParties.get(g);
-  if (['ouvrir', 'nouvelle', 'creer', 'open'].includes(premier)) {
-    if (!staff) return lgSecret(g, u, 'Seuls les animateurs (dans leur salon) et les modérateurs ouvrent une partie de loup-garou.');
-    if (isPrivateChannel(g)) return lgSecret(g, u, 'Pas de loup-garou dans une discussion privée.');
-    if (p && p.phase !== 'fin') return lgSecret(g, u, 'Une partie est déjà en cours dans ce salon (/lg fin pour l’arrêter).');
+  // Chaque réponse part dans la langue de qui la lit (lgSecret).
+  const dire = (cle, fr) => lgSecret(g, u, { k: 'loupgarou.serveur.' + cle, fr });
+  if (['ouvrir', 'nouvelle', 'creer', 'open', 'new', 'create'].includes(premier)) {
+    if (!staff) return dire('ouvrirStaff', 'Seuls les animateurs (dans leur salon) et les modérateurs ouvrent une partie de loup-garou.');
+    if (isPrivateChannel(g)) return dire('ouvrirPrive', 'Pas de loup-garou dans une discussion privée.');
+    if (p && p.phase !== 'fin') return dire('dejaEnCours', 'Une partie est déjà en cours dans ce salon (/lg fin pour l’arrêter).');
     const r = LoupGarou.lireReglages(mots.slice(1));
     p = LoupGarou.creer({ salon: g, meneur: u, meneurNom: nom, now: Date.now(), prix: r.prix || 0 });
     Object.assign(p.options.chronos, r.chronos);
@@ -38212,11 +38233,12 @@ function lgCommande(client, g, ligne) {
     lgFermetures.delete(g);
     lgParties.set(g, p);
     console.log(`[LOUPGAROU] partie ouverte dans ${g} par ${u}`);
-    return lgDiffuser(p, LoupGarou.ouverture(p).concat([{ a: 'meneur', t: LoupGarou.aide(p, u, true) }]));
+    return lgDiffuser(p, LoupGarou.ouverture(p).concat([{ a: 'meneur', t: LoupGarou.aide(p, u, true), tr: LoupGarou.aideT(p, u, true) }]));
   }
   if (!p) {
-    if (!premier || ['aide', 'help', '?', 'commandes'].includes(premier)) return lgSecret(g, u, LoupGarou.aide(null, u, staff));
-    return lgSecret(g, u, staff ? 'Pas de partie dans ce salon : /lg ouvrir pour en lancer une (/lg aide pour tout savoir).' : 'Pas de partie de loup-garou dans ce salon pour le moment.');
+    if (!premier || ['aide', 'help', '?', 'commandes', 'commands'].includes(premier)) return lgSecret(g, u, LoupGarou.aideT(null, u, staff));
+    return staff ? dire('pasDePartieStaff', 'Pas de partie dans ce salon : /lg ouvrir pour en lancer une (/lg aide pour tout savoir).')
+      : dire('pasDePartie', 'Pas de partie de loup-garou dans ce salon pour le moment.');
   }
   // « ajouter » : un pseudo présent dans le salon.
   const compte = (a) => {
@@ -38236,7 +38258,7 @@ function lgFiltrerParole(client, g, texte) {
   if (!p) return false;
   const par = LoupGarou.parole(p, client.username, isChannelStaff(client.username, g));
   if (par.meute) { lgDiffuser(p, LoupGarou.meute(p, client.username, texte), { leger: true }); return true; }
-  if (!par.ok) { lgSecret(g, client.username, par.raison); return true; }
+  if (!par.ok) { lgSecret(g, client.username, par.raisonT || par.raison); return true; }
   return false;
 }
 async function lgCharger() {
@@ -41190,7 +41212,7 @@ case 'send': {
     // Pas d'image non plus pendant la nuit d'un loup-garou (ni de la part d'un mort).
     if (lgParties.has(g)) {
       const par = LoupGarou.parole(lgParties.get(g), client.username, isChannelStaff(client.username, g));
-      if (!par.ok) { lgSecret(g, client.username, par.raison || 'Pas d’image pendant la nuit.'); break; }
+      if (!par.ok) { lgSecret(g, client.username, par.raisonT || par.raison || { k: 'loupgarou.serveur.pasDImage', fr: 'Pas d’image pendant la nuit.' }); break; }
     }
     /*
      * `/image` (et son abréviation `/img`) EST OUVERTE À TOUT LE MONDE.
