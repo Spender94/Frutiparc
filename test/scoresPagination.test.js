@@ -150,7 +150,8 @@ test('le classement XP montre le NIVEAU, et le tri reste sur l’XP', () => {
   assert.ok(m, 'le classement XP doit exister côté serveur');
   // « Niv. 95, 31% » : `Standard.displayScoreType(v, 'xp')` (0x25b84) écrit le
   // niveau ET l'avancement dedans. Le portage n'écrivait que « niveau 95 ».
-  assert.match(m[0], /label: displayScoreType\(s, 'xp'\)/, 'l’étiquette est celle d’époque');
+  // (le troisième argument : la langue du lecteur — « Niv. » / « Lvl »)
+  assert.match(m[0], /label: displayScoreType\(s, 'xp', L\)/, 'l’étiquette est celle d’époque');
   assert.ok(!/toLocaleString\('fr-FR'\) \+ ' xp'/.test(m[0]),
     'et plus le compte d’expérience');
   assert.match(m[0], /xp\.sort\(\(a, b\) => b\.s - a\.s/, 'le tri, lui, reste sur l’XP');
@@ -172,7 +173,7 @@ test('un score s’écrit comme `Standard.displayScoreType`', () => {
      centièmes au lieu de trois millièmes, et deux-points au lieu de la
      ponctuation d'époque), le compte d'XP brut, la consécration à quatre
      décimales suivie d'une espace. */
-  const f = /function displayScoreType\(score, ty\) \{[\s\S]*?\n\}/.exec(SERVEUR);
+  const f = /function displayScoreType\(score, ty, lang\) \{[\s\S]*?\n\}/.exec(SERVEUR);
   assert.ok(f, 'displayScoreType doit exister côté serveur');
   const pad = /function padZ\(n, l\) \{[\s\S]*?\n\}/.exec(SERVEUR);
   const lvl = /function getLevelForXp\(xp\) \{[\s\S]*?\n\}/.exec(SERVEUR);

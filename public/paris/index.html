@@ -267,6 +267,15 @@
    * (« Saturday, November 28 »). Le français reste celui du serveur.
    */
   function jourLisible(fr, jour) { return T('paris.jourLisible', fr, { jour: jour }); }
+  // Le mois du registre : `lisible` en français, sinon tiré de `cle` (AAAA-MM).
+  function moisLisible(m) {
+    if (!m || FPI18n.langue === 'fr' || !/^\d{4}-\d{2}$/.test(String(m.cle || ''))) return (m && m.lisible) || '';
+    var p = String(m.cle).split('-');
+    try {
+      return new Date(Date.UTC(Number(p[0]), Number(p[1]) - 1, 15))
+        .toLocaleDateString(FPI18n.langue === 'en' ? 'en-US' : FPI18n.langue, { month: 'long', year: 'numeric', timeZone: 'UTC' });
+    } catch (e) { return m.lisible || ''; }
+  }
   // L'ordinal d'un rang au classement (« 12e », « 12th ») ; le rang affiché
   // ainsi dépasse toujours 10 (voir rendreRegistre).
   function ordinal(n) { return T('paris.ordinal', '{n}e', { n: n }); }
@@ -942,13 +951,14 @@
   function rendreRegistre(d) {
     dernierRegistre = d;
     var h = '';
-    // Le Prunostiqueur du mois. Le nom du mois (`lisible`) est écrit par le
-    // serveur, sans code à côté : il reste tel qu'il arrive.
+    // Le Prunostiqueur du mois. Le nom du mois : celui du serveur en français
+    // (`lisible`, « novembre 2026 ») ; dans une autre langue, la page le tire
+    // de sa clé (`cle`, « 2026-11 »), comme les jours de leur `jour`.
     var s = d.mois;
     if (s) {
       h += '<div class="regbloc"><h3>' + TROPHEE + ' ' + T('paris.prunostiqueurDuMois', 'Prunostiqueur du mois')
         + ' <small style="font-weight:normal;color:#6c8f3a">'
-        + T('paris.regleDuMois', '— {mois}, bénéfice net, {min} paris réglés au moins', { mois: esc(s.lisible), min: s.minParis }) + '</small></h3>';
+        + T('paris.regleDuMois', '— {mois}, bénéfice net, {min} paris réglés au moins', { mois: esc(moisLisible(s)), min: s.minParis }) + '</small></h3>';
       if (s.passee) {
         h += '<p class="decouv" style="margin:0 0 6px">' + T('paris.moisDernier', 'Le mois dernier : <b>{nom}</b> (+{net}), sacré par Dimitri.',
           { nom: esc(s.passee.nom), net: kz(s.passee.net) }) + '</p>';

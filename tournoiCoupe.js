@@ -1,4 +1,6 @@
 'use strict';
+// La langue des libellés (nomDuTour) : le module des pages, côté serveur.
+const FPI18n = require('./public/js/i18n.js');
 /*
  * LA COUPE D'UN TOURNOI AU SCORE (« Maître ÈS … ») — les règles, sans base ni
  * horloge. server.js stocke, ouvre et ferme les fenêtres ; ce module dit qui
@@ -51,18 +53,20 @@ const exempte = (m) => (!!m.player1) !== (!!m.player2);
  * Le nom d'un tour. `matchsDuTour` (facultatif) sert à reconnaître le tour
  * préliminaire.
  */
-function nomDuTour(round, totalRounds, matchsDuTour) {
+// (`lang` : la langue du libellé, le français par défaut ; clés `tournois.coupe.*`.)
+function nomDuTour(round, totalRounds, matchsDuTour, lang) {
+  const t = (k, fr, p) => FPI18n.traduire(lang || 'fr', 'tournois.coupe.' + k, fr, p);
   const r = Number(round), fromEnd = totalRounds - r;
   if (r === 1 && totalRounds >= 2 && Array.isArray(matchsDuTour)
     && matchsDuTour.some(exempte) && matchsDuTour.some((m) => m.player1 && m.player2)) {
-    return 'Tour préliminaire';
+    return t('preliminaire', 'Tour préliminaire');
   }
-  if (fromEnd === 0) return 'Finale';
-  if (fromEnd === 1) return 'Demi-finale';
-  if (fromEnd === 2) return '1/4 de finale';
-  if (fromEnd === 3) return '8ème de finale';
-  if (fromEnd === 4) return '16ème de finale';
-  return 'Tour ' + r;
+  if (fromEnd === 0) return t('finale', 'Finale');
+  if (fromEnd === 1) return t('demi', 'Demi-finale');
+  if (fromEnd === 2) return t('quart', '1/4 de finale');
+  if (fromEnd === 3) return t('huitieme', '8ème de finale');
+  if (fromEnd === 4) return t('seizieme', '16ème de finale');
+  return t('tour', 'Tour {n}', { n: r });
 }
 
 /**

@@ -105,7 +105,7 @@ test('libellés et catégories sortent du gestionnaire : un seul formulaire', ()
   assert.ok(form, 'le gestionnaire prefForm doit exister');
   assert.match(form[0], /for \(const cat of PREF_CATEGORIES\)/);
   assert.match(form[0], /PREF_LABELS\[def\.name\]/);
-  const json = /function prefsEnJson\(user\) \{[\s\S]*?\n\}/.exec(SERVEUR);
+  const json = /function prefsEnJson\(user, lang = 'fr'\) \{[\s\S]*?\n\}/.exec(SERVEUR);
   assert.ok(json, 'prefsEnJson doit exister');
   assert.match(json[0], /PREF_CATEGORIES\.map/);
   assert.match(json[0], /PREF_LABELS\[def\.name\]/);
@@ -119,11 +119,12 @@ test('un choix se rend en radios, une par ligne', () => {
   assert.ok(f, 'prefFormChoix doit exister');
   assert.match(f[0], /<l><s w="8"\/><r v="value" u="\$\{escapeXml\(encode62\(v\)\)\}">/);
   // La valeur voyage en base 62, comme dans la chaîne stockée.
-  assert.match(SERVEUR, /: \(def\.name === 'default_pen' \? choixFeutreDefaut\(user\) : \(meta\.choices \|\| \[\]\)\)\s*\.map\(\(\[v, lib\]\) => \(\{ v: encode62\(v\), label: lib \}\)\)/);
+  // (les libellés des choix passent par la langue du lecteur, `prefs.<nom>.choix.<v>`)
+  assert.match(SERVEUR, /: \(def\.name === 'default_pen' \? choixFeutreDefaut\(user, lang\)\s*: \(meta\.choices \|\| \[\]\)\.map\(\(\[v, lib\]\) => \[v, t\(lang, `prefs\.\$\{def\.name\}\.choix\.\$\{v\}`, lib\)\]\)\)\s*\.map\(\(\[v, lib\]\) => \(\{ v: encode62\(v\), label: lib \}\)\)/);
   // Une seule exception, écrite en toutes lettres : l'accessoire par défaut
   // garde une chaîne de neuf caractères, et ses choix sortent de l'inventaire
   // du joueur — aucune liste fixe ne pourrait les connaître.
-  assert.match(SERVEUR, /def\.name === 'default_accessory'\n\s+\? choixAccessoireDefaut\(user\)/);
+  assert.match(SERVEUR, /def\.name === 'default_accessory'\n\s+\? choixAccessoireDefaut\(user, lang\)/);
 });
 
 test('les trois positions demandées, dans cet ordre', () => {
@@ -418,7 +419,8 @@ test('le feutre par défaut : un entier, ses choix selon le joueur, et hors du f
   assert.match(SERVEUR, /\{ id: 18, type: 'i', name: 'default_pen',\s+def: encode62\(0\) \},/);
   assert.match(SERVEUR, /\{ name: 'Chat',\s+ids: \[9, 10, 11, 12, 13, 18\] \},/);
   // Le multicolore n'est offert — et accepté — qu'à qui l'a acheté.
-  assert.match(SERVEUR, /user\.ownedFeutres\.includes\('mc'\)\) \{\s*\n\s*liste\.push\(\[FEUTRE_PREF_MULTICOLORE, 'Multicolore'\]\);/);
+  // (son libellé dans la langue du lecteur : `prefs.feutre.multicolore`)
+  assert.match(SERVEUR, /user\.ownedFeutres\.includes\('mc'\)\) \{\s*\n\s*liste\.push\(\[FEUTRE_PREF_MULTICOLORE, t\(lang, 'prefs\.feutre\.multicolore', 'Multicolore'\)\]\);/);
   assert.match(SERVEUR, /def\.name === 'default_pen' && rawVal !== ''\s*\n\s*&& !choixFeutreDefaut\(user\)\.some/);
   // Le salon Flash garde son pot de feutres : la préférence n'est pas dans son formulaire.
   assert.match(SERVEUR, /if \(!def \|\| PREFS_LIGHT_SEULEMENT\.has\(id\)\) continue;/);

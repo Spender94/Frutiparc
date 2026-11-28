@@ -75,8 +75,9 @@ test('serveur : jeux par ordre alphabétique, « Autre » en dernier, pictos dan
 
 test('serveur : /api/pictos, l\'inventaire light et les dossiers du bureau lisent cet ordre', () => {
   const route = SRV.slice(SRV.indexOf("app.get('/api/pictos'"), SRV.indexOf("app.get('/api/consecration'"));
-  assert.match(route, /pictosRangesParJeu\(users\[username\]\.gameItems\)/);
-  assert.match(SRV, /const pictos = pictosRangesParJeu\(user\.gameItems\)\.map/);
+  // (le second argument : la langue du lecteur, qui nomme les pictos sans changer l'ordre)
+  assert.match(route, /pictosRangesParJeu\(users\[username\]\.gameItems, langueDeRequete\(req\)\)/);
+  assert.match(SRV, /const pictos = pictosRangesParJeu\(user\.gameItems, langueDeRequete\(req\)\)\.map/);
   const dossiers = SRV.slice(SRV.indexOf('function dossiersPictos(user) {'));
   assert.match(dossiers.slice(0, 600), /for \(const p of pictosRangesParJeu\(user && user\.gameItems\)\)/);
   // Le light garde l'ordre des jeux du serveur (plus de tri à lui, qui oubliait « Autre »).

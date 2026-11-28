@@ -2027,6 +2027,14 @@ questions sans énoncé ou sans réponse sont ignorées. "image" doit correspond
           </select></label>
         <label><span>Desc. niveau 1 (gras) :</span> <input id="pack-desc1" placeholder="Vide = texte commun par défaut"></label>
         <label><span>Desc. niveau 2 (petit) :</span> <input id="pack-desc2" placeholder="Vide = texte commun par défaut"></label>
+        <!-- L'ANGLAIS DE L'ARTICLE, facultatif : ce que la boutique du light
+             montre à un joueur anglophone. Vide : le français — ou, pour un
+             article livré avec le code, sa traduction du dictionnaire. Le nom
+             français reste l'identifiant de l'article. -->
+        <label><span>Nom (EN) :</span> <input id="pack-name-en" placeholder="Vide = le nom français"></label>
+        <label><span>Desc. niveau 1 (EN) :</span> <input id="pack-desc1-en" placeholder="Vide = texte commun, en anglais"></label>
+        <label><span>Desc. niveau 2 (EN) :</span> <input id="pack-desc2-en" placeholder="Vide = texte commun, en anglais"></label>
+        <label><span>Commentaire (EN) :</span> <input id="pack-comment-en" placeholder="Vide = le commentaire français"></label>
         <div style="margin-top:8px">
           <!-- L'étiquette disait « Kasparov » : ce n'est la bouille de personne
                en particulier, juste une tête témoin de la famille 0. On ne
@@ -8746,6 +8754,10 @@ function openAddPack() {
   chargerPrunelles().then(updatePackPreview);
   $('#pack-desc1').value = '';
   $('#pack-desc2').value = '';
+  $('#pack-name-en').value = '';
+  $('#pack-desc1-en').value = '';
+  $('#pack-desc2-en').value = '';
+  $('#pack-comment-en').value = '';
   $('#pack-save-btn').textContent = 'Créer';
   $('#pack-save-btn').onclick = saveAddPack;
   $('#modal-add-pack').classList.add('open');
@@ -8767,17 +8779,23 @@ function editPack(id) {
   $('#pack-suffix9').value = p.suffix9;
   $('#pack-suffix9').disabled = !!p.prunelle;
   chargerPrunelles().then(() => { $('#pack-prunelle').value = p.prunelle || ''; updatePackPreview(); });
-  (function () {
+  // Les deux niveaux d'une description (français, puis anglais) : le même
+  // JSON {l1, l2}, ou le texte seul d'un fond d'écran.
+  function remplirDesc(texte, suffixe) {
     let d1 = '', d2 = '';
-    const raw = (p.description || '').trim();
+    const raw = (texte || '').trim();
     if (p.wallpaperId) {
-      d1 = p.description || '';
+      d1 = texte || '';
     } else if (raw.charAt(0) === '{') {
       try { const o = JSON.parse(raw); if (o && typeof o === 'object') { d1 = o.l1 || ''; d2 = o.l2 || ''; } } catch (e) {}
     }
-    $('#pack-desc1').value = d1;
-    $('#pack-desc2').value = d2;
-  })();
+    $('#pack-desc1' + suffixe).value = d1;
+    $('#pack-desc2' + suffixe).value = d2;
+  }
+  remplirDesc(p.description, '');
+  remplirDesc(p.description_en, '-en');
+  $('#pack-name-en').value = p.name_en || '';
+  $('#pack-comment-en').value = p.comment_en || '';
   $('#pack-save-btn').textContent = 'Sauvegarder';
   $('#pack-save-btn').onclick = saveEditPack;
   $('#modal-add-pack').classList.add('open');
@@ -8787,9 +8805,9 @@ function editPack(id) {
 // Accessory descriptions carry two levels (bold line 1 + smaller line 2),
 // stored in `description` as JSON {l1,l2}. Empty fields → "" so the shared
 // default applies. Wallpapers keep a single plain description.
-function packDescFromFields(isWallpaper) {
-  const d1 = $('#pack-desc1').value || '';
-  const d2 = $('#pack-desc2').value || '';
+function packDescFromFields(isWallpaper, suffixe = '') {
+  const d1 = $('#pack-desc1' + suffixe).value || '';
+  const d2 = $('#pack-desc2' + suffixe).value || '';
   if (isWallpaper) return d1;
   if (d1.trim() || d2.trim()) return JSON.stringify({ l1: d1, l2: d2 });
   return '';
@@ -8805,6 +8823,9 @@ async function saveAddPack() {
     suffix9: $('#pack-suffix9').value,
     prunelle: $('#pack-prunelle').value,
     description: packDescFromFields(false),
+    name_en: $('#pack-name-en').value.trim(),
+    description_en: packDescFromFields(false, '-en'),
+    comment_en: $('#pack-comment-en').value.trim(),
   };
   if (!body.id || !body.name || (!body.suffix9 && !body.prunelle)) {
     toast('ID, nom, et un suffix9 OU une incarnation'); return;
@@ -8826,6 +8847,10 @@ async function saveEditPack() {
     suffix9: $('#pack-suffix9').value,
     prunelle: $('#pack-prunelle').value,
     description: packDescFromFields(!!(shopPacks.find(x => x.id === editingPackId) || {}).wallpaperId),
+    // L'anglais : un champ vide l'efface (retour au français ou au dictionnaire).
+    name_en: $('#pack-name-en').value.trim(),
+    description_en: packDescFromFields(!!(shopPacks.find(x => x.id === editingPackId) || {}).wallpaperId, '-en'),
+    comment_en: $('#pack-comment-en').value.trim(),
   };
   const r = await fetch(`/api/admin/shop/${editingPackId}`, { method: 'PATCH', headers: hdr(), body: JSON.stringify(body) });
   if (!r.ok) { toast('Erreur'); return; }

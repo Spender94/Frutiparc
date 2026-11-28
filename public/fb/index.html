@@ -2945,14 +2945,15 @@ async function loadIndex() {
 
   for (var ci = 0; ci < data.categories.length; ci++) {
     var cat = data.categories[ci];
-    html += '<div class="cat-header">' + escapeHtml(cat.name) + '</div>';
+    // `libelle` : le nom dans la langue du lecteur ; `name` reste la clé.
+    html += '<div class="cat-header">' + escapeHtml(cat.libelle || cat.name) + '</div>';
     for (var bi = 0; bi < cat.boards.length; bi++) {
       var b = cat.boards[bi];
       html += '<div class="row">';
       var boardIcon = b.unread ? 'folder_big_new.png' : 'folder_big.gif';
       html += '<div class="icon"><img class="folder-icon" src="/fb/' + boardIcon + '" alt=""></div>';
       html += '<div class="info">';
-      html += '<div class="title"><a href="#" onclick="navigate(\'board\',' + b.id + ');return false">' + escapeHtml(b.name) + '</a></div>';
+      html += '<div class="title"><a href="#" onclick="navigate(\'board\',' + b.id + ');return false">' + escapeHtml(b.libelle || b.name) + '</a></div>';
       html += '<div class="desc">' + escapeHtml(b.description) + '</div>';
       html += '</div>';
       html += '<div class="col-num">' + b.topicCount + '</div>';
@@ -3073,12 +3074,12 @@ async function loadBoard(boardId, page) {
 
   var data = await apiFetch('/api/forum/board/' + boardId + '?page=' + page);
   if (!data.board) { app.innerHTML = '<div class="empty">' + T('forum.forumIntrouvable', 'Forum introuvable.') + '</div>'; return; }
-  porteeRecherche(data.board.id, data.board.name);
+  porteeRecherche(data.board.id, data.board.libelle || data.board.name);
 
   currentBoardName = data.board.name;
-  setBreadcrumb([{ text: data.board.name }]);
+  setBreadcrumb([{ text: data.board.libelle || data.board.name }]);
 
-  var html = '<div class="tbl-header"><span class="col-main">' + escapeHtml(data.board.name) + '</span>'
+  var html = '<div class="tbl-header"><span class="col-main">' + escapeHtml(data.board.libelle || data.board.name) + '</span>'
     + '<span class="col-num">' + T('forum.reponsesCourt', 'Rép.') + '</span><span class="col-num">' + T('forum.vues', 'Vues') + '</span>'
     + '<span class="col-last">' + T('forum.dernierMessage', 'Dernier message') + '</span></div>';
 

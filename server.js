@@ -827,6 +827,18 @@ const GAME_ITEM_INFO = {
   '$wpNostromo':   { name: 'Fond Nostromo',    game: 'MiniWave', gif: 'Games/miniWave2/bitmap/bg/miniwave_nostromo.jpg' },
 };
 
+/*
+ * LES NOMS DES PICTOS DANS LA LANGUE DU LECTEUR. Le nom français (`name`) reste
+ * celui du catalogue : le bureau Flash, le forum ([picto=…]) et l'historique le
+ * lisent tel quel, et il départage l'ordre d'affichage. En anglais, un picto se
+ * nomme par son identifiant (`pictos.<id>`, i18n-serveur/en/pictos.js) ; une
+ * FAMILLE engendrée (« Monstre 12 », « Parchemin de Foudre », « Pain (petit) »)
+ * par un gabarit et ses paramètres, rangés ici à la fabrication. Les fruits de
+ * Frutisnake (« Fruit 12 ») et les pictos inédits de l'admin gardent leur nom.
+ * Voir nomDePicto.
+ */
+const PICTO_NOM_FAMILLE = {};   // id → texte traduisible { k, fr, p }
+
 // Les smileys du stand Miniwave, tels que le forum les connaît : le code tapé
 // (ou inséré par la rangée), le fichier servi depuis /fb/, et le titem qui les
 // débloque. Tout le monde VOIT un smiley posté ; seuls les acheteurs ont le
@@ -884,6 +896,7 @@ for (const e of MINIFEVER_EPREUVES) {
 for (let i = 0; i <= 50; i++) {
   const pad = String(i).padStart(2, '0');
   GAME_ITEM_INFO[`$bads${i}`] = { name: `Monstre ${i}`, game: 'MiniWave', gif: `Games/miniWave2/titem/gif/bad${pad}.gif` };
+  PICTO_NOM_FAMILLE[`$bads${i}`] = { k: 'pictos.famille.monstre', fr: 'Monstre {n}', p: { n: i } };
 }
 for (let i = 0; i <= 4; i++) {
   GAME_ITEM_INFO[`$mis${i}`] = { name: `Mission ${i}`, game: 'MiniWave', gif: `Games/miniWave2/titem/gif/mis${i}.gif` };
@@ -938,6 +951,9 @@ const PIXIZ_SPELL_NAMES = {
 for (const [spellId, spellName] of Object.entries(PIXIZ_SPELL_NAMES)) {
   PIXIZ_ITEM_NAMES[100 + Number(spellId)] = `Parchemin de ${spellName}`;
   PIXIZ_ITEM_NAMES[200 + Number(spellId)] = `Livre de ${spellName}`;
+  const sort = { k: 'pictos.pixizSort.' + spellId, fr: spellName };
+  PICTO_NOM_FAMILLE['$pixiz_item' + (100 + Number(spellId))] = { k: 'pictos.famille.parchemin', fr: 'Parchemin de {sort}', p: { sort } };
+  PICTO_NOM_FAMILLE['$pixiz_item' + (200 + Number(spellId))] = { k: 'pictos.famille.livre', fr: 'Livre de {sort}', p: { sort } };
 }
 // Build picto entries for each item that has a GIF on disk.
 // GIF filename = item_${id+1}.gif under bmp/titems/GIF/item/.
@@ -968,6 +984,10 @@ for (let i = 0; i < 57; i++) {
   const gif = `Games/miniTroll/bmp/titems/GIF/food/food_${i + 1}.gif`;
   if (fs.existsSync(path.join(__dirname, gif))) {
     GAME_ITEM_INFO[`$pixiz_food${id}`] = { name: `${baseName} (${variant})`.trim(), game: 'MiniPixiz', gif };
+    if (PIXIZ_FOOD_BASE_NAMES[Math.floor(i / 3)]) {
+      PICTO_NOM_FAMILLE[`$pixiz_food${id}`] = { k: 'pictos.famille.aliment', fr: '{aliment} ({taille})', p: {
+        aliment: { k: 'pictos.pixizAliment.' + Math.floor(i / 3), fr: baseName }, taille: { k: 'pictos.taille.' + variant, fr: variant } } };
+    }
   }
 }
 // Diamonds (5 colors) — earned by completing each Dungeon difficulty level
@@ -983,6 +1003,8 @@ for (let i = 1; i <= 5; i++) {
     game: 'MiniPixiz',
     gif: `Games/miniTroll/bmp/titems/GIF/diam/diam${i}.gif`,
   };
+  PICTO_NOM_FAMILLE[`$pixiz_diam${i}`] = { k: 'pictos.famille.diamant', fr: 'Diamant {matiere}',
+    p: { matiere: { k: 'pictos.pixizDiamant.' + i, fr: PIXIZ_DIAM_NAMES[i - 1] } } };
 }
 
 // JamaJama (Poulpi) — milestone pictos awarded based on number of saved
@@ -1261,7 +1283,21 @@ function registerCustomPicto(meta) {
   };
 }
 
-function getGameItemDisplayName(itemName) {
+/*
+ * Le nom d'un picto en TEXTE TRADUISIBLE (voir texteDe) : à passer en
+ * paramètre d'une phrase à clé — « Nouveau picto débloqué : {picto} » — ou à
+ * rendre tout de suite (getGameItemDisplayName). Un picto du catalogue a sa
+ * clé ; un fruit de Frutisnake ou un picto inédit, son nom tel quel.
+ */
+function nomDePicto(itemName) {
+  const info = GAME_ITEM_INFO[itemName];
+  if (info) return PICTO_NOM_FAMILLE[itemName] || { k: 'pictos.' + itemName, fr: info.name };
+  return getGameItemDisplayName(itemName);
+}
+
+// Le nom affiché d'un picto ; `lang` absent ou « fr » : le nom du catalogue.
+function getGameItemDisplayName(itemName, lang) {
+  if (lang && lang !== 'fr' && GAME_ITEM_INFO[itemName]) return texteDe(lang, nomDePicto(itemName));
   const info = GAME_ITEM_INFO[itemName];
   if (info) return info.name;
   const custom = CUSTOM_PICTOS[itemName];
@@ -1322,7 +1358,7 @@ function renderPictoEntryXml(itemName) {
  * @returns {Array<{id: string, nom: string, jeu: string}>}
  */
 const RANG_CATALOGUE_PICTO = new Map(Object.keys(GAME_ITEM_INFO).map((k, i) => [k, i]));
-function pictosRangesParJeu(gameItems) {
+function pictosRangesParJeu(gameItems, lang) {
   const vus = new Set();
   const liste = [];
   for (const id of Array.isArray(gameItems) ? gameItems : []) {
@@ -1331,11 +1367,14 @@ function pictosRangesParJeu(gameItems) {
     liste.push({ id, nom: getGameItemDisplayName(id), jeu: getGameItemGame(id) || 'Autre' });
   }
   const rang = (p) => (RANG_CATALOGUE_PICTO.has(p.id) ? RANG_CATALOGUE_PICTO.get(p.id) : Infinity);
-  return liste.sort((a, b) => (a.jeu === 'Autre') - (b.jeu === 'Autre')
+  liste.sort((a, b) => (a.jeu === 'Autre') - (b.jeu === 'Autre')
     || a.jeu.localeCompare(b.jeu, 'fr')
     || (rang(a) - rang(b) || 0)
     || a.nom.localeCompare(b.nom, 'fr', { numeric: true })
     || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  // Rangés en français, nommés dans la langue du lecteur.
+  if (lang && lang !== 'fr') for (const p of liste) p.nom = getGameItemDisplayName(p.id, lang);
+  return liste;
 }
 
 function dossiersPictos(user) {
@@ -3361,8 +3400,8 @@ async function tournamentSetMatchWinner(t, match, winner, score1, score2) {
 
 // `matches` (facultatif) : les affiches du tour — pour reconnaître le tour
 // préliminaire (cf. tournoiCoupe.js).
-function tournamentRoundName(round, totalRounds, matches) {
-  return TC.nomDuTour(round, totalRounds, matches);
+function tournamentRoundName(round, totalRounds, matches, lang) {
+  return TC.nomDuTour(round, totalRounds, matches, lang);
 }
 // Rendu SVG du bracket (look « bracket classique » vert Frutiparc, vainqueur en
 // gras). Servi tel quel comme image partageable sur le forum via [img].
@@ -3731,6 +3770,10 @@ function langueDe(username) {
   const u = username && users[String(username).toLowerCase()];
   return (u && FPI18n.valide(u.lang)) || 'fr';
 }
+// Le texte d'une réponse HTTP, dans la langue de qui la demande (les messages
+// `message`/`error` en toutes lettres des routes joueurs ; le CODE d'erreur, lui,
+// ne change jamais).
+function tReq(req, cle, fr, params) { return t(langueDeRequete(req), cle, fr, params); }
 function langueDeRequete(req) {
   const q = (req && req.query) || {};
   const b = (req && req.body) || {};
@@ -4351,7 +4394,7 @@ function padZ(n, l) {
   while (s.length < l) s = '0' + s;
   return s;
 }
-function displayScoreType(score, ty) {
+function displayScoreType(score, ty, lang) {
   const v = Number(score);
   if (!Number.isFinite(v)) return String(score == null ? '' : score);
   switch (ty) {
@@ -4362,7 +4405,7 @@ function displayScoreType(score, ty) {
       return (m > 0 ? m + "'" + padZ(s, 2) : String(s)) + '"' + padZ(ms, 3);
     }
     case 'xp':
-      return 'Niv. ' + getLevelForXp(v) + ', '
+      return (lang && lang !== 'fr' ? t(lang, 'classements.niv', 'Niv.') : 'Niv.') + ' ' + getLevelForXp(v) + ', '
         + padZ(Math.floor(xpLevelCompletionRate(v) * 100), 2) + '%';
     case 'rate':
       return (Math.round(v * 100) / 100) + '%';
@@ -5453,6 +5496,25 @@ const GAME_DISPLAY_NAMES = {
   minifever: 'Mini-Fever', jamajama: 'JamaJama',
 };
 const MEDAL_DISPLAY_NAMES = { or: "d'or", argent: "d'argent", bronze: 'de bronze' };
+/*
+ * Le nom d'une médaille en TEXTE TRADUISIBLE. Le français s'élide et se lit
+ * après « médaille » (« la médaille d'or ») ; l'anglais n'a que l'adjectif,
+ * devant (« the gold medal ») : chaque langue tient sa phrase, la médaille
+ * n'est qu'un paramètre (`classements.medaille.or` → « gold »).
+ */
+function nomDeMedaille(m) {
+  const fr = MEDAL_DISPLAY_NAMES[m];
+  return fr ? { k: 'classements.medaille.' + m, fr } : String(m || '');
+}
+/*
+ * Le nom d'un classement (RANKINGS) dans une langue. Les noms propres (jeux,
+ * circuits) restent ; « Classique », « Grappe », « Championnat »… se
+ * traduisent (`classements.<id>`, i18n-serveur/en/classements.js).
+ */
+function nomDeClassement(rkId, lang, repli) {
+  const fr = (RANKINGS[rkId] && RANKINGS[rkId].name) || repli || rkId;
+  return !lang || lang === 'fr' ? fr : t(lang, 'classements.' + rkId, fr);
+}
 
 /**
  * La VIGNETTE de médaille du bureau, pour un jeu donné.
@@ -6200,10 +6262,12 @@ function feutreDePref(brut) {
   return '';
 }
 // Les choix offerts à CE joueur : le multicolore seulement s'il le possède.
-function choixFeutreDefaut(user) {
-  const liste = [[0, 'Aucun feutre']].concat(NOMS_FEUTRES.map((nom, i) => [i + 1, nom]));
+// (Les noms dans la langue du lecteur : `prefs.feutre.<index>`, i18n-serveur/en/prefs.js.)
+function choixFeutreDefaut(user, lang = 'fr') {
+  const liste = [[0, t(lang, 'prefs.feutre.aucun', 'Aucun feutre')]]
+    .concat(NOMS_FEUTRES.map((nom, i) => [i + 1, t(lang, 'prefs.feutre.' + i, nom)]));
   if (user && Array.isArray(user.ownedFeutres) && user.ownedFeutres.includes('mc')) {
-    liste.push([FEUTRE_PREF_MULTICOLORE, 'Multicolore']);
+    liste.push([FEUTRE_PREF_MULTICOLORE, t(lang, 'prefs.feutre.multicolore', 'Multicolore')]);
   }
   return liste;
 }
@@ -7757,6 +7821,64 @@ const SHOP_PACKS_DEFAULT = [
   ...SHOP_FEUTRES_DEFAULT,
 ];
 const SHOP_PACKS = [...SHOP_PACKS_DEFAULT];
+
+/*
+ * L'ARTICLE DANS LA LANGUE DU LECTEUR. Le nom français reste l'IDENTIFIANT de
+ * l'article (inventaire, forum, historique des achats) ; on ne traduit que ce
+ * que la boutique et l'inventaire du light affichent. Dans l'ordre :
+ *   1. l'anglais saisi dans l'admin (`name_en`, `description_en`, `comment_en`,
+ *      colonnes de shop_packs) ;
+ *   2. pour un article livré avec le code, le dictionnaire (`boutique.<id>.nom`,
+ *      `.description`, `.commentaire`, i18n-serveur/en/boutique.js) — tant que
+ *      la base garde le français du code : un texte retouché dans l'admin
+ *      n'est plus celui que le dictionnaire traduit ;
+ *   3. sinon, le français.
+ */
+const SHOP_DEFAUT_PAR_ID = new Map(SHOP_PACKS_DEFAULT.map((p) => [p.id, p]));
+const CHAMP_ARTICLE = { name: 'nom', description: 'description', comment: 'commentaire' };
+function texteArticle(p, champ, lang) {
+  const fr = (p && p[champ]) || '';
+  if (!p || !lang || lang === 'fr') return fr;
+  if (p[champ + '_' + lang]) return String(p[champ + '_' + lang]);
+  const def = SHOP_DEFAUT_PAR_ID.get(p.id);
+  if (!def) return fr;
+  // (une ligne en base sans commentaire reprend sa description, cf. loadShopPacks)
+  const frDuCode = champ === 'comment' ? (def.comment || def.description || '') : (def[champ] || '');
+  if (fr !== frDuCode) return fr;
+  const cle = `boutique.${p.id}.${CHAMP_ARTICLE[champ]}`;
+  if (champ === 'comment' && !def.comment && !FPI18n.possede(lang, cle)) return t(lang, `boutique.${p.id}.description`, fr);
+  return t(lang, cle, fr);
+}
+// La fiche d'un ACCESSOIRE, en deux niveaux (resolveAccessoryLevels) : les
+// paragraphes communs se traduisent ; un texte propre à l'article, seulement
+// s'il a son anglais (`description_en`, le même JSON {l1, l2}).
+function niveauxAccessoire(p, lang) {
+  if (!lang || lang === 'fr') return resolveAccessoryLevels(p);
+  const n = resolveAccessoryLevels({ description: (p && p['description_' + lang]) || (p && p.description) });
+  return {
+    l1: n.l1 === DEFAULT_ACCESSORY_DESC_L1 ? t(lang, 'boutique.accessoire.l1', n.l1) : n.l1,
+    l2: n.l2 === DEFAULT_ACCESSORY_DESC_L2 ? t(lang, 'boutique.accessoire.l2', n.l2) : n.l2,
+  };
+}
+// Le nom d'un rayon : « Fonds d'écran » → `boutique.rayon.fondsdecran`. Le
+// nom français reste la clé du rayon (le regroupement, l'admin).
+function nomRayon(nom, lang) {
+  if (!lang || lang === 'fr') return nom;
+  const cle = String(nom || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+  return cle ? t(lang, 'boutique.rayon.' + cle, nom) : nom;
+}
+// Le nom d'un objet POSSÉDÉ (une entrée de customAccessories, qui garde une
+// copie du nom français à l'achat) : rendu depuis son article quand on le
+// retrouve — `shopId`, ou l'identifiant « shop_<id> » / « wp_<fond> ».
+function nomPossede(acc, lang) {
+  const copie = (acc && acc.n) || '';
+  if (!acc || !lang || lang === 'fr') return copie;
+  let pack = acc.shopId ? getShopPack(acc.shopId) : null;
+  const id = String(acc.id || '');
+  if (!pack && /^shop_\d+$/.test(id)) pack = getShopPack(id.slice(5));
+  if (!pack && id.startsWith('wp_')) pack = SHOP_PACKS.find((p) => p.wallpaperId === id.slice(3));
+  return pack ? texteArticle(pack, 'name', lang) : copie;
+}
 
 
 // Une bouille dont on remplace la paire d'iris. `eyeSc` occupe les caractères
@@ -10132,7 +10254,7 @@ app.post('/api/auth/register', async (req, res) => {
   const ip = getClientIp(req) || 'unknown';
   if (!checkRegisterRateLimit(ip)) {
     console.warn(`[REGISTER] rate-limit blocked ip=${ip}`);
-    return res.status(429).json({ ok: false, error: 'rate_limited', message: 'Trop de tentatives, réessayez plus tard.' });
+    return res.status(429).json({ ok: false, error: 'rate_limited', message: tReq(req, 'api.auth.tropDeTentatives', 'Trop de tentatives, réessayez plus tard.') });
   }
 
   const rawName = String((req.body && req.body.username) || '').trim();
@@ -10140,16 +10262,16 @@ app.post('/api/auth/register', async (req, res) => {
   const password = String((req.body && req.body.password) || '');
 
   if (!isValidUsername(rawName)) {
-    return res.status(400).json({ ok: false, error: 'username_invalid', message: 'Pseudo : 3-20 caractères [a-zA-Z0-9_], pas d\'accents.' });
+    return res.status(400).json({ ok: false, error: 'username_invalid', message: tReq(req, 'api.auth.pseudoInvalide', 'Pseudo : 3-20 caractères [a-zA-Z0-9_], pas d\'accents.') });
   }
   if (!isValidPassword(password)) {
-    return res.status(400).json({ ok: false, error: 'password_invalid', message: 'Password: 6-80 chars.' });
+    return res.status(400).json({ ok: false, error: 'password_invalid', message: tReq(req, 'api.auth.codeSecretLongueur', 'Code secret : 6 à 80 caractères.') });
   }
   const rawEmail = String((req.body && req.body.email) || '').trim();
   let email = null;
   if (rawEmail) {
     if (!isValidEmail(rawEmail)) {
-      return res.status(400).json({ ok: false, error: 'email_invalid', message: 'E-mail invalide.' });
+      return res.status(400).json({ ok: false, error: 'email_invalid', message: tReq(req, 'api.auth.emailInvalide', 'E-mail invalide.') });
     }
     email = rawEmail.toLowerCase();
   }
@@ -10173,13 +10295,13 @@ app.post('/api/auth/register', async (req, res) => {
    * s'afficher — et elle n'est montrée à personne (cf. `bdPublic`).
    */
   if (users[username]) {
-    return res.status(409).json({ ok: false, error: 'user_exists', message: 'Username already taken.' });
+    return res.status(409).json({ ok: false, error: 'user_exists', message: tReq(req, 'api.auth.pseudoPris', 'Ce pseudo est déjà pris.') });
   }
   // A deleted account's pseudo stays reserved and can't be reused.
   if (process.env.DATABASE_URL) {
     try {
       if (await db.isUsernameReserved(username)) {
-        return res.status(409).json({ ok: false, error: 'user_exists', message: 'Ce pseudo a été supprimé et ne peut plus être réutilisé.' });
+        return res.status(409).json({ ok: false, error: 'user_exists', message: tReq(req, 'api.auth.pseudoSupprime', 'Ce pseudo a été supprimé et ne peut plus être réutilisé.') });
       }
     } catch (e) {
       console.error('[REGISTER] reserved-username check failed:', e.message);
@@ -10224,7 +10346,7 @@ app.post('/api/auth/register', async (req, res) => {
       referredBy: ref.referredBy, registerIp: ref.registerIp, deviceToken: ref.deviceToken, referralState: ref.referralState,
     });
     if (!dbUser) {
-      return res.status(409).json({ ok: false, error: 'user_exists', message: 'Username already taken.' });
+      return res.status(409).json({ ok: false, error: 'user_exists', message: tReq(req, 'api.auth.pseudoPris', 'Ce pseudo est déjà pris.') });
     }
     users[username] = createDefaultUser(passwordHash);
     users[username]._dbId = dbUser.id;
@@ -10268,7 +10390,7 @@ app.post('/api/auth/login', async (req, res) => {
     if (dbUser) {
       const { ok, upgrade } = await verifyPassword(dbUser.password, password);
       if (!ok) {
-        return res.status(401).json({ ok: false, error: 'invalid_credentials', message: 'Invalid username or password.' });
+        return res.status(401).json({ ok: false, error: 'invalid_credentials', message: tReq(req, 'api.auth.identifiantsIncorrects', 'Pseudo ou code secret incorrect.') });
       }
       if (upgrade) {
         dbUser.password = upgrade;
@@ -10286,7 +10408,7 @@ app.post('/api/auth/login', async (req, res) => {
       const user = users[username];
       const { ok, upgrade } = await verifyPassword(user && user.pass, password);
       if (!user || !ok) {
-        return res.status(401).json({ ok: false, error: 'invalid_credentials', message: 'Invalid username or password.' });
+        return res.status(401).json({ ok: false, error: 'invalid_credentials', message: tReq(req, 'api.auth.identifiantsIncorrects', 'Pseudo ou code secret incorrect.') });
       }
       if (upgrade) user.pass = upgrade;
       applyPendingChallengeNotifications(username, user);
@@ -10296,7 +10418,7 @@ app.post('/api/auth/login', async (req, res) => {
     const user = users[username];
     const { ok, upgrade } = await verifyPassword(user && user.pass, password);
     if (!user || !ok) {
-      return res.status(401).json({ ok: false, error: 'invalid_credentials', message: 'Invalid username or password.' });
+      return res.status(401).json({ ok: false, error: 'invalid_credentials', message: tReq(req, 'api.auth.identifiantsIncorrects', 'Pseudo ou code secret incorrect.') });
     }
     if (upgrade) user.pass = upgrade;
   }
@@ -10445,14 +10567,14 @@ async function sendResetEmail(toEmail, username, link, lang = 'fr') {
 app.post('/api/auth/forgot', async (req, res) => {
   const ip = getClientIp(req) || 'unknown';
   if (!checkRegisterRateLimit(ip)) {
-    return res.status(429).json({ ok: false, error: 'rate_limited', message: 'Trop de demandes, réessaie plus tard.' });
+    return res.status(429).json({ ok: false, error: 'rate_limited', message: tReq(req, 'api.auth.tropDeDemandes', 'Trop de demandes, réessaie plus tard.') });
   }
-  const generic = { ok: true, message: "Si un compte est associé à cette adresse, un e-mail de réinitialisation vient d'être envoyé." };
+  const generic = { ok: true, message: tReq(req, 'api.auth.oubliEnvoye', "Si un compte est associé à cette adresse, un e-mail de réinitialisation vient d'être envoyé.") };
   const email = String((req.body && req.body.email) || '').trim().toLowerCase();
   if (!isValidEmail(email)) {
     // Don't reveal validity specifics — but a clearly invalid address is a
     // client error worth flagging so the user fixes a typo.
-    return res.status(400).json({ ok: false, error: 'email_invalid', message: 'Adresse e-mail invalide.' });
+    return res.status(400).json({ ok: false, error: 'email_invalid', message: tReq(req, 'api.auth.adresseInvalide', 'Adresse e-mail invalide.') });
   }
   if (!process.env.DATABASE_URL) {
     console.warn('[RESET] no DATABASE_URL — reset unavailable');
@@ -10488,23 +10610,23 @@ app.get('/reset', (req, res) => {
 app.post('/api/auth/reset', async (req, res) => {
   const ip = getClientIp(req) || 'unknown';
   if (!checkRegisterRateLimit(ip)) {
-    return res.status(429).json({ ok: false, error: 'rate_limited', message: 'Trop de tentatives, réessaie plus tard.' });
+    return res.status(429).json({ ok: false, error: 'rate_limited', message: tReq(req, 'api.auth.tropDeTentativesTu', 'Trop de tentatives, réessaie plus tard.') });
   }
   const token = String((req.body && req.body.token) || '').trim();
   const password = String((req.body && req.body.password) || '');
   if (!token || !/^[0-9a-f]{64}$/i.test(token)) {
-    return res.status(400).json({ ok: false, error: 'bad_token', message: 'Lien invalide.' });
+    return res.status(400).json({ ok: false, error: 'bad_token', message: tReq(req, 'api.auth.lienInvalide', 'Lien invalide.') });
   }
   if (!isValidPassword(password)) {
-    return res.status(400).json({ ok: false, error: 'password_invalid', message: 'Code secret : 6 à 80 caractères.' });
+    return res.status(400).json({ ok: false, error: 'password_invalid', message: tReq(req, 'api.auth.codeSecretLongueur', 'Code secret : 6 à 80 caractères.') });
   }
   if (!process.env.DATABASE_URL) {
-    return res.status(503).json({ ok: false, error: 'no_db', message: 'Réinitialisation indisponible.' });
+    return res.status(503).json({ ok: false, error: 'no_db', message: tReq(req, 'api.auth.reinitIndisponible', 'Réinitialisation indisponible.') });
   }
   try {
     const row = await db.findValidPasswordReset(hashResetToken(token));
     if (!row) {
-      return res.status(400).json({ ok: false, error: 'token_invalid', message: 'Ce lien est invalide ou expiré. Refais une demande.' });
+      return res.status(400).json({ ok: false, error: 'token_invalid', message: tReq(req, 'api.auth.lienExpire', 'Ce lien est invalide ou expiré. Refais une demande.') });
     }
     const username = String(row.username).toLowerCase();
     const newHash = await hashPassword(password);
@@ -10521,10 +10643,10 @@ app.post('/api/auth/reset', async (req, res) => {
     }
     oublierSessionsDormantesDe(username);
     console.log(`[RESET] password reset completed for ${username}`);
-    return res.json({ ok: true, message: 'Ton code secret a été changé. Tu peux te connecter.' });
+    return res.json({ ok: true, message: tReq(req, 'api.auth.codeChange', 'Ton code secret a été changé. Tu peux te connecter.') });
   } catch (e) {
     console.error('[RESET] reset error:', e.message);
-    return res.status(500).json({ ok: false, error: 'server_error', message: 'Erreur serveur.' });
+    return res.status(500).json({ ok: false, error: 'server_error', message: tReq(req, 'api.erreurServeur', 'Erreur serveur.') });
   }
 });
 
@@ -12392,6 +12514,7 @@ app.get('/api/paris', async (req, res) => {
   try {
     const moi = resolveUsernameFromSid(String(req.query.sid || '')) || '';
     const user = moi ? users[moi] : null;
+    const L = langueDeRequete(req);
     const tournois = [];
     for (const t of await parisTournoisVisibles()) {
       const matches = await db.getTournamentMatches(t.id);
@@ -12404,8 +12527,8 @@ app.get('/api/paris', async (req, res) => {
       const rounds = matches.map((m) => Number(m.round));
       const fin = rounds.length ? Math.max(...rounds) : 0;
       const nomTour = (m) => (t.format === 'duel'
-        ? TD.nomDuTour(Number(m.round), matches.filter((x) => Number(x.round) === Number(m.round)).length)
-        : tournamentRoundName(Number(m.round), fin, matches.filter((x) => Number(x.round) === Number(m.round))));
+        ? TD.nomDuTour(Number(m.round), matches.filter((x) => Number(x.round) === Number(m.round)).length, L)
+        : tournamentRoundName(Number(m.round), fin, matches.filter((x) => Number(x.round) === Number(m.round)), L));
       const scores = await scoresDesCotes(t, matches);
       const fiche = (m) => {
         const liste = (parMatch.get(m.id) || []).filter((p) => p.statut !== 'rembourse');
@@ -12453,13 +12576,15 @@ function prunosticPrevenir(joueur, parieur, texte) {
 }
 
 app.post('/api/paris', async (req, res) => {
-  if (!process.env.DATABASE_URL) return res.status(400).json({ ok: false, code: 'fermes', message: 'Les paris ne sont pas disponibles.' });
+  // (`t` y nomme le tournoi : le texte passe par FPI18n.traduire.)
+  const L = langueDeRequete(req);
+  if (!process.env.DATABASE_URL) return res.status(400).json({ ok: false, code: 'fermes', message: FPI18n.traduire(L, 'paris.indisponibles', 'Les paris ne sont pas disponibles.') });
   const b = req.body || {};
   const moi = resolveUsernameFromSid(String(b.sid || ''));
-  if (!moi) return res.status(401).json({ ok: false, code: 'auth', message: 'Connecte-toi pour parier.' });
+  if (!moi) return res.status(401).json({ ok: false, code: 'auth', message: FPI18n.traduire(L, 'paris.connecteToi', 'Connecte-toi pour parier.') });
   const user = users[moi];
-  if (!user) return res.status(503).json({ ok: false, code: 'auth', message: 'Compte indisponible, réessaie.' });
-  if (parisVerrous.has(moi)) return res.status(429).json({ ok: false, code: 'patience', message: 'Un pari est déjà en cours d’enregistrement.' });
+  if (!user) return res.status(503).json({ ok: false, code: 'auth', message: FPI18n.traduire(L, 'paris.compteIndisponible', 'Compte indisponible, réessaie.') });
+  if (parisVerrous.has(moi)) return res.status(429).json({ ok: false, code: 'patience', message: FPI18n.traduire(L, 'paris.patience', 'Un pari est déjà en cours d’enregistrement.') });
   parisVerrous.add(moi);
   try {
     const m = await db.getTournamentMatch(Number(b.match));
@@ -12468,19 +12593,19 @@ app.post('/api/paris', async (req, res) => {
     const choix = String(b.choix || '').toLowerCase();
     const mise = Number(b.mise);
     const refus = Paris.refus({
-      tournoi: t, match: m, parieur: moi, choix, mise, solde: Number(user.kikooz) || 0,
+      tournoi: t, match: m, parieur: moi, choix, mise, solde: Number(user.kikooz) || 0, lang: L,
       misePrecedente: precedent && precedent.statut === 'ouvert' ? precedent.mise : 0,
       choixPrecedent: precedent && precedent.statut === 'ouvert' ? precedent.choix : null,
     });
     if (refus) return res.status(400).json(Object.assign({ ok: false }, refus));
-    if (parisMatchCommence(t, m)) return res.status(400).json({ ok: false, code: 'joue', message: 'Les mises sur ce match sont fermées.' });
+    if (parisMatchCommence(t, m)) return res.status(400).json({ ok: false, code: 'joue', message: FPI18n.traduire(L, 'paris.misesFermees', 'Les mises sur ce match sont fermées.') });
     if (precedent && precedent.statut !== 'ouvert') {
-      return res.status(400).json({ ok: false, code: 'joue', message: 'Les paris sur ce match sont réglés.' });
+      return res.status(400).json({ ok: false, code: 'joue', message: FPI18n.traduire(L, 'paris.matchRegle', 'Les paris sur ce match sont réglés.') });
     }
     const lies = await db.memeAppareil(moi, [m.player1, m.player2]);
     if (lies.length) {
       return res.status(400).json({ ok: false, code: 'appareil',
-        message: 'Ton compte a été utilisé sur le même appareil qu’un des joueurs de ce match : tu ne peux pas parier dessus.' });
+        message: FPI18n.traduire(L, 'paris.memeAppareil', 'Ton compte a été utilisé sur le même appareil qu’un des joueurs de ce match : tu ne peux pas parier dessus.') });
     }
     const affiche = parisAffiche(m);
     // La cote du moment, figée sur la mise. Un pari mutuel posé avant les
@@ -12490,11 +12615,11 @@ app.post('/api/paris', async (req, res) => {
     const cote = cotes && cotes[choix] ? cotes[choix].cote : null;
     const retour = cote ? CoteTournoi.retourDe(mise, cote) : null;
     const pari = await db.poserPari({ tournamentId: t.id, matchId: m.id, username: moi, choix, mise, affiche, retour, cote });
-    if (!pari) return res.status(400).json({ ok: false, code: 'camp', message: 'Tu as déjà parié sur l’autre joueur de ce match.' });
+    if (!pari) return res.status(400).json({ ok: false, code: 'camp', message: FPI18n.traduire(L, 'paris.autreCamp', 'Tu as déjà parié sur l’autre joueur de ce match.') });
     // Le solde a pu bouger pendant l'écriture (un achat, un don) : on revérifie.
     if ((Number(user.kikooz) || 0) < mise) {
       await db.retirerMise(pari.id, mise, retour).catch(dbErr('retirerMise'));
-      return res.status(400).json({ ok: false, code: 'solde', message: 'Tu n’as pas assez de kikooz.' });
+      return res.status(400).json({ ok: false, code: 'solde', message: FPI18n.traduire(L, 'paris.solde', 'Tu n’as pas assez de kikooz.') });
     }
     user.kikooz = (Number(user.kikooz) || 0) - mise;
     if (user._dbId) db.updateUser(moi, { kikooz: user.kikooz }).catch(dbErr('updateUser pari'));
@@ -12515,7 +12640,7 @@ app.post('/api/paris', async (req, res) => {
       cote: pari.cote == null ? null : Number(pari.cote), retour: pari.retour });
   } catch (e) {
     console.error('[PARIS] mise :', e.message);
-    res.status(500).json({ ok: false, code: 'erreur', message: 'Le pari n’a pas pu être enregistré.' });
+    res.status(500).json({ ok: false, code: 'erreur', message: FPI18n.traduire(L, 'paris.nonEnregistre', 'Le pari n’a pas pu être enregistré.') });
   } finally {
     parisVerrous.delete(moi);
   }
@@ -12629,11 +12754,25 @@ function jourDecale(jour, n) {
 }
 const parisChallengeDemain = () => jourDecale(parisDayKey(), 1);
 const parisChallengeHier = () => jourDecale(parisDayKey(), -1);
-function jourLisible(jour) {
+// (`lang` : « samedi 28 novembre » ; « Saturday, November 28 » en anglais.)
+function jourLisible(jour, lang) {
   const d = new Date(jour + 'T12:00:00Z');
-  return d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' });
+  return d.toLocaleDateString(lang && lang !== 'fr' ? 'en-US' : 'fr-FR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' });
 }
-const coteLisible = (c) => '×' + String(c).replace('.', ',');
+// « ×2,5 » ; « ×2.5 » en anglais.
+const coteLisible = (c, lang) => '×' + String(c).replace('.', t(lang || 'fr', 'paris.virgule', ','));
+// L'affiche d'un match (`tournament_paris.affiche`, rangée « Kiwi contre Bob ») :
+// les deux pseudos se relisent, le mot se traduit.
+function afficheLisible(affiche, lang) {
+  const m = /^(.*) contre (.*)$/.exec(String(affiche || ''));
+  return !m || !lang || lang === 'fr' ? String(affiche || '') : t(lang, 'paris.affiche', '{j1} contre {j2}', { j1: m[1], j2: m[2] });
+}
+// « la victoire de Kiwi (Kiwi contre Bob), Coupe d'hiver » — le nom du
+// tournoi est celui de l'organisateur, tel quel.
+function quoiPariTournoi(nom, affiche, tournoi, lang) {
+  return t(lang || 'fr', 'paris.quoi.victoire', 'la victoire de {nom}', { nom })
+    + (affiche ? ` (${afficheLisible(affiche, lang)})` : '') + (tournoi ? `, ${tournoi}` : '');
+}
 // Les jeux du Challenge, tels qu'on parie dessus.
 function jeuxChallengeParis() {
   const jeux = [];
@@ -12741,12 +12880,14 @@ function rangDuType(type) {
   return type === 'or' ? 1 : 3;
 }
 // « Myrtille en or à Swapou 2 », « le défi de Myrtille : l'argent ou l'or à Swapou 2 »…
-function quoiPariChallenge(type, nom, nomJeu) {
-  if (type === 'or') return `${nom} en or à ${nomJeu}`;
-  if (type === 'defi_or') return `le défi de ${nom} : l’or à ${nomJeu}`;
-  if (type === 'defi_argent') return `le défi de ${nom} : l’argent ou l’or à ${nomJeu}`;
-  if (type === 'defi_bronze') return `le défi de ${nom} : une médaille à ${nomJeu}`;
-  return `${nom} médaillé à ${nomJeu}`;
+// (Dans la langue `lang` : une phrase par sorte de pari, `paris.quoi.*`.)
+function quoiPariChallenge(type, nom, nomJeu, lang) {
+  const q = (k, fr) => t(lang || 'fr', 'paris.quoi.' + k, fr, { nom, jeu: nomJeu });
+  if (type === 'or') return q('or', '{nom} en or à {jeu}');
+  if (type === 'defi_or') return q('defiOr', 'le défi de {nom} : l’or à {jeu}');
+  if (type === 'defi_argent') return q('defiArgent', 'le défi de {nom} : l’argent ou l’or à {jeu}');
+  if (type === 'defi_bronze') return q('defiBronze', 'le défi de {nom} : une médaille à {jeu}');
+  return q('podium', '{nom} médaillé à {jeu}');
 }
 // Ceux qui font gagner un pari d'une sorte, dans un jeu : les `rang` premiers
 // de chacun de ses classements (Burning Kiwi : le circuit du jour, quel qu'il soit).
@@ -12754,9 +12895,9 @@ function gagnantsDuType(jeu, podiums, type) {
   const n = rangDuType(type);
   return jeu.rankings.flatMap((rk) => (podiums[rk] || []).slice(0, n)).filter(Boolean);
 }
-function libellePariChallenge(p, jeux) {
+function libellePariChallenge(p, jeux, lang) {
   const j = (jeux || jeuxChallengeParis()).find((x) => x.cle === p.jeu);
-  return `${quoiPariChallenge(p.type, getDisplayName(p.choix), j ? j.nom : p.jeu)} (${jourLisible(p.jour)})`;
+  return `${quoiPariChallenge(p.type, getDisplayName(p.choix), j ? j.nom : p.jeu, lang)} (${jourLisible(p.jour, lang)})`;
 }
 // Les cotes du Challenge d'un jour, jeu par jeu : les 30 jours d'historique
 // qui précèdent la veille (la veille se joue encore quand on mise). Elles ne
@@ -12918,19 +13059,20 @@ async function defiDuJoueur(moi, jour, paris, hist) {
 // Un défi médaille : les refus, puis la mise (appelé par POST /api/paris/challenge).
 async function parierDefi(res, moi, user, b, type) {
   const non = (code, message, status) => res.status(status || 400).json({ ok: false, code, message });
+  const L = langueDe(moi);
   const R = parisChallengeReglages;
-  if (R.defiActif === false) return non('fermes', 'Le défi médaille est fermé pour le moment.');
+  if (R.defiActif === false) return non('fermes', t(L, 'paris.defiFerme', 'Le défi médaille est fermé pour le moment.'));
   const jour = parisChallengeDemain();
   const jeu = jeuxChallengeOuverts().find((j) => j.cle === String(b.jeu || ''));
-  if (!jeu) return non('jeu', 'Ce jeu n’est pas ouvert aux Prunostics.');
+  if (!jeu) return non('jeu', t(L, 'paris.jeuFermePrunostics', 'Ce jeu n’est pas ouvert aux Prunostics.'));
   // Un défi se relève pour soi : on ne parie pas la médaille d'un autre ici.
   if (b.choix != null && b.choix !== '' && normalizeUsername(b.choix) !== moi) {
-    return non('soi', 'Le défi médaille se joue sur toi-même. Pour miser sur un autre, prends les pots « médaillé » ou « en or ».');
+    return non('soi', t(L, 'paris.defiSoi', 'Le défi médaille se joue sur toi-même. Pour miser sur un autre, prends les pots « médaillé » ou « en or ».'));
   }
   const mise = Number(b.mise);
-  if (!Number.isInteger(mise) || mise < 1) return non('mise', 'La mise est un nombre entier de kikooz.');
+  if (!Number.isInteger(mise) || mise < 1) return non('mise', t(L, 'paris.miseEntiere', 'La mise est un nombre entier de kikooz.'));
   const cotes = CoteChallenge.cotesDefi((await cotesChallenge(jour)).get(jeu.cle), moi);
-  if (!cotes) return non('jeu', `${jeu.nom} n’a pas assez tourné ces 30 jours pour un défi médaille.`);
+  if (!cotes) return non('jeu', t(L, 'paris.defiPasAssez', '{jeu} n’a pas assez tourné ces 30 jours pour un défi médaille.', { jeu: jeu.nom }));
   const cote = cotes[TYPES_DEFI[type].couleur];
   const paris = await db.parisChallengeDuJour(jour);
   const plafond = Number(R.plafond) || 50;
@@ -12938,22 +13080,24 @@ async function parierDefi(res, moi, user, b, type) {
   const deja = paris.filter((p) => p.username === moi).reduce((s2, p) => s2 + (Number(p.mise) || 0), 0);
   const dejaDefi = paris.filter((p) => p.username === moi && estDefi(p.type)).reduce((s2, p) => s2 + (Number(p.mise) || 0), 0);
   if (dejaDefi + mise > plafondDefi) {
-    return non('plafond', `Le défi médaille est plafonné à ${plafondDefi} kikooz par jour : tu peux encore y miser ${Math.max(0, plafondDefi - dejaDefi)}.`);
+    return non('plafond', t(L, 'paris.defiPlafond', 'Le défi médaille est plafonné à {plafond} kikooz par jour : tu peux encore y miser {reste}.',
+      { plafond: plafondDefi, reste: Math.max(0, plafondDefi - dejaDefi) }));
   }
   if (deja + mise > plafond) {
-    return non('plafond', `Le plafond est de ${plafond} kikooz par jour : tu peux encore miser ${Math.max(0, plafond - deja)}.`);
+    return non('plafond', t(L, 'paris.plafondJour', 'Le plafond est de {plafond} kikooz par jour : tu peux encore miser {reste}.',
+      { plafond, reste: Math.max(0, plafond - deja) }));
   }
-  if ((Number(user.kikooz) || 0) < mise) return non('solde', 'Tu n’as pas assez de kikooz.');
+  if ((Number(user.kikooz) || 0) < mise) return non('solde', t(L, 'paris.solde', 'Tu n’as pas assez de kikooz.'));
   const retour = CoteChallenge.retourDe(mise, cote);
   const pari = await db.poserPariChallenge({ jour, jeu: jeu.cle, type, username: moi, choix: moi, mise, cote, retour });
-  if (!pari) return non('fermes', 'Ce pari est déjà réglé.');
+  if (!pari) return non('fermes', t(L, 'paris.dejaRegle', 'Ce pari est déjà réglé.'));
   // Deux mises simultanées ont pu passer un plafond, ou le solde bouger.
   const apres = (await db.parisChallengeDuJour(jour)).filter((p) => p.username === moi);
   const total = apres.reduce((s2, p) => s2 + (Number(p.mise) || 0), 0);
   const totalDefi = apres.filter((p) => estDefi(p.type)).reduce((s2, p) => s2 + (Number(p.mise) || 0), 0);
   if (total > plafond || totalDefi > plafondDefi || (Number(user.kikooz) || 0) < mise) {
     await db.retirerMiseChallenge(pari.id, mise, retour).catch(dbErr('retirerMiseChallenge'));
-    return non('plafond', 'Ta mise dépasse le plafond du jour ou ton solde.');
+    return non('plafond', t(L, 'paris.depassePlafond', 'Ta mise dépasse le plafond du jour ou ton solde.'));
   }
   user.kikooz = (Number(user.kikooz) || 0) - mise;
   if (user._dbId) db.updateUser(moi, { kikooz: user.kikooz }).catch(dbErr('updateUser pari'));
@@ -12970,6 +13114,7 @@ app.get('/api/paris/challenge', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json({ ok: true, actif: false });
   try {
     const moi = resolveUsernameFromSid(String(req.query.sid || '')) || '';
+    const L = langueDeRequete(req);
     const user = moi ? users[moi] : null;
     const R = parisChallengeReglages;
     const demain = parisChallengeDemain();
@@ -13036,17 +13181,17 @@ app.get('/api/paris/challenge', async (req, res) => {
     const defi = await defiDuJoueur(moi, demain, paris, hist);
     res.json(Object.assign(base, {
       defi,
-      jour: demain, jourLisible: jourLisible(demain), plafond: Number(R.plafond) || 50,
+      jour: demain, jourLisible: jourLisible(demain, L), plafond: Number(R.plafond) || 50,
       cagnotte: await db.prunosticsCagnotte().catch(() => 0),
       dejaMise: moi ? await db.miseChallengeDuJour(moi, demain) : 0, jeux,
-      autresParis: autres.map((p) => ({ type: p.type, texte: libellePariChallenge(p).replace(getDisplayName(p.choix), nomDe(p.choix)), mise: p.mise,
+      autresParis: autres.map((p) => ({ type: p.type, texte: libellePariChallenge(p, undefined, L).replace(getDisplayName(p.choix), nomDe(p.choix)), mise: p.mise,
         cote: p.cote == null ? null : Number(p.cote), retour: p.retour })),
       hier: {
-        jour: hier, jourLisible: jourLisible(hier),
+        jour: hier, jourLisible: jourLisible(hier, L),
         podiums: jeuxChallengeParis().filter((j) => podiumHier[j.cle] && (!jeuxHier || jeuxHier.includes(j.cle)))
           .map((j) => ({ cle: j.cle, nom: j.nom, podium: podiumHier[j.cle] })),
         mesParis: mesHier.map((p) => ({
-          texte: libellePariChallenge(p).replace(getDisplayName(p.choix), nomDe(p.choix)),
+          texte: libellePariChallenge(p, undefined, L).replace(getDisplayName(p.choix), nomDe(p.choix)),
           mise: p.mise, cote: p.cote == null ? null : Number(p.cote), statut: p.statut, gain: p.gain })),
       },
     }));
@@ -13056,14 +13201,15 @@ app.get('/api/paris/challenge', async (req, res) => {
 });
 
 // LA SEMAINE d'un jour, du lundi au dimanche (jours de Paris).
-// Le mois d'un jour (heure de Paris) : { cle 'AAAA-MM', premier, dernier, lisible 'octobre 2026' }.
-function moisParis(jour) {
+// Le mois d'un jour (heure de Paris) : { cle 'AAAA-MM', premier, dernier, lisible 'octobre 2026' }
+// (`lisible` dans la langue `lang` : « October 2026 »).
+function moisParis(jour, lang) {
   const cle = String(jour).slice(0, 7);
   const [a, m] = cle.split('-').map(Number);
   return {
     cle, premier: cle + '-01',
     dernier: new Date(Date.UTC(a, m, 0)).toISOString().slice(0, 10),
-    lisible: new Date(Date.UTC(a, m - 1, 15)).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric', timeZone: 'UTC' }),
+    lisible: new Date(Date.UTC(a, m - 1, 15)).toLocaleDateString(lang && lang !== 'fr' ? 'en-US' : 'fr-FR', { month: 'long', year: 'numeric', timeZone: 'UTC' }),
   };
 }
 function moisDecale(cle, n) {
@@ -13667,15 +13813,15 @@ async function quetesContratDe(u) {
   try { return await travail; } catch (e) { console.error('[QUETES] contrat :', e.message); return null; } finally { quetesContratsEnCours.delete(u); }
 }
 // Ce que le joueur voit de son contrat.
-function quetesContratVue(u) {
+function quetesContratVue(u, lang = 'fr') {
   if (!quetesReglages.contrat.actif) return { etat: 'inactif' };
   const c = quetesContrats.get(u);
   if (!c || !c.propositions.length) return { etat: 'aucun', minJours: quetesReglages.individuelles.minJours, fenetre: quetesReglages.individuelles.fenetre };
   const gainDe = (niveau) => Number(quetesReglages.gains[niveau]) || 0;
   const propositions = c.propositions.map((prop, i) => {
     const def = Quetes.definitionContrat(prop);
-    return def ? { i, niveau: def.niveau, niveauNom: Quetes.NIVEAU_NOM[def.niveau], gain: gainDe(def.niveau),
-      titre: Quetes.titre(def), detail: Quetes.detail(def), etiquette: Quetes.ETIQUETTES[def.etiquette] || null, jeu: def.etiquette || null } : null;
+    return def ? { i, niveau: def.niveau, niveauNom: Quetes.nomNiveau(def.niveau, lang), gain: gainDe(def.niveau),
+      titre: Quetes.titre(def, lang), detail: Quetes.detail(def, lang), etiquette: Quetes.etiquette(def.etiquette, lang), jeu: def.etiquette || null } : null;
   }).filter(Boolean);
   if (!c.def) return { etat: 'a_signer', propositions };
   return { etat: 'signe', signeLe: c.signeAt || null, choix: c.choix, propositions };
@@ -13858,38 +14004,37 @@ function quetesReverifier() {
 function quetesEchapper(s) {
   return String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
-/** Ce que le joueur voit : ses quêtes, où il en est, et ce que dit Gromelin. */
-function quetesEtatPour(username) {
+/** Ce que le joueur voit : ses quêtes, où il en est, et ce que dit Gromelin —
+ *  dans sa langue (`lang`, celle du compte par défaut). */
+function quetesEtatPour(username, lang = langueDe(username)) {
   const u = String(username).toLowerCase();
   const S = quetesSemaineCourante();
   const vis = quetesVisites.get(u);
   const vuAt = vis && vis.semaine === S.lundi ? vis.vuAt : 0;
   const m = quetesProgres.get(u) || new Map();
   let gagnes = 0, total = 0;
-  const carte = (def) => {
+  // (`periode` : 'signature' pour le contrat, qui ne compte que depuis.)
+  const carte = (def, periode) => {
     const p = m.get(def.id) || { etat: {}, faitAt: 0, gain: 0 };
-    const av = Quetes.avancement(def, p.etat);
+    const av = Quetes.avancement(def, p.etat, lang, periode);
     const gain = p.faitAt ? p.gain : quetesGainDe(def);
     total += gain;
     if (p.faitAt) gagnes += p.gain;
     return {
-      id: def.id, niveau: def.niveau, niveauNom: Quetes.NIVEAU_NOM[def.niveau], gain,
-      palier: def.palier || null, palierNom: def.palier ? Quetes.PALIER_NOM[def.palier] : null,
+      id: def.id, niveau: def.niveau, niveauNom: Quetes.nomNiveau(def.niveau, lang), gain,
+      palier: def.palier || null, palierNom: def.palier ? Quetes.nomPalier(def.palier, lang) : null,
       decouverte: !!def.decouverte, premiersPas: !!def.premiersPas,
       gromelin: !!def.gromelin, gromelinAt: def.gromelin ? Number(def.gromelin.at) || 0 : 0, doigt: !!def.doigt,
-      titre: Quetes.titre(def), detail: Quetes.detail(def), ligne: av.ligne, pc: av.pc,
+      titre: Quetes.titre(def, lang), detail: Quetes.detail(def, lang), ligne: av.ligne, pc: av.pc,
       fait: !!p.faitAt, faitLe: p.faitAt || null,
-      etiquette: Quetes.ETIQUETTES[def.etiquette] || null, jeu: def.etiquette || null, taillee: !!def.taillee,
+      etiquette: Quetes.etiquette(def.etiquette, lang), jeu: def.etiquette || null, taillee: !!def.taillee,
     };
   };
   const quetes = quetesDe(u).map(carte);
   const indiv = quetesReglages.mode !== 'collectives' ? quetesIndiv.get(u) : null;
-  const contrat = quetesContratVue(u);
+  const contrat = quetesContratVue(u, lang);
   const cdef = contrat.etat === 'signe' ? quetesContrats.get(u).def : null;
-  if (cdef) {
-    contrat.quete = Object.assign(carte(cdef), { contrat: true });
-    contrat.quete.ligne = contrat.quete.ligne.replace('cette semaine', 'depuis la signature');
-  }
+  if (cdef) contrat.quete = Object.assign(carte(cdef, 'signature'), { contrat: true });
   // Ce que Gromelin a à dire depuis la dernière visite, dans l'ordre. Son
   // tirage est semé par la visite : la même tant qu'on n'a pas rouvert.
   const alea = (() => { let a = 7; for (const ch of u + S.lundi + vuAt) a = (Math.imul(a ^ ch.charCodeAt(0), 2654435761) + 1) >>> 0; return () => { a = (Math.imul(a ^ (a >>> 15), 2246822507) + 0x9E3779B9) >>> 0; return a / 4294967296; }; })();
@@ -13924,16 +14069,17 @@ function quetesEtatPour(username) {
   const nouveau = nouvelleSemaine || toutes.some((q) => q.fait && q.faitLe > vuAt) || quetes.some((q) => q.gromelin && !q.fait && q.gromelinAt > vuAt);
   return {
     ok: true, acces: true,
-    semaine: { lundi: S.lundi, lisible: Quetes.semaineLisible(S.lundi), fin: Quetes.finDeSemaine(S.lundi) },
+    semaine: { lundi: S.lundi, lisible: Quetes.semaineLisible(S.lundi, lang), fin: Quetes.finDeSemaine(S.lundi) },
     quetes, contrat, gagnes, total, nouveau, nouvelleSemaine, messages,
     gains: quetesReglages.gains,
     v2: quetesV2(S.lundi),
     gainsPaliers: quetesV2(S.lundi) ? quetesReglages.paliers.gains : null,
     echange: quetesV2(S.lundi) && quetesReglages.paliers.echange
-      ? { possible: quetesEchangePossible(u), fait: indiv && indiv.echange ? { titre: indiv.echange.deTitre } : null } : null,
+      ? { possible: quetesEchangePossible(u), fait: indiv && indiv.echange
+        ? { titre: indiv.echange.deDef ? Quetes.titre(indiv.echange.deDef, lang) : indiv.echange.deTitre } : null } : null,
     bonus: quetesV2(S.lundi) && quetesReglages.paliers.bonusXp
       ? { xp: quetesReglages.paliers.bonusXp, verse: !!((quetesProgres.get(u) || new Map()).get(QUETES_BONUS_ID) || {}).faitAt } : null,
-    primes: quetesPrimesVue(u),
+    primes: quetesPrimesVue(u, lang),
     gromelin: { nom: getDisplayName('gromelin'), bouille: (users.gromelin && users.gromelin.fbouille) || GROMELIN_BOUILLE },
   };
 }
@@ -14127,14 +14273,14 @@ function quetesRkMesure(rk) {
   const R = RANKINGS[rk];
   return (R && R.game === 'bkiwi' && R.bkiwiTrack !== undefined) ? `bkiwi_track${R.bkiwiTrack}_classic` : rk;
 }
-function quetesValeurLisible(rk, score, data) {
+function quetesValeurLisible(rk, score, data, lang) {
   const cle = quetesMesureDe(rk, true);
   const m = cle && Quetes.MESURES[cle];
-  if (!m) return Quetes.nombre(score);
+  if (!m) return Quetes.nombre(score, lang);
   const v = Quetes.valeurDe(m, { type: 'score', rk: quetesRkMesure(rk), v: Number(score), data: String(data || '') });
-  return v == null ? Quetes.nombre(score) : Quetes.formater(m, v);
+  return v == null ? Quetes.nombre(score, lang) : Quetes.formater(m, v, lang);
 }
-function quetesPrimesVue(moi) {
+function quetesPrimesVue(moi, lang = 'fr') {
   if (!quetesReglages.primes.actif) return [];
   const S = quetesPrimesDeLaSemaine();
   if (!quetesV2(S.lundi)) return [];
@@ -14148,12 +14294,12 @@ function quetesPrimesVue(moi) {
     const etat = quetesPrimesEtat.get(rk);
     const R = RANKINGS[rk] || {};
     return {
-      rk, nom: R.name || rk, etiquette: Quetes.ETIQUETTES[jeu] || null, jeu: jeu || null,
+      rk, nom: nomDeClassement(rk, lang), etiquette: Quetes.etiquette(jeu, lang), jeu: jeu || null,
       // Le circuit, pour Burning Kiwi (« Burning Kiwi - Green Hill » → « Green Hill ») : l'affiche le dit.
       circuit: R.bkiwiTrack !== undefined ? String(R.name).replace(/^.*? - /, '') : null,
       // D'où vient le record : 'carte' (un contre-la-montre lu dans la fruticard), sinon un score classé.
       source: rec.source === 'carte' ? 'carte' : 'classement',
-      record: quetesValeurLisible(rk, rec.score, rec.data), tenant: getDisplayName(rec.username), tenantPseudo: rec.username,
+      record: quetesValeurLisible(rk, rec.score, rec.data, lang), tenant: getDisplayName(rec.username), tenantPseudo: rec.username,
       // La prime : celle d'aujourd'hui (elle grossit chaque semaine que le record tient).
       gain: prise ? prise.gain : quetesPrimeValeur(rk, S.lundi), semaines: quetesPrimeSemaines(rk, S.lundi), depuis: etat ? etat.depuis : null,
       prochaine: quetesPrimeValeur(rk, S.lundi),   // ce que vaut le record aujourd'hui (après une prise : la relance)
@@ -14184,15 +14330,15 @@ app.post('/api/quetes/echanger', async (req, res) => {
     const S = quetesSemaineCourante();
     const l = quetesIndiv.get(u);
     if (!quetesV2(S.lundi) || !quetesReglages.paliers.echange || !l) return res.status(400).json({ ok: false, error: 'pas_d_echange' });
-    if (l.echange) return res.status(409).json({ ok: false, error: 'deja_echange', message: 'Tu as déjà changé une quête cette semaine.' });
+    if (l.echange) return res.status(409).json({ ok: false, error: 'deja_echange', message: tReq(req, 'quetes.dejaEchange', 'Tu as déjà changé une quête cette semaine.') });
     const i = l.quetes.findIndex((q) => q.id === String(b.id));
     if (i < 0) return res.status(404).json({ ok: false, error: 'quete_inconnue' });
     const ancienne = l.quetes[i];
     // Une bricole de Gromelin ne s'échange pas : elle est en plus, et il l'a choisie.
-    if (ancienne.gromelin) return res.status(400).json({ ok: false, error: 'bricole', message: 'Une bricole de Gromelin ne s’échange pas.' });
-    if (ancienne.doigt) return res.status(400).json({ ok: false, error: 'doigt', message: 'Le défi au doigt ne s’échange pas.' });
+    if (ancienne.gromelin) return res.status(400).json({ ok: false, error: 'bricole', message: tReq(req, 'quetes.bricoleNonEchangeable', 'Une bricole de Gromelin ne s’échange pas.') });
+    if (ancienne.doigt) return res.status(400).json({ ok: false, error: 'doigt', message: tReq(req, 'quetes.doigtNonEchangeable', 'Le défi au doigt ne s’échange pas.') });
     const p = (quetesProgres.get(u) || new Map()).get(ancienne.id);
-    if (p && p.faitAt) return res.status(400).json({ ok: false, error: 'deja_faite', message: 'Cette quête est déjà faite.' });
+    if (p && p.faitAt) return res.status(400).json({ ok: false, error: 'deja_faite', message: tReq(req, 'quetes.dejaFaite', 'Cette quête est déjà faite.') });
     // La remplaçante : même niveau d'abord, jamais une mesure déjà dans la liste.
     const prises = new Set(l.quetes.map((q) => q.famille));
     // (une quête de la vie du parc se reconnaît à sa clé, une quête de score à sa mesure)
@@ -14207,21 +14353,21 @@ app.post('/api/quetes/echanger', async (req, res) => {
       const faciles = Quetes.tirer(Object.assign({}, quetesReglages, { composition: { facile: 10, moyenne: 0, difficile: 0 } }), 'echange:' + S.lundi + ':' + u)
         .filter((q) => !deja.has(q.id) && !deja.has(q.famille));
       const q = faciles.find((x) => !jeux.has(x.etiquette)) || faciles[0];
-      if (!q) return res.status(400).json({ ok: false, error: 'rien_a_proposer', message: 'Gromelin n’a rien d’autre à te proposer cette semaine.' });
+      if (!q) return res.status(400).json({ ok: false, error: 'rien_a_proposer', message: tReq(req, 'quetes.rienAProposer', 'Gromelin n’a rien d’autre à te proposer cette semaine.') });
       neuve = Object.assign({}, q, { id: 'ind-' + num, base: q.id, palier: 'bronze', gain: quetesReglages.paliers.gains.bronze });
     }
     const quetes = l.quetes.slice();
     quetes[i] = neuve;
     const reserve = (l.reserve || []).filter((x) => x !== sp);
-    const echange = { de: ancienne.id, deTitre: Quetes.titre(ancienne), par: neuve.id, at: Date.now() };
+    const echange = { de: ancienne.id, deDef: ancienne, par: neuve.id, at: Date.now() };
     if (process.env.DATABASE_URL && !(await db.quetesEchangerIndividuelle(S.lundi, u, quetes, reserve, echange))) {
-      return res.status(409).json({ ok: false, error: 'deja_echange', message: 'Tu as déjà changé une quête cette semaine.' });
+      return res.status(409).json({ ok: false, error: 'deja_echange', message: tReq(req, 'quetes.dejaEchange', 'Tu as déjà changé une quête cette semaine.') });
     }
     Object.assign(l, { quetes, reserve, echange });
     const mp = quetesProgres.get(u);
     if (mp) mp.delete(ancienne.id);
     if (process.env.DATABASE_URL) db.quetesOublierProgres(S.lundi, u, ancienne.id).catch(dbErr('quetes echange'));
-    console.log(`[QUETES] ${u} change « ${echange.deTitre} » contre « ${Quetes.titre(neuve)} »`);
+    console.log(`[QUETES] ${u} change « ${Quetes.titre(ancienne)} » contre « ${Quetes.titre(neuve)} »`);
     quetesBonusPeutEtre(u, S.lundi);
     const etat = quetesEtatPour(u);
     etat.messages = [Quetes.parole('echange', { titre: quetesEchapper(Quetes.titre(neuve)) }, Math.random)];
@@ -14236,7 +14382,7 @@ app.get('/api/quetes/etat', async (req, res) => {
   await quetesIndivDe(u);
   try { await quetesDoigtAssurer(u); } catch (e) { console.error('[QUETES] défi au doigt :', e.message); }
   await quetesContratDe(u);
-  res.json(quetesEtatPour(u));
+  res.json(quetesEtatPour(u, langueDeRequete(req)));
 });
 // La signature du contrat : une des trois propositions, une fois pour la semaine.
 app.post('/api/quetes/contrat', async (req, res) => {
@@ -14247,12 +14393,12 @@ app.post('/api/quetes/contrat', async (req, res) => {
   try {
     const c = await quetesContratDe(u);
     if (!c || !c.propositions.length) return res.status(400).json({ ok: false, error: 'pas_de_contrat' });
-    if (c.choix != null) return res.status(409).json({ ok: false, error: 'deja_signe', message: 'Tu as déjà signé ton contrat cette semaine.' });
+    if (c.choix != null) return res.status(409).json({ ok: false, error: 'deja_signe', message: tReq(req, 'quetes.dejaSigne', 'Tu as déjà signé ton contrat cette semaine.') });
     const choix = Number(b.choix);
     if (!Number.isInteger(choix) || choix < 0 || choix >= c.propositions.length) return res.status(400).json({ ok: false, error: 'choix_invalide' });
     const S = quetesSemaineCourante();
     if (process.env.DATABASE_URL && !(await db.quetesSignerContrat(S.lundi, u, choix))) {
-      return res.status(409).json({ ok: false, error: 'deja_signe', message: 'Tu as déjà signé ton contrat cette semaine.' });
+      return res.status(409).json({ ok: false, error: 'deja_signe', message: tReq(req, 'quetes.dejaSigne', 'Tu as déjà signé ton contrat cette semaine.') });
     }
     quetesContratPoser(u, Object.assign(c, { choix, signeAt: Date.now() }));
     console.log(`[QUETES] ${u} signe son contrat : « ${Quetes.titre(c.def)} » (${c.def.niveau})`);
@@ -14331,7 +14477,7 @@ function quetesAdminJoueurs() {
     out.push({ username: u, nom: getDisplayName(u), faites: lignes.filter((l) => l.fait).length, total: lignes.length, gagnes,
       possible: lignes.reduce((n, l) => n + l.gain, 0),
       connu: indiv ? !!indiv.connu : null, niveaux: indiv ? indiv.niveaux || {} : {},
-      echange: indiv && indiv.echange ? indiv.echange.deTitre : null,
+      echange: indiv && indiv.echange ? (indiv.echange.deDef ? Quetes.titre(indiv.echange.deDef) : indiv.echange.deTitre) : null,
       bonus: !!(m.get(QUETES_BONUS_ID) || {}).faitAt, lignes });
   }
   return out.sort((a, b) => b.faites - a.faites || b.gagnes - a.gagnes || a.nom.localeCompare(b.nom));
@@ -14344,8 +14490,8 @@ function quetesAdminContrats() {
     const ligne = { username: u, nom: getDisplayName(u), propositions: props, choix: c.choix, signeLe: c.signeAt || null, etat: c.def ? 'signe' : 'a_signer' };
     if (c.def) {
       const p = (quetesProgres.get(u) || new Map()).get('contrat');
-      const av = Quetes.avancement(c.def, p ? p.etat : {});
-      Object.assign(ligne, { titre: Quetes.titre(c.def), niveau: c.def.niveau, ligne: av.ligne.replace('cette semaine', 'depuis la signature'), pc: av.pc, fait: !!(p && p.faitAt), gain: p && p.faitAt ? p.gain : 0 });
+      const av = Quetes.avancement(c.def, p ? p.etat : {}, 'fr', 'signature');
+      Object.assign(ligne, { titre: Quetes.titre(c.def), niveau: c.def.niveau, ligne: av.ligne, pc: av.pc, fait: !!(p && p.faitAt), gain: p && p.faitAt ? p.gain : 0 });
       if (ligne.fait) ligne.etat = 'fait';
     }
     out.push(ligne);
@@ -14722,7 +14868,7 @@ function quetesJoueurVue(u, liste) {
       decouverte: !!def.decouverte, premiersPas: !!def.premiersPas, parc: def.parc || null, retouchee: !!def.retouchee };
   });
   return { ok: true, username: u, nom: getDisplayName(u), lundi: S.lundi, lisible: Quetes.semaineLisible(S.lundi),
-    connu: !!liste.connu, echange: liste.echange ? liste.echange.deTitre : null,
+    connu: !!liste.connu, echange: liste.echange ? (liste.echange.deDef ? Quetes.titre(liste.echange.deDef) : liste.echange.deTitre) : null,
     quetes, total: quetes.reduce((n, q) => n + (q.fait ? 0 : q.gain), 0), modeles: quetesJoueurModeles() };
 }
 app.get('/api/admin/quetes/joueur', adminScope('quetes'), async (req, res) => {
@@ -14818,7 +14964,7 @@ app.post('/api/admin/quetes/joueur', adminScope('quetes'), async (req, res) => {
         const niveau = k <= 0 ? 'facile' : k === 1 ? 'moyenne' : 'difficile';
         def = { id: neuf, niveau, type: 'mesure', etiquette: m.jeu, famille: m.cle, taillee: true,
           gain: v2 ? Number(G[palier]) || 0 : Number(quetesReglages.gains[niveau]) || 0,
-          params: { mesure: m.cle, seuil }, detail: `${m.nom} · un défi de Gromelin` };
+          params: { mesure: m.cle, seuil }, rendu: { forme: 'defi' } };
         if (palier) Object.assign(def, { palier, v2: true });
       } else return refus('modele_inconnu', 'Modèle de quête inconnu.');
       if (!def) return refus('modele_inconnu', 'Modèle de quête inconnu.');
@@ -14938,6 +15084,7 @@ app.get('/api/paris/registre', async (req, res) => {
   try {
     const moi = resolveUsernameFromSid(String(req.query.sid || '')) || '';
     const seuil = Math.max(1, Number(parisChallengeReglages.grosCoup) || 100);
+    const L = langueDeRequete(req);
     const mesParis = moi ? await db.registreParis(moi, 300) : [];
     const coups = await db.grosCoupsParis(new Date(Date.now() - 30 * 86400000), seuil, 30);
     const noms = new Map();
@@ -14949,9 +15096,9 @@ app.get('/api/paris/registre', async (req, res) => {
     const quoi = (p) => {
       if (p.sorte === 'challenge') {
         const j = jeux.find((x) => x.cle === p.jeu);
-        return `${quoiPariChallenge(p.type, nomDe(p.choix), j ? j.nom : p.jeu)} (${jourLisible(p.jour)})`;
+        return `${quoiPariChallenge(p.type, nomDe(p.choix), j ? j.nom : p.jeu, L)} (${jourLisible(p.jour, L)})`;
       }
-      return `la victoire de ${nomDe(p.choix)}${p.affiche ? ` (${p.affiche})` : ''}${p.tournoi ? `, ${p.tournoi}` : ''}`;
+      return quoiPariTournoi(nomDe(p.choix), p.affiche, p.tournoi, L);
     };
     const lignes = mesParis.map((p) => ({
       sorte: p.sorte, type: p.type, quand: p.cree_le, quoi: quoi(p), mise: p.mise,
@@ -14969,19 +15116,19 @@ app.get('/api/paris/registre', async (req, res) => {
     };
     bilan.net = bilan.gains - bilan.mises;
     // Le Prunostiqueur du mois : le classement en cours, et le sacré du mois passé.
-    const sem = moisParis(parisDayKey());
-    const passee = moisParis(moisDecale(sem.cle, -1) + '-01');
+    const sem = moisParis(parisDayKey(), L);
+    const passee = moisParis(moisDecale(sem.cle, -1) + '-01', L);
     const enCours = await db.classementParis(sem.premier, sem.dernier, 3);
     const avant = (await db.classementParis(passee.premier, passee.dernier, 3))[0];
     const aNommer = enCours.map((c) => c.username).concat(avant ? [avant.username] : []);
     if (aNommer.length) for (const r of await db.fichesComptes(aNommer)) noms.set(r.username, r.display_name || getDisplayName(r.username));
     const monRang = moi ? enCours.findIndex((c) => c.username === moi) : -1;
     const mois = {
-      lisible: sem.lisible, minParis: 3,
+      cle: sem.cle, lisible: sem.lisible, minParis: 3,
       // Le classement ENTIER (la page n'en montre que le haut, et le reste sur demande).
       classement: enCours.map((c, i) => ({ rang: i + 1, nom: nomDe(c.username), pseudo: c.username, soi: c.username === moi, net: c.net, paris: c.paris, gagnes: c.gagnes })),
       moi: monRang >= 0 ? { rang: monRang + 1, net: enCours[monRang].net } : null,
-      passee: avant && avant.net > 0 ? { lisible: passee.lisible, nom: nomDe(avant.username), net: avant.net } : null,
+      passee: avant && avant.net > 0 ? { cle: passee.cle, lisible: passee.lisible, nom: nomDe(avant.username), net: avant.net } : null,
       cagnotte: await db.prunosticsCagnotte().catch(() => 0),
       plafondCagnotte: Number(parisChallengeReglages.plafondCagnotte) || 0,
     };
@@ -15004,7 +15151,7 @@ app.get('/api/paris/registre', async (req, res) => {
  *                           ce jour, et les matchs de tournoi réglés ce jour-là)
  *   /api/paris/parieur?u=   les paris réglés d'un joueur, 30 derniers jours
  */
-async function parisLignesPubliques(rows) {
+async function parisLignesPubliques(rows, lang = 'fr') {
   const noms = new Map();
   const cles = [...new Set(rows.flatMap((p) => [p.username, p.choix]).map((u) => String(u || '').toLowerCase()).filter(Boolean))];
   if (cles.length) for (const r of await db.fichesComptes(cles)) noms.set(r.username, r.display_name || getDisplayName(r.username));
@@ -15015,7 +15162,7 @@ async function parisLignesPubliques(rows) {
     return {
       sorte: p.sorte, quand: p.regle_le, parieur: nomDe(p.username), pseudo: String(p.username || '').toLowerCase(),
       choix: nomDe(p.choix), type: p.type || null, jeu: p.sorte === 'challenge' ? (j ? j.nom : p.jeu) : null, cleJeu: p.jeu || null,
-      jour: p.jour || null, tournoi: p.tournoi || null, affiche: p.affiche || null,
+      jour: p.jour || null, tournoi: p.tournoi || null, affiche: p.affiche ? afficheLisible(p.affiche, lang) : null,
       mise: Number(p.mise) || 0, cote: p.cote == null ? null : Number(p.cote), statut: p.statut, gain: Number(p.gain) || 0,
     };
   });
@@ -15039,8 +15186,9 @@ app.get('/api/paris/parc', async (req, res) => {
     let jour = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.jour || '')) ? String(req.query.jour) : hier;
     // Le jour en cours (et demain) se joue encore : rien n'est réglé, rien ne se montre.
     if (jour >= aujourdhui) jour = hier;
-    const lignes = await parisLignesPubliques(await db.parisReglesDuJour(jour));
-    res.json({ ok: true, jour, lisible: jourLisible(jour), precedent: jourDecale(jour, -1), suivant: jour < hier ? jourDecale(jour, 1) : null,
+    const L = langueDeRequete(req);
+    const lignes = await parisLignesPubliques(await db.parisReglesDuJour(jour), L);
+    res.json({ ok: true, jour, lisible: jourLisible(jour, L), precedent: jourDecale(jour, -1), suivant: jour < hier ? jourDecale(jour, 1) : null,
       lignes, bilan: parisBilanParJoueur(lignes) });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
@@ -15049,12 +15197,12 @@ app.get('/api/paris/parieur', async (req, res) => {
   try {
     const u = normalizeUsername(req.query.u);
     const fiche = u ? (await db.fichesComptes([u]))[0] : null;
-    if (!fiche) return res.status(404).json({ ok: false, message: 'Ce joueur n’existe pas.' });
+    if (!fiche) return res.status(404).json({ ok: false, message: tReq(req, 'paris.joueurInconnu', 'Ce joueur n’existe pas.') });
     const depuis = Date.now() - 30 * 86400000;
     const rows = (await db.registreParis(u, 500))
       .filter((p) => p.statut !== 'ouvert' && p.regle_le && new Date(p.regle_le).getTime() >= depuis)
       .map((p) => Object.assign({ username: u }, p));
-    const lignes = await parisLignesPubliques(rows);
+    const lignes = await parisLignesPubliques(rows, langueDeRequete(req));
     const b = parisBilanParJoueur(lignes)[0] || { paris: 0, gagnes: 0, mises: 0, gains: 0, net: 0 };
     res.json({ ok: true, pseudo: u, nom: fiche.display_name || getDisplayName(u), lignes, bilan: b });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
@@ -15064,18 +15212,19 @@ app.get('/api/paris/parieur', async (req, res) => {
 // historique sur le jeu, et ce qui est déjà misé sur lui.
 app.get('/api/paris/challenge/joueur', async (req, res) => {
   const non = (code, message, status) => res.status(status || 400).json({ ok: false, code, message });
-  if (!process.env.DATABASE_URL || !parisChallengeReglages.actif) return non('fermes', 'Les paris du Challenge ne sont pas ouverts.');
+  const L = langueDeRequete(req);
+  if (!process.env.DATABASE_URL || !parisChallengeReglages.actif) return non('fermes', t(L, 'paris.challengeFerme', 'Les paris du Challenge ne sont pas ouverts.'));
   try {
     const moi = resolveUsernameFromSid(String(req.query.sid || '')) || '';
     const demain = parisChallengeDemain();
     const jeu = (await jeuxDuJour(demain)).find((j) => j.cle === String(req.query.jeu || ''));
-    if (!jeu) return non('jeu', 'Ce jeu n’est pas ouvert aux paris demain.');
+    if (!jeu) return non('jeu', t(L, 'paris.jeuFermeDemain', 'Ce jeu n’est pas ouvert aux paris demain.'));
     const choix = normalizeUsername(req.query.choix);
     let fiche = null;
     if (choix && !NPC_USERNAMES.has(choix)) {
       try { fiche = (await db.fichesComptes([choix]))[0] || null; } catch (e) { fiche = null; }
     }
-    if (!fiche) return non('choix', 'Ce joueur n’existe pas.', 404);
+    if (!fiche) return non('choix', t(L, 'paris.joueurInconnu', 'Ce joueur n’existe pas.'), 404);
     const h = (await cotesChallenge(demain)).get(jeu.cle) || { joueurs: {} };
     const l = h.joueurs[choix] || { joues: 0, podiums: 0, ors: 0 };
     const mutuels = (await db.parisChallengeDuJour(demain)).filter((p) => p.jeu === jeu.cle && p.statut !== 'rembourse' && p.retour == null);
@@ -15098,53 +15247,55 @@ app.get('/api/paris/challenge/joueur', async (req, res) => {
 
 app.post('/api/paris/challenge', async (req, res) => {
   const non = (code, message, status) => res.status(status || 400).json({ ok: false, code, message });
-  if (!process.env.DATABASE_URL || !parisChallengeReglages.actif) return non('fermes', 'Les paris du Challenge ne sont pas ouverts.');
+  const L = langueDeRequete(req);
+  if (!process.env.DATABASE_URL || !parisChallengeReglages.actif) return non('fermes', t(L, 'paris.challengeFerme', 'Les paris du Challenge ne sont pas ouverts.'));
   const b = req.body || {};
   const moi = resolveUsernameFromSid(String(b.sid || ''));
-  if (!moi) return non('auth', 'Connecte-toi pour parier.', 401);
+  if (!moi) return non('auth', t(L, 'paris.connecteToi', 'Connecte-toi pour parier.'), 401);
   const user = users[moi];
-  if (!user) return non('auth', 'Compte indisponible, réessaie.', 503);
+  if (!user) return non('auth', t(L, 'paris.compteIndisponible', 'Compte indisponible, réessaie.'), 503);
   const type = String(b.type || '');
   if (estDefi(type)) {
-    if (parisVerrous.has(moi)) return non('patience', 'Un pari est déjà en cours d’enregistrement.', 429);
+    if (parisVerrous.has(moi)) return non('patience', t(L, 'paris.patience', 'Un pari est déjà en cours d’enregistrement.'), 429);
     parisVerrous.add(moi);
     try { return await parierDefi(res, moi, user, b, type); } catch (e) {
       console.error('[PARIS] défi médaille :', e.message);
-      return non('erreur', 'Le pari n’a pas pu être enregistré.', 500);
+      return non('erreur', t(L, 'paris.nonEnregistre', 'Le pari n’a pas pu être enregistré.'), 500);
     } finally { parisVerrous.delete(moi); }
   }
   const jour = parisChallengeDemain();
   const jeu = (await jeuxDuJour(jour).catch(() => [])).find((j) => j.cle === String(b.jeu || ''));
-  if (!jeu) return non('jeu', 'Ce jeu n’est pas ouvert aux paris demain.');
-  if (type !== 'podium' && type !== 'or') return non('type', 'Pari inconnu.');
+  if (!jeu) return non('jeu', t(L, 'paris.jeuFermeDemain', 'Ce jeu n’est pas ouvert aux paris demain.'));
+  if (type !== 'podium' && type !== 'or') return non('type', t(L, 'paris.pariInconnu', 'Pari inconnu.'));
   const mise = Number(b.mise);
-  if (!Number.isInteger(mise) || mise < 1) return non('mise', 'La mise est un nombre entier de kikooz.');
-  if (parisVerrous.has(moi)) return non('patience', 'Un pari est déjà en cours d’enregistrement.', 429);
+  if (!Number.isInteger(mise) || mise < 1) return non('mise', t(L, 'paris.miseEntiere', 'La mise est un nombre entier de kikooz.'));
+  if (parisVerrous.has(moi)) return non('patience', t(L, 'paris.patience', 'Un pari est déjà en cours d’enregistrement.'), 429);
   parisVerrous.add(moi);
   try {
     const choix = normalizeUsername(b.choix);
     let existe = !!users[choix];
     if (!existe && choix) { try { existe = !!(await db.findUserByUsername(choix)); } catch (e) { existe = false; } }
     // Les PNJ ne jouent pas au Challenge : un pari sur eux serait perdu d'avance.
-    if (!existe || NPC_USERNAMES.has(choix)) return non('choix', 'Ce joueur n’existe pas.');
+    if (!existe || NPC_USERNAMES.has(choix)) return non('choix', t(L, 'paris.joueurInconnu', 'Ce joueur n’existe pas.'));
     // Un pari à cote fixe (l'ancienne règle) sur le même joueur reste tel quel.
     const avant = (await db.parisChallengeDuJour(jour)).find((p) => p.username === moi && p.jeu === jeu.cle
       && p.type === type && p.choix === choix && p.statut === 'ouvert');
     if (avant && avant.retour != null) {
-      return non('fixe', 'Tu as déjà un pari à cote fixe sur ce joueur : il reste tel quel. Mise sur un autre, ou sur l’autre pot.');
+      return non('fixe', t(L, 'paris.coteFixe', 'Tu as déjà un pari à cote fixe sur ce joueur : il reste tel quel. Mise sur un autre, ou sur l’autre pot.'));
     }
     const plafond = Number(parisChallengeReglages.plafond) || 50;
     const deja = await db.miseChallengeDuJour(moi, jour);
     if (deja + mise > plafond) {
-      return non('plafond', `Le plafond est de ${plafond} kikooz par jour : tu peux encore miser ${Math.max(0, plafond - deja)}.`);
+      return non('plafond', t(L, 'paris.plafondJour', 'Le plafond est de {plafond} kikooz par jour : tu peux encore miser {reste}.',
+        { plafond, reste: Math.max(0, plafond - deja) }));
     }
-    if ((Number(user.kikooz) || 0) < mise) return non('solde', 'Tu n’as pas assez de kikooz.');
+    if ((Number(user.kikooz) || 0) < mise) return non('solde', t(L, 'paris.solde', 'Tu n’as pas assez de kikooz.'));
     const pari = await db.poserPariChallenge({ jour, jeu: jeu.cle, type, username: moi, choix, mise });
-    if (!pari) return non('fermes', 'Ce pari est déjà réglé.');
+    if (!pari) return non('fermes', t(L, 'paris.dejaRegle', 'Ce pari est déjà réglé.'));
     // Deux mises simultanées ont pu passer le plafond, ou le solde bouger.
     if ((await db.miseChallengeDuJour(moi, jour)) > plafond || (Number(user.kikooz) || 0) < mise) {
       await db.retirerMiseChallenge(pari.id, mise, 0).catch(dbErr('retirerMiseChallenge'));
-      return non('plafond', 'Ta mise dépasse le plafond du jour ou ton solde.');
+      return non('plafond', t(L, 'paris.depassePlafond', 'Ta mise dépasse le plafond du jour ou ton solde.'));
     }
     user.kikooz = (Number(user.kikooz) || 0) - mise;
     if (user._dbId) db.updateUser(moi, { kikooz: user.kikooz }).catch(dbErr('updateUser pari'));
@@ -15168,7 +15319,7 @@ app.post('/api/paris/challenge', async (req, res) => {
     res.json({ ok: true, mise: pari.mise, pot: pot.total, estime, solde: user.kikooz, dejaMise: deja + mise });
   } catch (e) {
     console.error('[PARIS] mise Challenge :', e.message);
-    non('erreur', 'Le pari n’a pas pu être enregistré.', 500);
+    non('erreur', t(L, 'paris.nonEnregistre', 'Le pari n’a pas pu être enregistré.'), 500);
   } finally {
     parisVerrous.delete(moi);
   }
@@ -16441,7 +16592,7 @@ app.get('/api/light/mes-donnees', async (req, res) => {
   if (!user) return res.status(503).json({ ok: false, error: 'user_not_loaded' });
   const dernier = exportsRecents.get(username) || 0;
   if (Date.now() - dernier < 60 * 1000) {
-    return res.status(429).json({ ok: false, error: 'rate_limited', message: 'Un export par minute, le temps de lire le précédent.' });
+    return res.status(429).json({ ok: false, error: 'rate_limited', message: tReq(req, 'api.compte.exportCadence', 'Un export par minute, le temps de lire le précédent.') });
   }
   exportsRecents.set(username, Date.now());
   try {
@@ -16458,8 +16609,8 @@ app.get('/api/light/mes-donnees', async (req, res) => {
     const jour = new Date().toISOString().slice(0, 10);
     const paquet = {
       site: 'Frutiparc', pseudo: getDisplayName(username), exporte_le: new Date().toISOString(),
-      note: 'Toutes les données que le serveur tient sur ce compte, table par table. '
-        + 'Le mot de passe n’en fait pas partie (il est haché, personne ne peut le lire).',
+      note: tReq(req, 'api.compte.exportNote', 'Toutes les données que le serveur tient sur ce compte, table par table. '
+        + 'Le mot de passe n’en fait pas partie (il est haché, personne ne peut le lire).'),
       ...donnees,
     };
     res.setHeader('Content-Disposition', `attachment; filename="frutiparc-${username}-${jour}.json"`);
@@ -16480,7 +16631,7 @@ app.post('/api/light/compte/suppression', async (req, res) => {
   // Le mot de passe, toujours : un téléphone laissé ouvert ne doit pas suffire.
   const password = String((req.body && req.body.password) || '');
   const { ok } = await verifyPassword(user.pass, password);
-  if (!ok) return res.status(401).json({ ok: false, error: 'invalid_password', message: 'Code secret incorrect.' });
+  if (!ok) return res.status(401).json({ ok: false, error: 'invalid_password', message: tReq(req, 'api.compte.codeIncorrect', 'Code secret incorrect.') });
   user.suppressionDemandee = new Date().toISOString();
   if (user._dbId && process.env.DATABASE_URL) {
     await db.demanderSuppression(user._dbId).catch(dbErr('demanderSuppression'));
@@ -18289,7 +18440,7 @@ app.get('/api/pictos', (req, res) => {
   if (!username || !users[username]) return res.json([]);
   // Rangés par jeu, dans un ordre stable (pictosRangesParJeu) : le sélecteur
   // de l'éditeur les pose tels quels, sous un intertitre par jeu.
-  const result = pictosRangesParJeu(users[username].gameItems).map((p) => ({
+  const result = pictosRangesParJeu(users[username].gameItems, langueDeRequete(req)).map((p) => ({
     id: p.id,
     name: p.nom,
     game: p.jeu,
@@ -20399,7 +20550,12 @@ app.get('/api/jamajama/pictos', (req, res) => {
   const username = resolveUsernameFromSid(sid);
   if (!username || !users[username]) return res.json({ ok: false, error: 'session' });
   const etat = jamaEtatPictos(jamaLireSlot(username));
-  res.json({ ok: true, pictos: jamaProgression(username, etat) });
+  const L = langueDeRequete(req);
+  const pictos = jamaProgression(username, etat);
+  // Le nom et la condition dans la langue du joueur (pictos.<id>,
+  // pictos.jamaQuoi.<n>) ; le français est celui de jamaPictos.js.
+  if (L !== 'fr') for (const p of pictos) { p.nom = getGameItemDisplayName(p.id, L); p.quoi = t(L, 'pictos.jamaQuoi.' + p.n, p.quoi); }
+  res.json({ ok: true, pictos });
 });
 
 // L'AIDE — help.xml, réécrite par Toad06 en 2024.
@@ -21758,6 +21914,10 @@ app.post('/api/admin/shop', adminScope('shop'), async (req, res) => {
     suffix9: String(b.suffix9 || '000000000'),
     comment: String(b.comment || b.description || ''),
   };
+  // L'anglais, facultatif (vide : le français pour tout le monde).
+  for (const champ of ['name_en', 'description_en', 'comment_en']) {
+    if (b[champ] !== undefined && String(b[champ]).trim()) pack[champ] = String(b[champ]);
+  }
   if (prunelle) pack.prunelle = prunelle;
   if (maquillage) pack.maquillage = maquillage;
   if (incarnation) pack.incarnation = incarnation;
@@ -22052,6 +22212,11 @@ app.patch('/api/admin/shop/:id', adminScope('shop'), async (req, res) => {
   if (b.category !== undefined) pack.category = String(b.category);
   if (b.price !== undefined) pack.price = Number(b.price);
   if (b.description !== undefined) { pack.description = String(b.description); pack.comment = String(b.description); }
+  // L'anglais : une chaîne vide l'efface (retour au français, ou au dictionnaire).
+  for (const champ of ['name_en', 'description_en', 'comment_en']) {
+    if (b[champ] === undefined) continue;
+    if (String(b[champ]).trim()) pack[champ] = String(b[champ]); else delete pack[champ];
+  }
   if (b.suffix9 !== undefined) pack.suffix9 = String(b.suffix9);
   // La paire d'iris d'une incarnation : une clé connue la pose, une chaîne vide
   // la retire (l'article redevient un accessoire ordinaire).
@@ -24093,16 +24258,16 @@ app.get('/api/blindtest/embed', (req, res) => {
   // ainsi que l'origine du site : ni le chemin, ni le jeton du cadre.
   res.set('Referrer-Policy', 'strict-origin');
   if ((dest && dest !== 'iframe') || (site && site !== 'same-origin')) {
-    return res.status(403).type('text').send('L\'extrait du blindtest ne s\'écoute que dans le salon.');
+    return res.status(403).type('text').send(tReq(req, 'api.blindtest.salonSeulement', 'L\'extrait du blindtest ne s\'écoute que dans le salon.'));
   }
   const salon = blindtestParJeton.get(String(req.query.k || ''));
   const b = salon ? blindtestEnCours(salon) : null;
-  if (!b) return res.status(404).send('Extrait terminé.');
+  if (!b) return res.status(404).send(tReq(req, 'api.blindtest.termine', 'Extrait terminé.'));
 
   const ecoule = Math.max(0, (Date.now() - b.aMs) / 1000);
   const depart = Math.floor(b.debut + ecoule);
   const fin = Math.ceil(b.debut + b.duree);
-  if (depart >= fin) return res.status(404).send('Extrait terminé.');
+  if (depart >= fin) return res.status(404).send(tReq(req, 'api.blindtest.termine', 'Extrait terminé.'));
 
   const p = new URLSearchParams({
     start: String(depart), end: String(fin), autoplay: '1',
@@ -28611,7 +28776,7 @@ const ACCESSOIRES_DEFAUT = DEFAULT_ACCESSORIES.map((a) => ({ id: a.u, name: a.n,
  * INCARNATIONS n'y sont pas : elles remplacent la bouille ENTIÈRE, quand cette
  * préférence-ci ne garde que les neuf caractères d'accessoire.
  */
-function choixAccessoireDefaut(user) {
+function choixAccessoireDefaut(user, lang = 'fr') {
   const vus = new Set();
   const liste = [];
   const ajouter = (suffix, label) => {
@@ -28620,12 +28785,12 @@ function choixAccessoireDefaut(user) {
     vus.add(s);
     liste.push({ v: s, label: String(label || 'Accessoire') });
   };
-  ajouter('000000000', 'Normal');
-  for (const a of ACCESSOIRES_DEFAUT) ajouter(a.suffix, a.name);
+  ajouter('000000000', t(lang, 'boutique.base.normal', 'Normal'));
+  for (const a of ACCESSOIRES_DEFAUT) ajouter(a.suffix, lang === 'fr' ? a.name : t(lang, 'boutique.base.' + a.id, a.name));
   for (const a of (user && user.customAccessories) || []) {
     if (!a || String(a.v || '').startsWith('wp:') || getAccessoryPrunelle(a)) continue;
     if (String(a.v || '').length !== 24) continue;
-    ajouter(String(a.v).substring(15, 24), a.n);
+    ajouter(String(a.v).substring(15, 24), nomPossede(a, lang));
   }
   return liste;
 }
@@ -28689,7 +28854,9 @@ app.get(['/do/prefForm', '/prefForm'], (req, res) => {
 // toutes les préférences effacerait celles qu'il ignore ; entrée par entrée,
 // ce risque n'existe pas.
 // ─────────────────────────────────────────────
-function prefsEnJson(user) {
+// Les libellés dans la langue du lecteur : `prefs.<nom>.label|desc`,
+// `prefs.<nom>.choix.<valeur>`, `prefs.categorie.<nom>` (i18n-serveur/en/prefs.js).
+function prefsEnJson(user, lang = 'fr') {
   const brute = (user && user.prefs) || '';
   const valeurs = {};
   for (const p of prefDefs) {
@@ -28698,7 +28865,7 @@ function prefsEnJson(user) {
   }
   const byId = Object.fromEntries(prefDefs.map((p) => [p.id, p]));
   const categories = PREF_CATEGORIES.map((cat) => ({
-    name: cat.name,
+    name: t(lang, 'prefs.categorie.' + cat.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(), cat.name),
     prefs: cat.ids.map((id) => byId[id]).filter(Boolean).map((def) => {
       const meta = PREF_LABELS[def.name] || { label: def.name, desc: '' };
       return {
@@ -28706,16 +28873,17 @@ function prefsEnJson(user) {
         name: def.name,
         type: def.type,
         def: def.def,
-        label: meta.label,
-        desc: meta.desc || '',
+        label: t(lang, `prefs.${def.name}.label`, meta.label),
+        desc: meta.desc ? t(lang, `prefs.${def.name}.desc`, meta.desc) : '',
         liste: !!meta.liste,
         // Une valeur de choix voyage en base 62, comme dans la chaîne stockée :
         // le client compare des chaînes, jamais des nombres. L'accessoire par
         // défaut fait exception — sa valeur EST déjà une chaîne de neuf
         // caractères, et ses choix sortent de l'inventaire du joueur.
         choices: def.name === 'default_accessory'
-          ? choixAccessoireDefaut(user)
-          : (def.name === 'default_pen' ? choixFeutreDefaut(user) : (meta.choices || []))
+          ? choixAccessoireDefaut(user, lang)
+          : (def.name === 'default_pen' ? choixFeutreDefaut(user, lang)
+            : (meta.choices || []).map(([v, lib]) => [v, t(lang, `prefs.${def.name}.choix.${v}`, lib)]))
             .map(([v, lib]) => ({ v: encode62(v), label: lib })),
       };
     }),
@@ -28726,7 +28894,7 @@ function prefsEnJson(user) {
 app.get('/api/light/prefs', (req, res) => {
   const username = resolveUsernameFromSid(String(req.query.sid || ''));
   if (!username) return res.status(401).json({ ok: false, error: 'auth_required' });
-  res.json({ ok: true, ...prefsEnJson(users[username] || {}) });
+  res.json({ ok: true, ...prefsEnJson(users[username] || {}, langueDeRequete(req)) });
 });
 
 /*
@@ -28764,7 +28932,7 @@ app.post('/api/light/prefs', (req, res) => {
     const v = demande[nom];
     if (appliquerPref(username, user, def.id, v === null || v === undefined ? '' : String(v))) ecrites++;
   }
-  res.json({ ok: true, saved: ecrites, ...prefsEnJson(user) });
+  res.json({ ok: true, saved: ecrites, ...prefsEnJson(user, langueDeRequete(req)) });
 });
 
 // ─────────────────────────────────────────────
@@ -30828,6 +30996,14 @@ function getMuteInfoForUser(username) {
     + ` à ${pad(d.getHours())}h${pad(d.getMinutes())}`;
   return { muted: true, until: raw, untilDisplay: display };
 }
+// « 17/05/2026 à 14h30 » en français (l'`untilDisplay` d'origine, tel quel) ;
+// « May 17, 2026 at 14:30 » en anglais — les mêmes heures, celles du serveur.
+function finDeSanction(lang, mute) {
+  if (!mute || !mute.untilDisplay || lang === 'fr') return mute ? mute.untilDisplay : '';
+  const d = new Date(String(mute.until).replace('.', 'T') + 'Z');
+  if (Number.isNaN(d.getTime())) return mute.untilDisplay;
+  return t(lang, 'api.sanctionFin', '{jour} à {heure}', { jour: FPI18n.date(lang, d, 'long'), heure: FPI18n.date(lang, d, 'heure') });
+}
 
 // ─────────────────────────────────────────────
 // Account ban (global). Unlike totoche (mute, in-memory, chat-only), a ban is
@@ -30939,6 +31115,9 @@ app.get('/api/forum/me', (req, res) => {
   const username = forumAuth(req);
   if (!username) return res.json({ user: null });
   const u = users[username] || {};
+  // Les NOMS des accessoires et des incarnations dans la langue du lecteur
+  // (le sélecteur du forum, l'inventaire du light) ; l'identifiant ne change pas.
+  const L = langueDeRequete(req);
   // `shopId` et `revendable` : l'inventaire du light rend un accessoire à la
   // boutique d'un double-clic (voir /api/light/shop/vendre), et il lui faut
   // pour cela l'ARTICLE derrière la ligne — un accessoire d'époque, un fond ou
@@ -30949,14 +31128,15 @@ app.get('/api/forum/me', (req, res) => {
     // deux fois — une fois comme habit, une fois comme accessoire.
     .filter(a => a && !a.v?.startsWith('wp:') && !getAccessoryPrunelle(a))
     .map(a => {
-      const e = { id: a.id, name: a.n, value: a.v };
+      const e = { id: a.id, name: nomPossede(a, L), value: a.v };
       if (a.shopId) {
         e.shopId = a.shopId;
         if (accessoireRevendable(u, getShopPack(a.shopId))) e.revendable = true;
       }
       return e;
     });
-  const defaults = ACCESSOIRES_DEFAUT;
+  const defaults = L === 'fr' ? ACCESSOIRES_DEFAUT
+    : ACCESSOIRES_DEFAUT.map((a) => Object.assign({}, a, { name: t(L, 'boutique.base.' + a.id, a.name) }));
   // Expose mute status to the frontend so the topic page can pre-disable
   // the "Répondre" button rather than letting the user compose a message
   // that will be rejected on POST. The server still enforces the lockout
@@ -30988,7 +31168,8 @@ app.get('/api/forum/me', (req, res) => {
      * deux endroits, une seule source.
      */
     bouillePrincipale: bouillePrincipaleDe(u, username),
-    incarnations: incarnationsDe(u, username),
+    incarnations: incarnationsDe(u, username).map((i) => (L === 'fr' ? i
+      : Object.assign(i, { nom: nomPossede({ id: i.id, shopId: i.shopId, n: i.nom }, L) }))),
     // Mirror the Flash client's editbouille gating (see the f="0,1,..." attr in
     // onident) so the mobile client can force its own "Ma Frutibouille" editor
     // open under the exact same conditions: the user still has the default
@@ -31102,10 +31283,30 @@ function isForumModerator(username) {
   return !!(u && u.isModerator);
 }
 
+/*
+ * LES RUBRIQUES DU FORUM DANS LA LANGUE DU LECTEUR. Leur NOM est une clé (les
+ * règles des rubriques s'y fient : « Annonces » réservée à l'équipe…) : il ne
+ * change pas. On ajoute un `libelle` à afficher (`rubriques.<nom sans accents>`,
+ * i18n-serveur/en/rubriques.js) et, pour une rubrique livrée avec le code dont
+ * la description n'a pas été retouchée, sa description traduite.
+ */
+function cleRubrique(nom) {
+  return String(nom || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+function libelleRubrique(nom, lang) {
+  return !lang || lang === 'fr' ? nom : t(lang, 'rubriques.' + cleRubrique(nom), nom);
+}
+function descriptionRubrique(nom, description, lang) {
+  if (!lang || lang === 'fr') return description;
+  const def = FORUM_DEFAULT_STRUCTURE.flatMap((c) => c.boards).find((b) => b.name === nom);
+  return def && def.description === description ? t(lang, 'rubriques.desc.' + cleRubrique(nom), description) : description;
+}
+
 app.get('/api/forum/index', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json({ categories: [], boards: [] });
   try {
     const currentUser = forumAuth(req);
+    const L = langueDeRequete(req);
     const staff = isForumStaff(currentUser);
     const categories = await db.forumGetCategories();
     const boards = await db.forumGetBoards(currentUser);
@@ -31113,7 +31314,8 @@ app.get('/api/forum/index', async (req, res) => {
     for (const b of boards) {
       if (!boardsByCategory[b.category_id]) boardsByCategory[b.category_id] = [];
       boardsByCategory[b.category_id].push({
-        id: b.id, name: b.name, description: b.description,
+        id: b.id, name: b.name, libelle: libelleRubrique(b.name, L),
+        description: descriptionRubrique(b.name, b.description, L),
         topicCount: Number(b.topic_count), postCount: Number(b.post_count),
         lastActivity: b.last_activity, lastActivityBy: getDisplayName(b.last_activity_by),
         unread: !!b.unread,
@@ -31124,7 +31326,7 @@ app.get('/api/forum/index', async (req, res) => {
     );
     res.json({
       categories: visibleCats.map(c => ({
-        id: c.id, name: c.name,
+        id: c.id, name: c.name, libelle: libelleRubrique(c.name, L),
         boards: boardsByCategory[c.id] || [],
       })),
     });
@@ -31175,7 +31377,7 @@ app.get('/api/forum/search', async (req, res) => {
     const mots = [...new Set(sansAccents(q).replace(/[^a-z0-9@'’-]+/g, ' ').split(' ')
       .map((m) => m.replace(/^['’-]+|['’-]+$/g, '')).filter((m) => m.length >= 2))].slice(0, 8);
     const boardId = Number(req.query.board) || null;
-    if (!mots.length && !auteur) return res.status(400).json({ ok: false, error: 'requete_vide', message: 'Tape au moins un mot de deux lettres, ou un auteur.' });
+    if (!mots.length && !auteur) return res.status(400).json({ ok: false, error: 'requete_vide', message: tReq(req, 'api.forum.rechercheVide', 'Tape au moins un mot de deux lettres, ou un auteur.') });
     const page = Math.max(1, Math.min(500, Number(req.query.page) || 1));
     // Les forums du staff restent cachés à qui n'en est pas.
     let exclusBoards = [];
@@ -31257,7 +31459,8 @@ app.get('/api/forum/board/:id', async (req, res) => {
     }));
     res.json({
       board: {
-        id: board.id, name: board.name, description: board.description,
+        id: board.id, name: board.name, libelle: libelleRubrique(board.name, langueDeRequete(req)),
+        description: descriptionRubrique(board.name, board.description, langueDeRequete(req)),
         postRestricted: isModPostOnlyBoard(board) || isStaffPostOnlyBoard(board),
         // À qui il est réservé, pour que le client le dise avec les bons mots.
         reservePour: reservationBoard(board),
@@ -31443,7 +31646,8 @@ app.post('/api/forum/topic', async (req, res) => {
     return res.status(403).json({
       error: 'muted',
       mutedUntil: mute.until,
-      message: `Tu es totoché jusqu'au ${mute.untilDisplay}, tu ne peux pas poster sur le forum tant que la sanction dure.`,
+      message: tReq(req, 'api.forum.totochePoster', 'Tu es totoché jusqu\'au {quand}, tu ne peux pas poster sur le forum tant que la sanction dure.',
+        { quand: finDeSanction(langueDeRequete(req), mute) }),
     });
   }
   const ban = getBanInfoForUser(username);
@@ -31602,7 +31806,8 @@ app.post('/api/forum/upload-image',
     const mute = getMuteInfoForUser(username);
     if (mute.muted) {
       return res.status(403).json({ ok: false, error: 'muted',
-        message: `Tu es totoché jusqu'au ${mute.untilDisplay}, tu ne peux pas envoyer d'image.` });
+        message: tReq(req, 'api.forum.totocheImage', 'Tu es totoché jusqu\'au {quand}, tu ne peux pas envoyer d\'image.',
+          { quand: finDeSanction(langueDeRequete(req), mute) }) });
     }
     const ban = getBanInfoForUser(username);
     if (ban.banned) {
@@ -31613,12 +31818,12 @@ app.post('/api/forum/upload-image',
     }
     const body = req.body;
     if (!Buffer.isBuffer(body) || body.length < 32) {
-      return res.status(400).json({ ok: false, error: 'empty_body', message: 'Image vide ou illisible.' });
+      return res.status(400).json({ ok: false, error: 'empty_body', message: tReq(req, 'api.forum.imageVide', 'Image vide ou illisible.') });
     }
     const kind = sniffForumImage(body);
     if (!kind) {
       return res.status(415).json({ ok: false, error: 'unsupported_type',
-        message: 'Format non supporté. Accepté : PNG, JPEG, GIF, WEBP.' });
+        message: tReq(req, 'api.forum.imageFormat', 'Format non supporté. Accepté : PNG, JPEG, GIF, WEBP.') });
     }
     // Content-addressed name → automatic dedupe and no user-controlled path.
     const hash = crypto.createHash('sha256').update(body).digest('hex').slice(0, 32);
@@ -31645,7 +31850,7 @@ app.post('/api/forum/upload-image',
         res.json({ ok: true, url: '/forum-uploads/' + fname, bytes: body.length });
       } catch (e) {
         console.error('[FORUM-UPLOAD] store error:', e.message);
-        res.status(500).json({ ok: false, error: 'store_failed', message: "Échec de l'enregistrement de l'image." });
+        res.status(500).json({ ok: false, error: 'store_failed', message: tReq(req, 'api.forum.imageEchec', "Échec de l'enregistrement de l'image.") });
       }
     })();
   }
@@ -31791,7 +31996,8 @@ app.post('/api/forum/post', async (req, res) => {
     return res.status(403).json({
       error: 'muted',
       mutedUntil: mute.until,
-      message: `Tu es totoché jusqu'au ${mute.untilDisplay}, tu ne peux pas poster sur le forum tant que la sanction dure.`,
+      message: tReq(req, 'api.forum.totochePoster', 'Tu es totoché jusqu\'au {quand}, tu ne peux pas poster sur le forum tant que la sanction dure.',
+        { quand: finDeSanction(langueDeRequete(req), mute) }),
     });
   }
   const ban = getBanInfoForUser(username);
@@ -31844,7 +32050,7 @@ app.post('/api/forum/post', async (req, res) => {
     if (!isForumStaff(username) && String(dernierAuteur || '').toLowerCase() === String(username).toLowerCase()) {
       return res.status(403).json({
         error: 'double_post',
-        message: "Tu ne peux pas poster deux messages d'affilée sur le même sujet. Édite ton message précédent ou attends qu'un autre Frutiz réponde.",
+        message: tReq(req, 'api.forum.doublePost', "Tu ne peux pas poster deux messages d'affilée sur le même sujet. Édite ton message précédent ou attends qu'un autre Frutiz réponde."),
       });
     }
     // Hard cap: refuse any post after the topic has reached the limit.
@@ -31856,7 +32062,7 @@ app.post('/api/forum/post', async (req, res) => {
       // Defensive: make sure the topic is locked too, in case the lock
       // didn't stick on the previous boundary insert (legacy data).
       db.forumSetLocked(topicId, true).catch(dbErr('forumSetLocked cap'));
-      return res.status(403).json({ error: 'topic_full', message: 'Ce sujet a atteint la limite de 500 messages et est désormais verrouillé.' });
+      return res.status(403).json({ error: 'topic_full', message: tReq(req, 'api.forum.sujetPlein', 'Ce sujet a atteint la limite de 500 messages et est désormais verrouillé.') });
     }
     const post = await db.forumCreatePost(topicId, username, content, postBouille, postMood);
     trackXpAction(username, 'forumPost');
@@ -32001,7 +32207,7 @@ app.post('/api/forum/poll/:id/vote', async (req, res) => {
     const poll = await db.forumGetPoll(pollId);
     if (!poll) return res.status(404).json({ error: 'poll_not_found' });
     if (poll.is_closed) {
-      return res.status(403).json({ error: 'poll_closed', message: 'Ce sondage est clos, tu ne peux plus voter.' });
+      return res.status(403).json({ error: 'poll_closed', message: tReq(req, 'api.forum.sondageClos', 'Ce sondage est clos, tu ne peux plus voter.') });
     }
     const topic = await db.forumGetTopic(poll.topic_id);
     if (topic) {
@@ -32010,7 +32216,7 @@ app.post('/api/forum/poll/:id/vote', async (req, res) => {
     }
     const result = await db.forumVotePoll(pollId, optionId, username);
     if (!result.ok) {
-      return res.status(400).json({ error: result.reason || 'vote_failed', message: 'Réponse de sondage invalide.' });
+      return res.status(400).json({ error: result.reason || 'vote_failed', message: tReq(req, 'api.forum.sondageReponse', 'Réponse de sondage invalide.') });
     }
     const updated = await db.forumGetPollByTopic(poll.topic_id, username);
     res.json({ ok: true, poll: updated });
@@ -32385,6 +32591,7 @@ async function livreDesRecords() {
 
 app.get('/api/club/records', async (req, res) => {
   const limit = Math.max(1, Math.min(20, Number(req.query.limit) || 10));
+  const L = langueDeRequete(req);
   const bestByRanking = await livreDesRecords();
 
   const out = [];
@@ -32406,7 +32613,7 @@ app.get('/api/club/records', async (req, res) => {
       { s: b.score, data: b.data, at: b.updatedAt }));
     const entry = {
       id: rkId,
-      name: meta.name,
+      name: nomDeClassement(rkId, L),
       game: meta.game,
       type: meta.type,
       lowerIsBetter: !!meta.lowerIsBetter,
@@ -32545,12 +32752,12 @@ app.get('/api/club/player', async (req, res) => {
       if (i < 0) continue;
       records.push({
         id: rkId,
-        nom: meta.name,
+        nom: nomDeClassement(rkId, langueDeRequete(req)),
         jeu: meta.game,
         jeuNom: GAME_DISPLAY_NAMES[meta.game] || meta.game,
         type: meta.type,
         score: tous[i].s,
-        label: formatChallengeScoreLabel(rkId, tous[i].s, tous[i].data),
+        label: formatChallengeScoreLabel(rkId, tous[i].s, tous[i].data, langueDeRequete(req)),
         rang: i + 1,
         sur: tous.length,
       });
@@ -32654,7 +32861,7 @@ app.get('/api/club/consecration', async (req, res) => {
 // /light client stays dumb: BKiwi is a chrono (ms → m:ss.cc), MotionBall packs
 // the completion % in its score (((score % 100) + 1)%), everything else is a
 // plain point total with a French thousands separator.
-function formatChallengeScoreLabel(rankingId, score, data) {
+function formatChallengeScoreLabel(rankingId, score, data, lang = 'fr') {
   const meta = RANKINGS[rankingId] || {};
   const n = Number(score);
   if (!Number.isFinite(n)) return String(score == null ? '' : score);
@@ -32664,7 +32871,7 @@ function formatChallengeScoreLabel(rankingId, score, data) {
   // offrir : il montre les points seuls — cf. LEGACY_RANKINGS, gs='1'.)
   if (rankingId === 'miniwave_classic') {
     const niveau = parseMiniwaveNiveau(data);
-    return n.toLocaleString('fr-FR') + (niveau !== null ? ` · niveau ${niveau}` : '');
+    return FPI18n.nombre(lang, n) + (niveau !== null ? t(lang, 'classements.etiquette.niveau', ' · niveau {niveau}', { niveau }) : '');
   }
   // Mini-Fever : la règle du tableau unique, lisible sur chaque ligne — les
   // points, puis d'où ils viennent : le compte d'épreuves et le palier joué
@@ -32676,9 +32883,11 @@ function formatChallengeScoreLabel(rankingId, score, data) {
     const p = MINIFEVER_PALIERS[palier];
     if (p && p.nom) {
       const niveau = dn !== undefined && Number.isFinite(Number(dn)) ? Math.trunc(Number(dn)) : Math.round(n / (MINIFEVER_POINTS * (1 + palier)));
-      return `${n.toLocaleString('fr-FR')} · ${niveau} épreuve${niveau > 1 ? 's' : ''} en ${p.nom}`;
+      return tn(lang, 'classements.etiquette.epreuves', niveau,
+        { one: '{points} · {n} épreuve en {palier}', other: '{points} · {n} épreuves en {palier}' },
+        { points: FPI18n.nombre(lang, n), palier: lang === 'fr' ? p.nom : t(lang, 'classements.palierMinifever.' + palier, p.nom) });
     }
-    return n.toLocaleString('fr-FR');
+    return FPI18n.nombre(lang, n);
   }
   // Les deux types d'époque qui ne sont pas des points : le chrono de Burning
   // Kiwi et le score empilé de MotionBall. `displayScoreType` les écrit comme
@@ -32690,7 +32899,7 @@ function formatChallengeScoreLabel(rankingId, score, data) {
   }
   // ÉCART ASSUMÉ sur les points : l'époque rend le nombre nu, on le groupe par
   // milliers. Un score à sept chiffres se lit, celui de 2005 se déchiffre.
-  return n.toLocaleString('fr-FR');
+  return FPI18n.nombre(lang, n);
 }
 
 // Today's daily-challenge scoreboard for the mobile (/light) client. Returns the
@@ -32718,6 +32927,7 @@ function formatChallengeScoreLabel(rankingId, score, data) {
  */
 app.get('/api/light/challenge', async (req, res) => {
   const me = resolveUsernameFromSid(req.query.sid || '');
+  const L = langueDeRequete(req);
   const meLower = me ? String(me).toLowerCase() : '';
   const limit = Math.max(1, Math.min(50, Number(req.query.limit) || 20));
   // Le jour demandé (navigation par flèches, comme le bas de la fenêtre du
@@ -32763,10 +32973,13 @@ app.get('/api/light/challenge', async (req, res) => {
   // Le libellé de chaque classement vient du descriptif du bureau (rn) : les
   // deux clients nomment les onglets pareil, sans table en double. Burning Kiwi
   // n'a pas de descripteur par circuit — son onglet emprunte celui de rk '0'.
+  // (Dans la langue du lecteur : `classements.onglet.<rk>` pour un libellé du
+  // bureau, `classements.<id>` pour un nom de classement.)
   const nomBureau = (rkId, repli) => {
     const cle = /^bkiwi_/.test(rkId) ? 'bkiwi_track5_classic' : rkId;
     const d = LEGACY_RANKINGS.find((x) => x.internal === cle);
-    return (d && d.rn) || repli;
+    if (d && d.rn) return L === 'fr' ? d.rn : t(L, 'classements.onglet.' + d.rk, d.rn);
+    return L === 'fr' ? repli : t(L, 'classements.' + rkId, repli);
   };
   // L'heure d'un score, telle que la colonne « Heure » du bureau l'affiche.
   const heureDe = (iso) => {
@@ -32820,7 +33033,7 @@ app.get('/api/light/challenge', async (req, res) => {
       user: getDisplayName(e.u),
       bouille: bouilleOf(users[e.u], e.u),
       score: e.s,
-      label: formatChallengeScoreLabel(rkId, e.s, e.data),
+      label: formatChallengeScoreLabel(rkId, e.s, e.data, L),
       time: heureDe(e.at),
       isMe: !!(meLower && String(e.u).toLowerCase() === meLower),
     };
@@ -32858,7 +33071,7 @@ app.get('/api/light/challenge', async (req, res) => {
       scores: all.slice(0, limit).map((e, i) => ligne(rkId, e, i + 1)),
       me: iMoi < 0 ? null : {
         pos: iMoi + 1, score: all[iMoi].s,
-        label: formatChallengeScoreLabel(rkId, all[iMoi].s, all[iMoi].data),
+        label: formatChallengeScoreLabel(rkId, all[iMoi].s, all[iMoi].data, L),
       },
     };
   };
@@ -32906,19 +33119,19 @@ app.get('/api/light/challenge', async (req, res) => {
         user: getDisplayName(e.u),
         bouille: bouilleOf(users[e.u], e.u),
         score: e.s,
-        label: e.label !== undefined ? e.label : Number(e.s).toLocaleString('fr-FR'),
+        label: e.label !== undefined ? e.label : FPI18n.nombre(L, e.s),
         time: '',
         isMe: !!(meLower && String(e.u).toLowerCase() === meLower),
       })),
       me: iMoi < 0 ? null : {
         pos: iMoi + 1, score: tout[iMoi].s,
-        label: tout[iMoi].label !== undefined ? tout[iMoi].label : Number(tout[iMoi].s).toLocaleString('fr-FR'),
+        label: tout[iMoi].label !== undefined ? tout[iMoi].label : FPI18n.nombre(L, tout[iMoi].s),
       },
     };
   };
   try {
     const kAll = (await getKikoozLeaderboard()).map((e) => ({
-      u: e.u, s: e.s, label: Number(e.s).toLocaleString('fr-FR') + ' kikooz',
+      u: e.u, s: e.s, label: FPI18n.nombre(L, e.s) + ' kikooz',
     }));
     games.push(permanent('kikooz', nomBureau('kikooz', 'Class. kikooz'), 'kikooz', kAll));
   } catch (e) { console.error('[LIGHT] kikooz ranking error:', e.message); }
@@ -32932,7 +33145,7 @@ app.get('/api/light/challenge', async (req, res) => {
       const s = rlist && rlist.bandas_champion;
       if (!s || !Number.isFinite(Number(s.score))) continue;
       bd.push({ u, s: Number(s.score), at: s.updatedAt || '',
-        label: Number(s.score).toLocaleString('fr-FR') });
+        label: FPI18n.nombre(L, s.score) });
     }
     bd.sort(scoreComparator('bandas_champion'));
     games.push(permanent('bandas_champion',
@@ -32946,7 +33159,7 @@ app.get('/api/light/challenge', async (req, res) => {
       const s = rlist && rlist.snake3_battle;
       if (!s || !Number.isFinite(Number(s.score))) continue;
       sn.push({ u, s: Number(s.score), at: s.updatedAt || '',
-        label: Number(s.score).toLocaleString('fr-FR') });
+        label: FPI18n.nombre(L, s.score) });
     }
     sn.sort(scoreComparator('snake3_battle'));
     if (!CHAMPIONNATS_MASQUES.has('snake3_battle')) games.push(permanent('snake3_battle',
@@ -32959,7 +33172,7 @@ app.get('/api/light/challenge', async (req, res) => {
       const s = rlist && rlist.grapiz_champion;
       if (!s || !Number.isFinite(Number(s.score))) continue;
       gz.push({ u, s: Number(s.score), at: s.updatedAt || '',
-        label: Number(s.score).toLocaleString('fr-FR') });
+        label: FPI18n.nombre(L, s.score) });
     }
     gz.sort(scoreComparator('grapiz_champion'));
     games.push(permanent('grapiz_champion',
@@ -32976,7 +33189,7 @@ app.get('/api/light/challenge', async (req, res) => {
         const s = rlist && rlist.snake3_tournoi;
         if (!s || !Number.isFinite(Number(s.score))) continue;
         tt.push({ u, s: Number(s.score), at: s.updatedAt || '',
-          label: Number(s.score).toLocaleString('fr-FR') });
+          label: FPI18n.nombre(L, s.score) });
       }
       tt.sort(scoreComparator('snake3_tournoi'));
       games.push(permanent('snake3_tournoi',
@@ -33004,10 +33217,10 @@ app.get('/api/light/challenge', async (req, res) => {
     // « niveau 95 » et perdait la seconde moitié. Le TRI reste sur l'XP — deux
     // joueurs de niveau 13 ne sont pas à égalité.
     const xp = [...fusion.entries()].map(([u, s]) => ({
-      u, s, label: displayScoreType(s, 'xp'),
+      u, s, label: displayScoreType(s, 'xp', L),
     }));
     xp.sort((a, b) => b.s - a.s || a.u.localeCompare(b.u));
-    games.push(permanent('_xp', 'Classement XP', 'xp', xp));
+    games.push(permanent('_xp', t(L, 'classements.onglet.xp', 'Classement XP'), 'xp', xp));
   } catch (e) { console.error('[LIGHT] xp ranking error:', e.message); }
   try {
     // La consécration : `displayScoreType(v, 'rate')` — deux décimales au plus
@@ -33015,7 +33228,7 @@ app.get('/api/light/challenge', async (req, res) => {
     // décimales du calcul et une espace de trop.
     const cons = (await getConsecrationLeaderboard())
       .map((e) => ({ u: e.u, s: e.s, label: displayScoreType(e.s, 'rate') }));
-    games.push(permanent('_rate', 'Class. consécration', 'consecration', cons));
+    games.push(permanent('_rate', t(L, 'classements.onglet.consecration', 'Class. consécration'), 'consecration', cons));
   } catch (e) { console.error('[LIGHT] consecration ranking error:', e.message); }
 
   // LES MÉDAILLÉS DU MOIS : qui a ramassé le plus de médailles du Challenge
@@ -33174,7 +33387,7 @@ app.get('/api/light/mail/read', (req, res) => {
   if (!username) return res.status(401).json({ error: 'auth' });
   const user = users[username];
   const mail = findMail(user, String(req.query.uid || ''));
-  if (!mail) return res.status(404).json({ ok: false, error: 'Ce courrier n\'existe plus.' });
+  if (!mail) return res.status(404).json({ ok: false, error: tReq(req, 'api.mail.disparu', 'Ce courrier n\'existe plus.') });
   if (mail.folder === 'inbox' && !mail.read) {
     mail.read = true;
     if (user._dbId) db.updateMailRead(mail.uid, true).catch(dbErr('updateMailRead'));
@@ -33201,13 +33414,13 @@ app.post('/api/light/mail/send', async (req, res) => {
   const destBrut = String(corps.to || '').trim();
   const sujet = String(corps.subject || '').trim().slice(0, 120);
   const texte = String(corps.body || '').slice(0, 4000);
-  if (!destBrut) return res.json({ ok: false, error: 'Indique au moins un destinataire.' });
-  if (!texte.trim()) return res.json({ ok: false, error: 'Le message est vide.' });
+  if (!destBrut) return res.json({ ok: false, error: tReq(req, 'api.mail.sansDestinataire', 'Indique au moins un destinataire.') });
+  if (!texte.trim()) return res.json({ ok: false, error: tReq(req, 'api.mail.vide', 'Le message est vide.') });
 
   // On résout AVANT d'envoyer : un pseudo mal orthographié doit se voir tout de
   // suite, pas se deviner devant une boîte « Envoyés » qui n'a rien livré.
   const adresses = parseRecipients(destBrut).map(normalizeContactAddress);
-  if (!adresses.length) return res.json({ ok: false, error: 'Destinataire illisible.' });
+  if (!adresses.length) return res.json({ ok: false, error: tReq(req, 'api.mail.illisible', 'Destinataire illisible.') });
   const connus = [], inconnus = [];
   for (const a of adresses) {
     const cible = await addressToUsername(a);
@@ -33217,8 +33430,8 @@ app.post('/api/light/mail/send', async (req, res) => {
     return res.json({
       ok: false,
       error: inconnus.length === 1
-        ? `« ${inconnus[0]} » n'existe pas — vérifie l'orthographe du pseudo.`
-        : 'Aucun de ces destinataires n\'existe.',
+        ? tReq(req, 'api.mail.inconnu', '« {nom} » n\'existe pas — vérifie l\'orthographe du pseudo.', { nom: inconnus[0] })
+        : tReq(req, 'api.mail.inconnus', 'Aucun de ces destinataires n\'existe.'),
     });
   }
 
@@ -33251,7 +33464,7 @@ app.post('/api/light/mail/send', async (req, res) => {
     await deliverMailToRecipients(mail, username);
   } catch (e) {
     console.error('[Mail] /light delivery error:', e.message);
-    return res.json({ ok: false, error: 'L\'envoi a échoué, réessaie.' });
+    return res.json({ ok: false, error: tReq(req, 'api.mail.echec', 'L\'envoi a échoué, réessaie.') });
   }
   console.log(`[Mail] ${username} (light) → ${connus.join(', ')} : ${sujet}`);
   res.json({
@@ -33271,7 +33484,7 @@ app.post('/api/light/mail/delete', (req, res) => {
   if (!username) return res.status(401).json({ ok: false, error: 'auth' });
   const user = users[username];
   const mail = findMail(user, String(corps.uid || ''));
-  if (!mail) return res.status(404).json({ ok: false, error: 'Ce courrier n\'existe plus.' });
+  if (!mail) return res.status(404).json({ ok: false, error: tReq(req, 'api.mail.disparu', 'Ce courrier n\'existe plus.') });
   if (mail.folder === 'recyclebin') {
     user.mails = user.mails.filter((m) => m.uid !== mail.uid);
     if (user._dbId) db.deleteMails([mail.uid]).catch((e) => console.error('[DB] mail delete error:', e.message));
@@ -34006,13 +34219,20 @@ function tablePays() {
 // Les deux lignes « Pays » et « Région » de l'onglet perso. À défaut d'index
 // résolvable, on montre le texte libre de la colonne `region` plutôt qu'un
 // blanc — une fiche à moitié vide est pire qu'une fiche approximative.
-function nomsPaysRegion(ud) {
+// Le nom d'un PAYS dans une langue (`profil.pays.<index>`, i18n-serveur/en/
+// profil.js) ; les régions gardent leur nom (des noms de lieux, déjà dans la
+// langue du pays), le nom du découpage se traduit (« département »).
+function nomDePays(code, nomFr, lang) {
+  return !lang || lang === 'fr' ? nomFr : FPI18n.traduire(lang, 'profil.pays.' + code, nomFr);
+}
+function nomsPaysRegion(ud, lang) {
   const t = tablePays();
-  const pays = t[String((ud && ud.countryIndex) || '')] || null;
+  const code = String((ud && ud.countryIndex) || '');
+  const pays = t[code] || null;
   const cible = String((ud && ud.regionIndex) || '');
   const region = pays && (pays.regions.find((r) => r.code === cible) || null);
   return {
-    pays: (pays && pays.nom) || '',
+    pays: (pays && nomDePays(code, pays.nom, lang)) || '',
     region: (region && region.nom) || (ud && ud.region) || '',
   };
 }
@@ -34260,6 +34480,7 @@ app.get('/api/light/profil', (req, res) => {
   if (!username || !users[username]) return res.status(401).json({ ok: false, error: 'auth' });
   const u = users[username];
   const t = tablePays();
+  const L = langueDeRequete(req);
   res.setHeader('Cache-Control', 'no-store');
   res.json({
     ok: true,
@@ -34275,11 +34496,12 @@ app.get('/api/light/profil', (req, res) => {
     accMaisonId: u.accMaisonId || accMaisonEquip[username.toLowerCase()] || '',
     accMaison: Object.values(accessoiresMaison).map((a) => ({ id: a.id, name: a.name })),
     pays: Object.keys(t).map((c) => ({
-      code: c, nom: t[c].nom,
+      code: c, nom: nomDePays(c, t[c].nom, L),
       // Le NOM du découpage (« département ») et le drapeau qui décide de
       // préfixer chaque région de son code : la recherche avancée du bureau
       // s'en sert pour titrer et libeller son menu, comme box.onCountryChange.
-      nomRegion: t[c].nomRegion || '',
+      nomRegion: L === 'fr' || !t[c].nomRegion ? (t[c].nomRegion || '')
+        : FPI18n.traduire(L, 'profil.decoupage.' + t[c].nomRegion, t[c].nomRegion),
       afficherCode: !!t[c].afficherCode,
       regions: t[c].regions.map((r) => ({ code: r.code, nom: r.nom })),
     })),
@@ -34371,7 +34593,9 @@ app.get('/api/light/fiche', async (req, res) => {
     jeuxVus.add(m.game);
     medailles.push({
       jeu: GAME_DISPLAY_NAMES[m.game] || m.game,
-      medaille: MEDAL_DISPLAY_NAMES[m.medal] || m.medal,
+      // « d'or » en français, « gold » en anglais : la phrase du client
+      // (light.ficheMedaille…) place le mot.
+      medaille: texteDe(langueDeRequete(req), nomDeMedaille(m.medal)),
       rang: m.rank,
       jour: m.awarded_day,
       // De quoi retrouver la VIGNETTE : le bureau la tire d'awards.swf avec
@@ -34383,8 +34607,10 @@ app.get('/api/light/fiche', async (req, res) => {
     });
   }
 
+  // `nom` nomme aussi l'image (/fb/signe_<nom>.png) : il reste français ;
+  // `libelle` le dit dans la langue du lecteur (nomDeFrutisigne).
   const signe = (n) => (Number.isFinite(Number(n)) && n >= 0 && n < SIGNES_FRUITS.length
-    ? { index: Number(n), nom: SIGNES_FRUITS[n] } : null);
+    ? { index: Number(n), nom: SIGNES_FRUITS[n], libelle: texteDe(langueDeRequete(req), nomDeFrutisigne(Number(n))) } : null);
 
   res.setHeader('Cache-Control', 'no-store');
   const moi = users[demandeur] || {};
@@ -34402,9 +34628,10 @@ app.get('/api/light/fiche', async (req, res) => {
   // n'y a pas de partie : `UserSlot.display` (0xc8241) essaie `internal`,
   // puis `external`, et ne retombe sur la présence qu'à défaut des deux.
   const absence = enLigne ? statusExternalOf(u) : '';
-  const lieuDit = nomsPaysRegion(ud);
-  // Le frutijob d'un titre en code se dit dans la langue de qui lit.
+  // Le frutijob d'un titre en code se dit dans la langue de qui lit ; le pays
+  // et la région aussi.
   const langueFiche = FPI18n.valide(req.query.lang) || langueDeRequete(req);
+  const lieuDit = nomsPaysRegion(ud, langueFiche);
   res.json({
     ok: true,
     pseudo: getDisplayName(u),
@@ -34562,6 +34789,7 @@ app.get('/api/light/shop', (req, res) => {
   if (!username) return res.status(401).json({ error: 'auth' });
   const user = users[username] || {};
   const visible = SHOP_PACKS.filter(estPackEnRayon);
+  const L = langueDeRequete(req);
 
   const article = (p) => {
     const feutre = /^feutre,(\d+)$/.exec(String(p.picto || ''));
@@ -34575,14 +34803,14 @@ app.get('/api/light/shop', (req, res) => {
     // deux niveaux (resolveAccessoryLevels → l1 en gras, l2 en texte courant),
     // avec les deux paragraphes communs quand rien n'est personnalisé. Le
     // mobile affichait à la place le `description` brut, deux fois.
-    const niv = accessoire ? resolveAccessoryLevels(p) : null;
+    const niv = accessoire ? niveauxAccessoire(p, L) : null;
     const a = {
       id: p.id,
-      name: p.name,
-      category: rubriqueBoutique(p),
+      name: texteArticle(p, 'name', L),
+      category: nomRayon(rubriqueBoutique(p), L),
       price: Number(p.price) || 0,
-      description: niv ? niv.l2 : (p.description || ''),
-      comment: niv ? niv.l1 : (p.comment || ''),
+      description: niv ? niv.l2 : texteArticle(p, 'description', L),
+      comment: niv ? niv.l1 : texteArticle(p, 'comment', L),
       owned: offert || userOwnsShopPack(user, p.id),
       offert,
       kind: wp ? 'fond' : feutre ? 'feutre' : p.picto ? 'picto'
@@ -34626,7 +34854,7 @@ app.get('/api/light/shop', (req, res) => {
 
   const parRubrique = new Map();
   for (const [name, packs] of rayonsBoutique(visible)) parRubrique.set(name, packs.map(article));
-  const categories = [...parRubrique.entries()].map(([name, items]) => ({ name, items }));
+  const categories = [...parRubrique.entries()].map(([name, items]) => ({ name: nomRayon(name, L), cle: name, items }));
   res.json({
     kikooz: Number(user.kikooz) || 0,
     bouille: bouilleOf(user, username),
@@ -34655,6 +34883,7 @@ app.get('/api/light/inventaire', (req, res) => {
   const user = users[username] || {};
   const perso = Array.isArray(user.customAccessories) ? user.customAccessories : [];
   const base = bouilleOf(user, username).substring(0, 15);
+  const L = langueDeRequete(req);
   // La bouille PRINCIPALE : celle qui reste dessous quand une incarnation est
   // enfilée. C'est sur elle qu'on dessine les aperçus, et c'est elle qu'on
   // rend au joueur qui retire son déguisement.
@@ -34667,13 +34896,14 @@ app.get('/api/light/inventaire', (req, res) => {
   for (const acc of DEFAULT_ACCESSORIES) {
     if (vus.has(acc.suffix)) continue;
     vus.add(acc.suffix);
-    accessoires.push({ id: acc.u, nom: acc.n, etat: base + acc.suffix });
+    accessoires.push({ id: acc.u, nom: L === 'fr' ? acc.n : t(L, 'boutique.base.' + acc.u, acc.n), etat: base + acc.suffix });
   }
   // Les INCARNATIONS ont leur propre rayon : une bouille qu'on enfile n'est pas
   // un accessoire qu'on pose. `incarnationsDe` les liste (la même source que le
   // forum et le bureau) ; ici on se contente de ne pas les remettre parmi les
   // accessoires.
   const incarnations = incarnationsDe(user, username);
+  if (L !== 'fr') for (const i of incarnations) i.nom = nomPossede({ id: i.id, shopId: i.shopId, n: i.nom }, L);
   for (const acc of perso) {
     if (getAccessoryWallpaper(acc)) continue;            // c'est un fond, pas un accessoire
     if (getAccessoryPrunelle(acc)) continue;             // c'est une incarnation
@@ -34682,7 +34912,7 @@ app.get('/api/light/inventaire', (req, res) => {
     const v = String(acc.v || '');
     if (v.length !== 24 || vus.has(v)) continue;
     vus.add(v);
-    accessoires.push({ id: acc.id, nom: acc.n || 'Accessoire', etat: v });
+    accessoires.push({ id: acc.id, nom: nomPossede(acc, L) || 'Accessoire', etat: v });
   }
 
   // Fonds d'écran : ceux que le joueur possède. L'entrée « aucun » n'est pas
@@ -34693,7 +34923,7 @@ app.get('/api/light/inventaire', (req, res) => {
     const wp = getAccessoryWallpaper(acc);
     if (!wp || !wp.url) continue;
     fonds.push({
-      id: acc.id, nom: acc.n || 'Fond',
+      id: acc.id, nom: nomPossede(acc, L) || 'Fond',
       url: '/' + String(wp.url).replace(/^\/+/, ''),
       // Les autres cadrages, quand ils existent : le portrait que le mobile
       // préfère, et les dessins de nuit qui prennent la place au crépuscule.
@@ -34702,7 +34932,7 @@ app.get('/api/light/inventaire', (req, res) => {
     });
   }
 
-  const pictos = pictosRangesParJeu(user.gameItems).map((p) => ({
+  const pictos = pictosRangesParJeu(user.gameItems, langueDeRequete(req)).map((p) => ({
     id: p.id, nom: p.nom, jeu: p.jeu,
     url: `/api/picto/${encodeURIComponent(p.id)}`,
   }));
@@ -34791,12 +35021,12 @@ app.post('/api/light/shop/buy', (req, res) => {
   const user = users[username];
   const r = purchaseShopPack(user, username, (req.body && req.body.id) || req.query.id);
   if (!r.ok) {
-    const error = r.code === 3 ? 'Pas assez de kikooz.'
-      : r.code === 2 ? 'Tu possèdes déjà cet accessoire.'
-      : 'Article indisponible.';
+    const error = r.code === 3 ? tReq(req, 'boutique.pasAssez', 'Pas assez de kikooz.')
+      : r.code === 2 ? tReq(req, 'boutique.dejaPossede', 'Tu possèdes déjà cet accessoire.')
+      : tReq(req, 'boutique.indisponible', 'Article indisponible.');
     return res.json({ ok: false, code: r.code, error, kikooz: Number(user.kikooz) || 0 });
   }
-  res.json({ ok: true, kikooz: r.kikooz, bouille: r.bouille, name: r.pack.name });
+  res.json({ ok: true, kikooz: r.kikooz, bouille: r.bouille, name: texteArticle(r.pack, 'name', langueDeRequete(req)) });
 });
 
 // L'offre de reprise d'un accessoire possédé : ce que la boutique en donne.
@@ -34805,11 +35035,11 @@ app.get('/api/light/shop/revente', async (req, res) => {
   if (!username) return res.status(401).json({ ok: false, error: 'auth' });
   const user = users[username];
   const pack = getShopPack(req.query.id);
-  if (!accessoireRevendable(user, pack)) return res.json({ ok: false, error: 'Cet article ne se revend pas.' });
+  if (!accessoireRevendable(user, pack)) return res.json({ ok: false, error: tReq(req, 'boutique.nonRevendable', 'Cet article ne se revend pas.') });
   try {
     const o = await offreDeRevente(user, username, pack);
-    res.json({ ok: true, id: pack.id, name: pack.name, prix: o.prix, achete: o.achete });
-  } catch (e) { res.status(500).json({ ok: false, error: 'Boutique indisponible.' }); }
+    res.json({ ok: true, id: pack.id, name: texteArticle(pack, 'name', langueDeRequete(req)), prix: o.prix, achete: o.achete });
+  } catch (e) { res.status(500).json({ ok: false, error: tReq(req, 'boutique.fermee', 'Boutique indisponible.') }); }
 });
 
 // La revente elle-même : l'exemplaire s'en va, les kikooz arrivent.
@@ -34820,7 +35050,7 @@ app.post('/api/light/shop/vendre', async (req, res) => {
   const user = users[username];
   const pack = getShopPack((req.body && req.body.id) || req.query.id);
   const ligne = accessoireRevendable(user, pack);
-  if (!ligne) return res.json({ ok: false, error: 'Cet article ne se revend pas.', kikooz: Number(user.kikooz) || 0 });
+  if (!ligne) return res.json({ ok: false, error: tReq(req, 'boutique.nonRevendable', 'Cet article ne se revend pas.'), kikooz: Number(user.kikooz) || 0 });
   try {
     const offre = await offreDeRevente(user, username, pack);
     // L'exemplaire quitte l'inventaire — mémoire, puis base.
@@ -34844,10 +35074,10 @@ app.post('/api/light/shop/vendre', async (req, res) => {
     }
     notifyKikoozUpdate(username, user.kikooz);
     console.log(`[revente] ${username} rend "${pack.name}" (#${pack.id}) pour ${offre.prix} kikooz${offre.achete ? '' : ' (offert)'} — kikooz now ${user.kikooz}`);
-    res.json({ ok: true, kikooz: user.kikooz, prix: offre.prix, achete: offre.achete, bouille, name: pack.name });
+    res.json({ ok: true, kikooz: user.kikooz, prix: offre.prix, achete: offre.achete, bouille, name: texteArticle(pack, 'name', langueDeRequete(req)) });
   } catch (e) {
     console.error('[revente]', e.message);
-    res.status(500).json({ ok: false, error: 'Revente impossible.' });
+    res.status(500).json({ ok: false, error: tReq(req, 'boutique.reventeImpossible', 'Revente impossible.') });
   }
 });
 

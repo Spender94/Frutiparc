@@ -12085,10 +12085,14 @@
       var rangSignes = el("div", "fiche-signes");
       var grand = (d.frutiz.signe && d.frutiz.signe.nom) || "mystere";
       var petit = (d.frutiz.ascendant && d.frutiz.ascendant.nom) || grand;
-      [["petit", petit], ["grand", grand], ["petit", petit]].forEach(function (q) {
+      // Le nom du fichier reste français ; le texte de remplacement, lui, suit
+      // la langue (`libelle`, écrit par le serveur).
+      var dit = function (s) { return (s && (s.libelle || s.nom)) || ""; };
+      var ditGrand = dit(d.frutiz.signe) || grand, ditPetit = dit(d.frutiz.ascendant) || ditGrand;
+      [["petit", petit, ditPetit], ["grand", grand, ditGrand], ["petit", petit, ditPetit]].forEach(function (q) {
         var img = el("img", q[0]);
         img.src = "/fb/signe_" + q[1] + ".png";
-        img.alt = q[1];
+        img.alt = q[2];
         rangSignes.appendChild(img);
       });
       page.appendChild(rangSignes);

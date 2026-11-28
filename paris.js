@@ -1,4 +1,5 @@
 'use strict';
+const FPI18n = require('./public/js/i18n.js');
 /*
  * LES PARIS DES TOURNOIS — la règle du pari mutuel, et rien d'autre.
  *
@@ -94,40 +95,44 @@ function pot(paris, joueur1, joueur2) {
 /**
  * Peut-on miser `mise` sur `choix` dans ce match ? Rend null si oui, sinon le
  * motif (un code et une phrase pour le joueur).
- *   ctx : { tournoi, match, parieur, misePrecedente, choixPrecedent, solde }
+ *   ctx : { tournoi, match, parieur, misePrecedente, choixPrecedent, solde, lang }
+ * La phrase est dans la langue `lang` du parieur (le français par défaut) :
+ * clés `paris.*`, dictionnaire i18n-serveur/<langue>/paris.js. Le code, lui,
+ * ne change pas.
  */
 function refus(ctx) {
   const t = ctx.tournoi, m = ctx.match;
-  const non = (code, message) => ({ code, message });
-  if (!t || !t.paris_actifs) return non('fermes', 'Les paris ne sont pas ouverts sur ce tournoi.');
-  if (!['bracket', 'poules'].includes(t.status)) return non('fermes', 'Les paris ne sont pas ouverts en ce moment.');
-  if (!m || m.tournament_id !== t.id) return non('match', 'Ce match n’existe pas.');
-  if (!m.player1 || !m.player2) return non('match', 'Les deux joueurs de ce match ne sont pas encore connus.');
-  if (m.winner || m.status === 'done') return non('joue', 'Ce match est déjà joué.');
-  if (m.paris_fermes) return non('joue', 'Les paris sur ce match sont fermés : il a commencé.');
+  const non = (code, k, fr, p) => ({ code, message: FPI18n.traduire(ctx.lang || 'fr', 'paris.' + k, fr, p) });
+  if (!t || !t.paris_actifs) return non('fermes', 'tournoiFerme', 'Les paris ne sont pas ouverts sur ce tournoi.');
+  if (!['bracket', 'poules'].includes(t.status)) return non('fermes', 'pasEnCeMoment', 'Les paris ne sont pas ouverts en ce moment.');
+  if (!m || m.tournament_id !== t.id) return non('match', 'matchInconnu', 'Ce match n’existe pas.');
+  if (!m.player1 || !m.player2) return non('match', 'joueursInconnus', 'Les deux joueurs de ce match ne sont pas encore connus.');
+  if (m.winner || m.status === 'done') return non('joue', 'dejaJoue', 'Ce match est déjà joué.');
+  if (m.paris_fermes) return non('joue', 'commence', 'Les paris sur ce match sont fermés : il a commencé.');
   if ((Number(m.score1) || 0) + (Number(m.score2) || 0) > 0 && t.format === 'duel') {
-    return non('joue', 'Les paris sur ce match sont fermés : il a commencé.');
+    return non('joue', 'commence', 'Les paris sur ce match sont fermés : il a commencé.');
   }
   const moi = cle(ctx.parieur);
   if (moi === cle(m.player1) || moi === cle(m.player2)) {
-    return non('soi', 'On ne parie pas sur ses propres matchs.');
+    return non('soi', 'soi', 'On ne parie pas sur ses propres matchs.');
   }
   if (cle(ctx.choix) !== cle(m.player1) && cle(ctx.choix) !== cle(m.player2)) {
-    return non('choix', 'Ce joueur ne dispute pas ce match.');
+    return non('choix', 'horsMatch', 'Ce joueur ne dispute pas ce match.');
   }
   if (ctx.choixPrecedent && cle(ctx.choixPrecedent) !== cle(ctx.choix)) {
-    return non('camp', 'Tu as déjà parié sur l’autre joueur de ce match.');
+    return non('camp', 'autreCamp', 'Tu as déjà parié sur l’autre joueur de ce match.');
   }
   const mise = Number(ctx.mise);
-  if (!Number.isInteger(mise) || mise < 1) return non('mise', 'La mise est un nombre entier de kikooz.');
+  if (!Number.isInteger(mise) || mise < 1) return non('mise', 'miseEntiere', 'La mise est un nombre entier de kikooz.');
   const plafond = Math.max(1, Number(t.paris_plafond) || 100);
   const deja = Number(ctx.misePrecedente) || 0;
   if (deja + mise > plafond) {
-    return non('plafond', deja
-      ? `Le plafond est de ${plafond} kikooz par match : tu peux encore ajouter ${Math.max(0, plafond - deja)}.`
-      : `Le plafond est de ${plafond} kikooz par match.`);
+    return deja
+      ? non('plafond', 'plafondMatchReste', 'Le plafond est de {plafond} kikooz par match : tu peux encore ajouter {reste}.',
+        { plafond, reste: Math.max(0, plafond - deja) })
+      : non('plafond', 'plafondMatch', 'Le plafond est de {plafond} kikooz par match.', { plafond });
   }
-  if ((Number(ctx.solde) || 0) < mise) return non('solde', 'Tu n’as pas assez de kikooz.');
+  if ((Number(ctx.solde) || 0) < mise) return non('solde', 'solde', 'Tu n’as pas assez de kikooz.');
   return null;
 }
 
