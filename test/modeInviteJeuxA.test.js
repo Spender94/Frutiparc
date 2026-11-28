@@ -616,6 +616,9 @@ test('au doigt, sur un téléphone, « Rejouer » ferme le panneau dans les cinq
 test('les cinq pages chargent invite.js juste après sid-discret.js, avant tout autre script', () => {
   for (const jeu of ['swapou', 'snake3', 'kaluga', 'bkiwi', 'minifever']) {
     const html = fs.readFileSync(path.join(ROOT, 'public', jeu, 'index.html'), 'utf8');
-    assert.ok(html.includes('<script src="/js/sid-discret.js"></script>\n<script src="/js/invite.js"></script>'), jeu);
+    // Entre les deux, une page traduite charge le module des langues et son
+    // dictionnaire (docs/I18N.md, « Les jeux ») : invite.js y lit la langue de
+    // son panneau. Rien d'autre ne s'y glisse.
+    assert.match(html, /<script src="\/js\/sid-discret\.js"><\/script>\n(?:<!--[^]*?-->\n)?(?:<script src="\/js\/i18n\.js"><\/script>\n<script>FPI18n\.charger\(\[[^\]]*\]\);<\/script>\n)?<script src="\/js\/invite\.js"><\/script>/, jeu);
   }
 });
