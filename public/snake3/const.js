@@ -158,23 +158,46 @@ C.BARRE_DOWN = 10;
 C.BORDER = 10;
 C.FRUTIBARRE_SIZE = 15;
 
+// ── LES LANGUES (/js/i18n.js) ────────────────────────────────────────────
+// Les textes du jeu passent par T() : le français reste écrit ici, argument
+// de repli ; l'anglais vit dans /snake3/lang/en.js (clés snake3.*), chargé
+// par la page avant ce fichier. Sous Node — le serveur (carte.js), les tests
+// — il n'y a pas de module des langues : T rend le français, gabarits
+// remplis. Les autres fichiers du jeu prennent le même T ici (C.T, C.Tn,
+// C.Ttable), pour n'avoir qu'un pont.
+//
+// Les noms des fruits (FRUIT_NAMES, plus bas) sont des JEUX DE MOTS : ils
+// restent en français pour l'instant, comme « Encyclopéfruit » et
+// « Frutibarre » (choix de l'admin).
+const remplir = (s, p) => String(s).replace(/\{(\w+)\}/g, (m, k) => (p && p[k] != null ? String(p[k]) : m));
+const T = (racine.T && racine.FPI18n) ? racine.T : (cle, fr, p) => remplir(fr, p);
+C.T = T;
+C.Ttable = (cle, fr) => (T.table ? T.table(cle, fr) : fr);
+C.LANGUE = (racine.FPI18n && racine.FPI18n.langue) || 'fr';
+
 // Textes
-C.TXT_COLOR = ['vert ', 'rouge ', 'jaune ', 'orange '];
-C.TXT_BATTLE_DRAW = 'Egalité !';
-C.TXT_BATTLE_WIN = (winner) => 'Le serpent ' + C.TXT_COLOR[winner] + 'a gagné !';
-C.TXT_ENCYCLO_ZEROFRUITS = 'Aucun ';
-C.TXT_ENCYCLO_VALUEUNK_SPECIAL = 'Devine ';
+// La couleur d'un serpent (Battle) : l'adjectif français suit le nom, et porte
+// l'espace qui le sépare du verbe ; la table anglaise (snake3.couleurs) est
+// faite pour ses propres gabarits.
+C.TXT_COLOR = C.Ttable('snake3.couleurs', ['vert ', 'rouge ', 'jaune ', 'orange ']);
+C.TXT_BATTLE_DRAW = T('snake3.egalite', 'Egalité !');
+C.TXT_BATTLE_WIN = (winner) => T('snake3.serpentGagne', 'Le serpent {couleur}a gagné !', { couleur: C.TXT_COLOR[winner] });
+C.TXT_ENCYCLO_ZEROFRUITS = T('snake3.encyclo.aucun', 'Aucun ');
+C.TXT_ENCYCLO_VALUEUNK_SPECIAL = T('snake3.encyclo.devine', 'Devine ');
 C.TXT_ENCYCLO_VALUEUNK = '? ';
-C.TXT_CONNECTING_MESSAGE = 'Merci de patienter quelques instants.';
-C.TXT_STARTING_GAME = 'Démarrage du jeu...';
-C.TXT_ERROR = 'ERREUR !';
-C.TXT_SCORE_SAVING = 'Sauvegarde en cours...';
-C.TXT_SCORE_BATTLE = 'Résultats du Match :';
-C.TXT_SCORE_BATTU = 'Bravo ! vous avez battu votre record !';
-C.TXT_VOTRE_SCORE = (s) => 'Votre score : ' + s;
-C.TXT_VOTRE_RECORD = (s) => 'Votre record personnel : ' + s;
-C.TXT_VOTRE_PLACE = (p) => 'Votre classement aujourd\'hui : ' + p;
-C.TXT_PLACE_GAGNEES = (p) => 'Vous avez gagné ' + ((p === 1) ? 'une place' : (p + ' places')) + ' dans le classement !';
+C.TXT_CONNECTING_MESSAGE = T('snake3.patienter', 'Merci de patienter quelques instants.');
+C.TXT_STARTING_GAME = T('snake3.demarrage', 'Démarrage du jeu...');
+C.TXT_ERROR = T('snake3.erreur', 'ERREUR !');
+C.TXT_SCORE_SAVING = T('snake3.sauvegarde', 'Sauvegarde en cours...');
+C.TXT_SCORE_BATTLE = T('snake3.resultatsMatch', 'Résultats du Match :');
+C.TXT_SCORE_BATTU = T('snake3.recordBattu', 'Bravo ! vous avez battu votre record !');
+C.TXT_VOTRE_SCORE = (s) => T('snake3.votreScore', 'Votre score : {score}', { score: s });
+C.TXT_VOTRE_RECORD = (s) => T('snake3.votreRecord', 'Votre record personnel : {score}', { score: s });
+C.TXT_VOTRE_PLACE = (p) => T('snake3.votrePlace', 'Votre classement aujourd\'hui : {place}', { place: p });
+// Le singulier écrit en toutes lettres (« une place ») : deux phrases.
+C.TXT_PLACE_GAGNEES = (p) => ((p === 1)
+  ? T('snake3.placeGagnee', 'Vous avez gagné une place dans le classement !')
+  : T('snake3.placesGagnees', 'Vous avez gagné {n} places dans le classement !', { n: p }));
 // ── Quand le score N'EST PAS enregistré ───────────────────────────────────
 // Le SWF d'époque n'avait pas ce cas : le FrutiScore répondait ou la partie
 // restait sur « Sauvegarde en cours... ». Le portage, lui, encaissait le refus
@@ -182,18 +205,18 @@ C.TXT_PLACE_GAGNEES = (p) => 'Vous avez gagné ' + ((p === 1) ? 'une place' : (p
 // n'était — le joueur ne découvrait qu'au classement que ses vingt minutes
 // n'avaient rien laissé. On le dit désormais, avec le motif rendu par le
 // serveur.
-C.TXT_SCORE_PERDU = 'ATTENTION : score NON enregistré !';
+C.TXT_SCORE_PERDU = T('snake3.scorePerdu', 'ATTENTION : score NON enregistré !');
 C.TXT_SCORE_PERDU_MOTIF = function (code) {
   switch (String(code || '')) {
     case 'implausible_score':
-    case 'score_invalide':   return 'Le serveur a refusé ce score.';
-    case 'carte_perimee':    return 'La carte du tournoi a changé en cours de partie.';
-    case 'tournoi_ferme':    return 'Le tournoi a fermé pendant la partie.';
+    case 'score_invalide':   return T('snake3.motif.refuse', 'Le serveur a refusé ce score.');
+    case 'carte_perimee':    return T('snake3.motif.carte', 'La carte du tournoi a changé en cours de partie.');
+    case 'tournoi_ferme':    return T('snake3.motif.ferme', 'Le tournoi a fermé pendant la partie.');
     case 'auth_required':
-    case 'not_authenticated': return 'Votre session a expiré : reconnectez-vous.';
-    case 'unknown_game':     return 'Classement introuvable.';
-    case 'hors_ligne':       return 'Connectez-vous pour enregistrer vos scores.';
-    default:                 return 'Le serveur n\'a pas répondu.';
+    case 'not_authenticated': return T('snake3.motif.session', 'Votre session a expiré : reconnectez-vous.');
+    case 'unknown_game':     return T('snake3.motif.classement', 'Classement introuvable.');
+    case 'hors_ligne':       return T('snake3.motif.horsLigne', 'Connectez-vous pour enregistrer vos scores.');
+    default:                 return T('snake3.motif.reseau', 'Le serveur n\'a pas répondu.');
   }
 };
 /*
@@ -210,19 +233,19 @@ C.TXT_SCORE_PERDU_MOTIF = function (code) {
  * seulement : le panneau les centre verticalement, et celles qui précèdent
  * (record battu, places gagnées) peuvent déjà en occuper trois.
  */
-C.TXT_SCORE_SANS_FD = 'Vos parties classées du jour sont épuisées.\n'
+C.TXT_SCORE_SANS_FD = T('snake3.sansFd', 'Vos parties classées du jour sont épuisées.\n'
   + 'Ce score reste votre record, sans classement.\n'
-  + 'Un Pass quotidien (Boutique) en ajoute une.';
+  + 'Un Pass quotidien (Boutique) en ajoute une.');
 C.TXT_FRUIT_NAME = function (id) {
   if (id >= 320) id -= 20;
   return C.FRUIT_NAMES[id - 1];
 };
 C.TXT_SCORE_WIN_FRUIT = function (id, n) {
-  return 'Bravo ! Vous avez rammassé ' + n + ' fruits "' + C.TXT_FRUIT_NAME(id) + '" !\n'
-    + 'Vous pouvez maintenant utiliser ce fruit sur le Forum !';
+  return T('snake3.fruitGagne', 'Bravo ! Vous avez rammassé {n} fruits "{nom}" !\n'
+    + 'Vous pouvez maintenant utiliser ce fruit sur le Forum !', { n, nom: C.TXT_FRUIT_NAME(id) });
 };
-C.TXT_FRUIT_NAME_UNKNOWN = ' Inconnu ';
-C.TXT_FRUIT_NAME_EN_COURS = 'Analyse en cours...';
+C.TXT_FRUIT_NAME_UNKNOWN = T('snake3.fruitInconnu', ' Inconnu ');
+C.TXT_FRUIT_NAME_EN_COURS = T('snake3.fruitEnCours', 'Analyse en cours...');
 
 // NOMS DE FRUITS — les 300 fruits puis les 22 pourris, dans l'ordre du
 // fichier. La faute de « rammassé » est d'époque ; les espaces autour de

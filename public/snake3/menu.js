@@ -18,6 +18,7 @@
 
 const C = racine.SnakeConst;
 const D = racine.SnakeDessin;
+const T = C.T;                         // les langues : voir const.js
 
 class Menu {
   constructor(jeu, ids, surChoix) {
@@ -138,12 +139,24 @@ class Menu {
         ctx.lineWidth = 10;
         ctx.strokeStyle = '#1f4a06';
         ctx.fillStyle = '#ffe36b';
-        ctx.strokeText('CHAMPIONNAT', 0, 120);
-        ctx.fillText('CHAMPIONNAT', 0, 120);
+        const titre = T('snake3.menu.championnat', 'CHAMPIONNAT');
+        const sous = T('snake3.menu.unContreUn', '1 contre 1 en ligne');
+        ctx.strokeText(titre, 0, 120);
+        ctx.fillText(titre, 0, 120);
         ctx.font = 'bold 26px Verdana, sans-serif';
         ctx.lineWidth = 8;
-        ctx.strokeText('1 contre 1 en ligne', 0, 154);
-        ctx.fillText('1 contre 1 en ligne', 0, 154);
+        ctx.strokeText(sous, 0, 154);
+        ctx.fillText(sous, 0, 154);
+      }
+      // La version anglaise : les pastilles 5 (« retour ») et 9
+      // (« entrainement ») ont leur lettrage gravé dans le dessin. En anglais,
+      // dessin.js leur substitue une pastille nue (sprites/en/) et l'étiquette
+      // s'écrit ici, comme celle du championnat. « challenge », « battle »,
+      // « options » sont déjà de l'anglais ; « encyclopéfruit » est un jeu de
+      // mots, il reste.
+      if (D.sansTexte && D.sansTexte('menu', frame)) {
+        const e = ETIQUETTES[frame];
+        if (e) dessinerEtiquetteDisque(ctx, T(e.cle, e.fr), e);
       }
       ctx.restore();
     }
@@ -157,6 +170,44 @@ class Menu {
     D.poser(ctx, 'fleche', 1, C.WIDTH, C.HEIGHT / 2, 1, 1, 0);
     D.poser(ctx, 'fleche', 1, 0, C.HEIGHT / 2, 1, 1, Math.PI);
   }
+}
+
+// Les étiquettes des pastilles nues (version anglaise) : le centre du
+// lettrage d'origine dans le repère de la pastille, la pente de sa ligne de
+// base et la taille du corps (une ligne plus longue s'écrit plus petit).
+const ETIQUETTES = {
+  5: { cle: 'snake3.menu.retour', fr: 'retour', x: 40, y: 10, angle: -0.16, taille: 112 },
+  9: { cle: 'snake3.menu.entrainement', fr: 'entrainement', x: 0, y: -10, angle: -0.08, taille: 64 },
+};
+
+// Le lettrage des pastilles imite celui du SWF : une face blanche, l'épaisseur
+// grise d'une lettre en volume (le même mot, décalé pas à pas vers le bas à
+// droite), et l'ombre vert sombre portée sur la pastille. La fonte est Alba,
+// la ronde du jeu ; un trait du même ton l'épaissit, comme les lettres
+// bombées du dessin.
+function dessinerEtiquetteDisque(ctx, texte, e) {
+  ctx.save();
+  ctx.translate(e.x, e.y);
+  ctx.rotate(e.angle);
+  ctx.font = e.taille + 'px Alba, Verdana, sans-serif';
+  // Le mot ne doit pas déborder de la pastille : au-delà de 300 points, on
+  // le resserre.
+  const largeur = ctx.measureText(texte).width;
+  if (largeur > 300) ctx.scale(300 / largeur, 1);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = e.taille * 0.12;
+  const couche = (dx, dy, couleur) => {
+    ctx.fillStyle = couleur;
+    ctx.strokeStyle = couleur;
+    ctx.strokeText(texte, dx, dy);
+    ctx.fillText(texte, dx, dy);
+  };
+  couche(12, 14, '#005500');
+  for (let i = 8; i >= 1; i--) couche(i, i, '#cccccc');
+  couche(0, 0, '#ffffff');
+  ctx.restore();
 }
 
 // ── MenuOptions.as ────────────────────────────────────────────────────────
@@ -191,11 +242,12 @@ class MenuOptions {
 
   // Le nom d'une touche, pour la grille des contrôles (champ toucheCode).
   nomTouche(code) {
-    const SPECIALES = { 37: 'gauche', 39: 'droite', 38: 'haut', 40: 'bas', 32: 'espace' };
+    const SPECIALES = { 37: T('snake3.touche.gauche', 'gauche'), 39: T('snake3.touche.droite', 'droite'),
+      38: T('snake3.touche.haut', 'haut'), 40: T('snake3.touche.bas', 'bas'), 32: T('snake3.touche.espace', 'espace') };
     if (SPECIALES[code]) return SPECIALES[code];
     if (code >= 48 && code <= 57) return String(code - 48);
     if (code >= 65 && code <= 90) return String.fromCharCode(code);
-    if (code >= 96 && code <= 105) return 'pav ' + (code - 96);
+    if (code >= 96 && code <= 105) return T('snake3.touche.pav', 'pav {n}', { n: code - 96 });
     return String(code);
   }
 
@@ -205,25 +257,26 @@ class MenuOptions {
 
     // Les libellés du panneau sont des champs texte (pas des formes) : ils se
     // dessinent ici, aux positions d'auteur, dans les Verdana pixel du SWF.
+    // Ces fontes sont réduites : Verdana14St n'a que l'ASCII, Verdana12StB
+    // n'a ni deux-points ni ponctuation (le « : » de « joueur 1 : » vient de
+    // la Verdana de la machine). L'anglais s'y tient — « player 1 », sans
+    // deux-points.
     ctx.save();
     ctx.translate(this.px, this.py);
     ctx.fillStyle = '#daeea2';
     ctx.textAlign = 'left';
     ctx.font = '14px Verdana14St, Verdana, sans-serif';
-    ctx.fillText('musique', 23, 53);
-    ctx.fillText('effets sonores', 23, 101);
-    ctx.fillText('Controles :', 23, 151);
-    ctx.fillText('Retour au Menu >', 300, 406);
+    ctx.fillText(T('snake3.options.musique', 'musique'), 23, 53);
+    ctx.fillText(T('snake3.options.sons', 'effets sonores'), 23, 101);
+    ctx.fillText(T('snake3.options.controles', 'Controles :'), 23, 151);
+    ctx.fillText(T('snake3.options.retour', 'Retour au Menu >'), 300, 406);
     ctx.font = '12px Verdana12StB, Verdana, sans-serif';
-    ctx.fillText('joueur 1 :', 36, 219);
-    ctx.fillText('joueur 2 :', 36, 241);
-    ctx.fillText('joueur 3 :', 36, 263);
-    ctx.fillText('joueur 4 :', 36, 285);
+    for (let j = 1; j <= 4; j++) ctx.fillText(T('snake3.options.joueur', 'joueur {n} :', { n: j }), 36, 197 + 22 * j);
 
     // Les valeurs, centrées dans leurs pilules (champs 619/617).
     ctx.textAlign = 'center';
-    ctx.fillText(this.jeu.musique ? 'activée' : 'desactivée', 160, 70);
-    ctx.fillText(this.jeu.bruitages ? 'activés' : 'désactivés', 160, 118);
+    ctx.fillText(this.jeu.musique ? T('snake3.options.activee', 'activée') : T('snake3.options.desactivee', 'desactivée'), 160, 70);
+    ctx.fillText(this.jeu.bruitages ? T('snake3.options.actives', 'activés') : T('snake3.options.desactives', 'désactivés'), 160, 118);
 
     // La grille des touches (cellules 629 : trois colonnes par joueur).
     const touches = this.jeu.plateforme.prefs.$keys || C.DEFAULT_KEYS;
