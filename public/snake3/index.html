@@ -199,6 +199,12 @@
   #salon .sl-retour { align-self: flex-start; font-size: calc(12px * var(--k)); padding: calc(6px * var(--k)) calc(10px * var(--k)); background: #6ba81b; }
 </style>
 <script src="/js/sid-discret.js"></script>
+<!-- Les langues du parc (voir /js/i18n.js) : en anglais, les dictionnaires
+     arrivent pendant l'analyse de la page — le commun, les widgets (le
+     bandeau des parties classées), et celui du jeu (/snake3/lang/en.js),
+     avant const.js qui en tire ses textes ; en français, rien. -->
+<script src="/js/i18n.js"></script>
+<script>FPI18n.charger(['commun', 'widgets', '/snake3/lang/{lang}.js']);</script>
 <script src="/js/invite.js"></script>
 </head>
 <body>
@@ -222,7 +228,7 @@
     </div>
   </div>
 </div>
-<div id="tourne">Tourne ton téléphone : Frutisnake est bien plus grand en paysage.</div>
+<div id="tourne" data-i18n="snake3.tourne">Tourne ton téléphone : Frutisnake est bien plus grand en paysage.</div>
 
 <script src="/snake3/const.js"></script>
 <!-- Les lots de dessins (généré par scripts/build-snake3-lots.js) : sans lui,
@@ -273,6 +279,10 @@
     window.addEventListener('pointerup', relacher);
     window.addEventListener('pointercancel', relacher);
   });
+
+  // Le seul texte de la page hors du canevas et du salon : le conseil
+  // ci-dessous (data-i18n). « pause », sur la manette, est le même mot.
+  if (window.FPI18n) FPI18n.appliquer(document);
 
   // Le conseil de tourner le téléphone : une fois par appareil, quelques
   // secondes, et il s'efface au premier appui. La feuille de style le garde

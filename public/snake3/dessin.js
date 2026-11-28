@@ -72,8 +72,36 @@ function chargerManifeste() {
   const L = racine.SnakeLots;
   return fetch(BASE + ((L && L.manifeste) || 'sprites.json'))
     .then((r) => r.json())
-    .then((m) => { manifeste = m; return m; });
+    .then((m) => { manifeste = appliquerVariantes(m); return m; });
 }
+
+/* ── LA VERSION ANGLAISE : LES DESSINS SANS LEUR TEXTE GRAVÉ ─────────────────
+ *
+ * Quelques images du SWF portent du français dans leur art (les pastilles
+ * « retour » et « entrainement », les titres des écrans, les étiquettes du
+ * livre). En anglais, la table `snake3.dessins` du dictionnaire
+ * (/snake3/lang/en.js) leur substitue une version NUE, tirée par
+ * scripts/build-snake3-anglais.js dans sprites/en/ — même cadre, même place.
+ * Le jeu écrit alors l'anglais par-dessus (menu.js, game.js, encyclo.js) :
+ * `sansTexte(clé, image)` lui dit si l'image a été substituée. En français, la
+ * table est vide et rien ne change.
+ */
+const substituees = new Set();
+function appliquerVariantes(m) {
+  const T = racine.T;
+  const table = (T && T.table && m && m.clips) ? T.table('snake3.dessins', {}) : {};
+  for (const cle of Object.keys(table)) {
+    const clip = m.clips[cle];
+    if (!clip) continue;
+    for (const [n, fichier] of Object.entries(table[cle])) {
+      if (!clip.frames[n]) continue;
+      clip.frames[n] = Object.assign({}, clip.frames[n], { fichier });
+      substituees.add(cle + ':' + n);
+    }
+  }
+  return m;
+}
+function sansTexte(cle, frame) { return substituees.has(cle + ':' + frame); }
 
 /* ── LES LOTS (scripts/build-snake3-lots.js) ────────────────────────────────
  *
@@ -878,7 +906,7 @@ class Nombre {
 }
 
 const API = {
-  chargerManifeste, chargerLot, poserManifeste, precharger, poserDensite, cadre, rendre, rendreFichier,
+  chargerManifeste, chargerLot, poserManifeste, precharger, sansTexte, poserDensite, cadre, rendre, rendreFichier,
   rendreTeinte, rendreTeinteFichier, rendreTeinteAnim, rendreMultiplie,
   imageAnim, rendreAnim, amorcerAnimations, poser, poserAnim, image, PopupFX, Nombre,
   freiner, chauffer, chaufferPendant, chauffeEnAttente, etatDecodeur,

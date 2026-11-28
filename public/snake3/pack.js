@@ -208,8 +208,11 @@ class Pack {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     ctx.fillStyle = BLANC;
-    // L'intitulé complet s'il tient, son abrégé sinon.
-    const titre = ctx.measureText(ligne.titre).width <= l ? ligne.titre : ligne.court;
+    // L'intitulé complet s'il tient, son abrégé sinon — dans la langue de la
+    // page (snake3.pack.<clé>, snake3.pack.<clé>Court ; LIGNES reste en
+    // français, c'est la table de référence).
+    const complet = C.T('snake3.pack.' + ligne.cle, ligne.titre);
+    const titre = ctx.measureText(complet).width <= l ? complet : C.T('snake3.pack.' + ligne.cle + 'Court', ligne.court);
     ctx.fillText(titre, x + l / 2, y, l);
     this.jauge(ctx, x, y + tLab + 2, l, h - tLab - 2, tNb, valeur);
   }

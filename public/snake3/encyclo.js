@@ -24,6 +24,7 @@
 
 const C = racine.SnakeConst;
 const D = racine.SnakeDessin;
+const T = C.T;                         // les langues : voir const.js
 
 const BOOK_X = 53;
 const BOOK_Y = 20;
@@ -53,6 +54,42 @@ const TPL = {
 // Le sommaire (page 4) : champ 365, Alba 14 centré multiligne, posé en
 // coordonnées de page.
 const SOMMAIRE = { cx: -143.58, y: -658.45, taille: 14, interligne: 17 };
+
+// LA VERSION ANGLAISE : les étiquettes gravées dans les pages (le JPEG des
+// gabarits et de la couverture, le DefineText « SOMMAIRE ») ont disparu des
+// images nues de sprites/en/ (dessin.js, sansTexte) ; elles s'écrivent ici,
+// en blanc, à la place exacte de l'original — centre et ligne de base relevés
+// dans les pixels, en coordonnées de page. Alba pour celles qui étaient en
+// Alba ; la couverture, en capitales serrées, prend une Verdana grasse
+// resserrée. « Encyclopéfruit » (jeu de mots) et « Frutiparc Edition » restent.
+const ETIQUETTES = {
+  1: [{ cle: 'snake3.encyclo.valeur', fr: 'Valeur', x: -215, y: -387.5, taille: 22 },
+    { cle: 'snake3.encyclo.quantite', fr: 'Quantité', x: -82, y: -387.5, taille: 22 }],
+  2: [{ cle: 'snake3.encyclo.valeur', fr: 'Valeur', x: -218.5, y: -387, taille: 22 },
+    { cle: 'snake3.encyclo.quantite', fr: 'Quantité', x: -86.5, y: -387, taille: 22 }],
+  3: [{ cle: 'snake3.encyclo.horsSerie', fr: 'FrutiMag hors-série', x: -149.5, y: -724.5, taille: 14, serree: true },
+    { cle: 'snake3.encyclo.edition', fr: 'Edition 2004', x: -145, y: -631.5, taille: 18, serree: true }],
+  4: [{ cle: 'snake3.encyclo.sommaire', fr: 'SOMMAIRE', x: -145.75, y: -673.85, taille: 20 }],
+};
+function dessinerEtiquettes(ctx, image) {
+  const liste = ETIQUETTES[image];
+  if (!liste || !(D.sansTexte && D.sansTexte('pageSans', image))) return;
+  ctx.save();
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  for (const e of liste) {
+    ctx.save();
+    ctx.translate(e.x, e.y);
+    if (e.serree) {
+      ctx.font = 'bold ' + e.taille + 'px Verdana, Geneva, sans-serif';
+      ctx.scale(0.78, 1);
+    } else ctx.font = e.taille + 'px Alba, Verdana, sans-serif';
+    ctx.fillText(T(e.cle, e.fr), 0, 0);
+    ctx.restore();
+  }
+  ctx.restore();
+}
 
 class Encyclo {
   constructor(jeu) {
@@ -172,19 +209,24 @@ class Encyclo {
   dessinerPage(ctx, cur, cote, gradAlpha) {
     const image = this.imagePage(cur, cote);
     D.poser(ctx, 'pageSans', image, 0, 0, 1, 1, 0);
+    dessinerEtiquettes(ctx, image);
 
     if (image === 4) {
-      // Le sommaire : les quatre phrases d'updatePage, en Alba 14.
+      // Le sommaire : les quatre phrases d'updatePage, en Alba 14, coupées à la
+      // main en lignes (le champ ne passe pas à la ligne tout seul) — une seule
+      // clé pour le bloc, les retours à la ligne compris : la coupe anglaise
+      // n'est pas la française.
       const total = C.FRUIT_MAX + C.FRUIT_POURRIS_MAX;
-      const lignes = [
-        'Vous avez rammassé ' + this.totfruits + ' fruits.', '',
-        'Vous avez ' + this.nfruits + ' fruits sur une collection',
-        'de ' + total + ' au total.', '',
-        'Vous avez découvert le nom',
-        'de ' + this.nnames + ' fruits (' + Math.trunc(this.nnames * 100 / total) + '% découverts).', '',
-        'Votre plus gros fruit vous a',
-        'rapporté ' + this.maxpoints + ' points.',
-      ];
+      const lignes = T('snake3.encyclo.bilan', 'Vous avez rammassé {fruits} fruits.\n\n'
+        + 'Vous avez {especes} fruits sur une collection\n'
+        + 'de {total} au total.\n\n'
+        + 'Vous avez découvert le nom\n'
+        + 'de {noms} fruits ({pourcent}% découverts).\n\n'
+        + 'Votre plus gros fruit vous a\n'
+        + 'rapporté {points} points.', {
+        fruits: this.totfruits, especes: this.nfruits, total, noms: this.nnames,
+        pourcent: Math.trunc(this.nnames * 100 / total), points: this.maxpoints,
+      }).split('\n');
       ctx.font = SOMMAIRE.taille + 'px Alba, Verdana, sans-serif';
       ctx.fillStyle = '#578529';
       ctx.textAlign = 'center';

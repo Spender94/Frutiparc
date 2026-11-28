@@ -69,6 +69,9 @@ const R = window.SnakeRendu;
 const SS = window.SnakeSerpent;
 const J = window.SnakeJeu;
 const { Reseau } = window.SnakeReseau;
+const T = C.T;                         // les langues : voir const.js
+const Tn = (cle, n, formes, p) => (window.T && window.T.n ? window.T.n(cle, n, formes, p)
+  : T(cle, (n === 1 ? formes.one : formes.other), Object.assign({ n }, p)));
 
 const MODE_SALON = 20;
 const MODE_BATAILLE = 21;
@@ -96,7 +99,7 @@ function controleur(jeu) {
     joueurs: [],                       // la dernière liste du salon
     depart: null,                      // le <sb e="start"> à consommer par la bataille
     enAttente: [],                     // les pas arrivés avant que la bataille n'écoute
-    etat: 'Connexion…',
+    etat: T('snake3.salon.connexion', 'Connexion…'),
     moi: (pf.nom || pf.pseudo || 'joueur'),
     ouvrir() {
       if (this.reseau) return;
@@ -174,20 +177,20 @@ class VueSalon {
       if (texte != null) e.textContent = texte;
       return e;
     };
-    this.$titre = el('div', 'sl-titre', 'Championnat en ligne — 1 contre 1');
+    this.$titre = el('div', 'sl-titre', T('snake3.salon.titre', 'Championnat en ligne — 1 contre 1'));
     this.$serie = el('div', 'sl-serie', '');
     this.$etat = el('div', 'sl-etat', this.ctl.etat);
-    this.$chercher = el('button', 'sl-btn sl-chercher', 'Chercher un adversaire');
+    this.$chercher = el('button', 'sl-btn sl-chercher', T('snake3.salon.chercher', 'Chercher un adversaire'));
     this.$chercher.addEventListener('click', () => this.chercher());
     this.$liste = el('div', 'sl-liste');
-    this.$retour = el('button', 'sl-btn sl-retour', '‹ Retour au menu');
+    this.$retour = el('button', 'sl-btn sl-retour', T('snake3.salon.retour', '‹ Retour au menu'));
     this.$retour.addEventListener('click', () => this.retour());
     const haut = el('div', 'sl-haut');
     haut.appendChild(this.$titre);
     haut.appendChild(this.$serie);
     p.appendChild(haut);
     p.appendChild(this.$chercher);
-    p.appendChild(el('div', 'sl-sous', 'Les joueurs présents — touche un pseudo pour le défier'));
+    p.appendChild(el('div', 'sl-sous', T('snake3.salon.consigne', 'Les joueurs présents — touche un pseudo pour le défier')));
     p.appendChild(this.$liste);
     p.appendChild(this.$etat);
     p.appendChild(this.$retour);
@@ -225,12 +228,12 @@ class VueSalon {
     else if (e === 'err') {
       const m = el.getAttribute('m');
       const TXT = {
-        'not-logged': 'Connecte-toi à Frutiparc pour jouer en ligne.',
-        'target-busy': 'Ce joueur est déjà en partie.',
-        'challenger-busy': 'Tu es déjà en partie.',
-        'already-busy': 'Tu es déjà en partie.',
-        'unknown-player': 'Ce joueur n’est plus là.',
-        'self-challenge': 'Te défier toi-même ? Non.',
+        'not-logged': T('snake3.salon.errNonConnecte', 'Connecte-toi à Frutiparc pour jouer en ligne.'),
+        'target-busy': T('snake3.salon.errOccupe', 'Ce joueur est déjà en partie.'),
+        'challenger-busy': T('snake3.salon.errDejaEnPartie', 'Tu es déjà en partie.'),
+        'already-busy': T('snake3.salon.errDejaEnPartie', 'Tu es déjà en partie.'),
+        'unknown-player': T('snake3.salon.errParti', 'Ce joueur n’est plus là.'),
+        'self-challenge': T('snake3.salon.errToiMeme', 'Te défier toi-même ? Non.'),
       };
       this.surEtat(TXT[m] || ('⚠ ' + m));
     } else if (e === 'chat') { /* pas de tchat dans le salon du serpent */ }
@@ -240,11 +243,15 @@ class VueSalon {
     if (!this.$liste) return;
     const moi = this.moi();
     const enAttente = !!(moi && moi.s === 'waiting');
-    this.$chercher.textContent = enAttente ? 'Annuler la recherche…' : 'Chercher un adversaire';
+    this.$chercher.textContent = enAttente ? T('snake3.salon.annuler', 'Annuler la recherche…')
+      : T('snake3.salon.chercher', 'Chercher un adversaire');
     this.$chercher.classList.toggle('sl-attend', enAttente);
-    this.$serie.textContent = moi ? ('Ta note : ' + moi.no + (moi.pj ? ' (' + moi.pj + (moi.pj > 1 ? ' parties)' : ' partie)') : ' (placement)')) : '';
+    this.$serie.textContent = !moi ? ''
+      : (moi.pj ? Tn('snake3.salon.note', moi.pj, { one: 'Ta note : {note} ({n} partie)', other: 'Ta note : {note} ({n} parties)' }, { note: moi.no })
+        : T('snake3.salon.notePlacement', 'Ta note : {note} (placement)', { note: moi.no }));
     this.$liste.innerHTML = '';
-    const ETAT = { idle: 'disponible', waiting: 'cherche un adversaire', playing: 'en partie' };
+    const ETAT = { idle: T('snake3.salon.disponible', 'disponible'), waiting: T('snake3.salon.cherche', 'cherche un adversaire'),
+      playing: T('snake3.salon.enPartie', 'en partie') };
     // Les humains par note, les bots (sans note) à la fin.
     const tri = [...this.ctl.joueurs].sort((a, b) => (Number(a.bot) - Number(b.bot)) || (b.no - a.no) || a.n.localeCompare(b.n));
     for (const j of tri) {
@@ -256,10 +263,10 @@ class VueSalon {
       nom.textContent = j.n + (j.bot ? ' 🤖' : '');
       const serie = document.createElement('span');
       serie.className = 'sl-sr';
-      serie.textContent = j.bot ? 'entraînement' : String(j.no);
+      serie.textContent = j.bot ? T('snake3.salon.entrainement', 'entraînement') : String(j.no);
       const etat = document.createElement('span');
       etat.className = 'sl-statut';
-      etat.textContent = (moi && j.u === moi.u) ? 'toi' : (ETAT[j.s] || j.s);
+      etat.textContent = (moi && j.u === moi.u) ? T('snake3.salon.toi', 'toi') : (ETAT[j.s] || j.s);
       ligne.appendChild(nom);
       ligne.appendChild(serie);
       ligne.appendChild(etat);
@@ -271,7 +278,7 @@ class VueSalon {
     if (!tri.length) {
       const vide = document.createElement('div');
       vide.className = 'sl-vide';
-      vide.textContent = 'Personne pour l’instant…';
+      vide.textContent = T('snake3.salon.personne', 'Personne pour l’instant…');
       this.$liste.appendChild(vide);
     }
   }
@@ -575,14 +582,15 @@ class VueBatailleEnLigne {
     let texte;
     if (w < 0) texte = C.TXT_BATTLE_DRAW;
     else if (w === this.monEquipe) {
-      texte = 'Tu as gagné !' + (r === 'forfeit' ? '\n' + ((autre && autre.n) || 'Ton adversaire') + ' a abandonné.' : '');
+      texte = T('snake3.duel.gagne', 'Tu as gagné !') + (r === 'forfeit'
+        ? '\n' + T('snake3.duel.abandon', '{nom} a abandonné.', { nom: (autre && autre.n) || T('snake3.duel.adversaire', 'Ton adversaire') }) : '');
     } else texte = C.TXT_BATTLE_WIN(w);
     // La note : de combien elle vient de bouger — ou pourquoi elle n'a pas
     // bougé (un entraînement contre un bot ne compte pas).
     if (moi && moi.dn != null) {
-      texte += '\nTa note : ' + moi.no + ' (' + (moi.dn >= 0 ? '+' : '') + moi.dn + ')';
+      texte += '\n' + T('snake3.duel.note', 'Ta note : {note} ({ecart})', { note: moi.no, ecart: (moi.dn >= 0 ? '+' : '') + moi.dn });
     } else if (!this.classe) {
-      texte += '\nEntraînement : la note ne bouge pas.';
+      texte += '\n' + T('snake3.duel.entrainement', 'Entraînement : la note ne bouge pas.');
     }
     this.ecran = new J.Ecran(this.jeu, 'resultat', texte);
     if (w >= 0) this.ecran.panCouleur = w + 1;
@@ -686,12 +694,15 @@ class VueBatailleEnLigne {
     }
     ctx.save();
     ctx.font = 'bold 12px Verdana12StB, Verdana, sans-serif';
+    // Verdana12StB n'a pas de parenthèses : « (toi) » les prend à la Verdana de
+    // la machine ; l'anglais dit « · you », que la fonte a en entier.
+    const toi = T('snake3.duel.toi', '(toi)');
     for (const j of this.joueurs) {
       const couleur = R.rgb(C.BATTLE_COLORS[j.e]);
       ctx.fillStyle = couleur;
       ctx.textAlign = j.e === 0 ? 'left' : 'right';
       const x = j.e === 0 ? 20 : C.WIDTH - 20;
-      ctx.fillText(j.n + (j.no ? '  ' + j.no : '') + (j.e === this.monEquipe ? '  (toi)' : ''), x, 48);
+      ctx.fillText(j.n + (j.no ? '  ' + j.no : '') + (j.e === this.monEquipe ? '  ' + toi : ''), x, 48);
     }
     ctx.restore();
 
@@ -710,7 +721,8 @@ class VueBatailleEnLigne {
       ctx.font = '14px Verdana14St, Verdana, sans-serif';
       ctx.lineWidth = 4;
       const moi = this.joueurs.find((j) => j.e === this.monEquipe);
-      const txt = moi ? 'Tu es le serpent ' + C.TXT_COLOR[moi.e].trim() : 'Prêt ?';
+      const txt = moi ? T('snake3.duel.tuEs', 'Tu es le serpent {couleur}', { couleur: C.TXT_COLOR[moi.e].trim() })
+        : T('snake3.duel.pret', 'Prêt ?');
       ctx.strokeText(txt, C.WIDTH / 2, C.HEIGHT / 2 + 60);
       ctx.fillText(txt, C.WIDTH / 2, C.HEIGHT / 2 + 60);
       ctx.restore();

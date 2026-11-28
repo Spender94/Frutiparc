@@ -154,13 +154,16 @@ function trouverDisque(im, boite) {
   return { cx, cy, r, couleur };
 }
 const moyenne = (im, x0, y0, x1, y1) => {
+  // (bornée à l'image : une boîte au ras du bord ne lit pas hors champ)
+  x0 = Math.max(0, x0); y0 = Math.max(0, y0); x1 = Math.min(im.w - 1, x1); y1 = Math.min(im.h - 1, y1);
   const s = [0, 0, 0]; let n = 0;
   for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const c = im.px(x, y); s[0] += c[0]; s[1] += c[1]; s[2] += c[2]; n++; }
   return s.map((v) => v / n);
 };
 
-// La pièce d'une boîte. Le fond : pour chaque colonne, la moyenne de trois
-// rangées au-dessus et de trois au-dessous du texte (lissées sur cinq
+// La pièce d'une boîte. Le fond : pour chaque colonne, la moyenne des trois
+// rangées juste au-dessus et des trois juste au-dessous de la boîte (déjà
+// élargie de deux points autour du texte) (lissées sur cinq
 // colonnes, pour ne pas reproduire en traînées le grain du JPEG), fondues de
 // haut en bas. Le disque, s'il y en a un, retracé par-dessus avec un bord
 // adouci d'un pixel.
@@ -172,10 +175,10 @@ function piece(im, boite, avecDisque) {
   const bande = (x, ya, yb) => moyenne(im, Math.max(0, x - 2), ya, Math.min(im.w - 1, x + 2), yb);
   const rgb = new Uint8Array(w * h * 3);
   for (let x = x0; x <= x1; x++) {
-    const haut = bande(x, y0 - 4, y0 - 2);
+    const haut = bande(x, y0 - 3, y0 - 1);
     // Sous la boîte, la rangée peut tomber dans le disque : le fond du bas
     // est alors celui du haut.
-    const bas = dansDisque(x, y1 + 3) > 0 ? haut : bande(x, y1 + 2, y1 + 4);
+    const bas = dansDisque(x, y1 + 2) > 0 ? haut : bande(x, y1 + 1, y1 + 3);
     for (let y = y0; y <= y1; y++) {
       let c = melange(haut, bas, (y - y0 + 1) / (h + 1));
       const k = dansDisque(x, y);
@@ -214,6 +217,7 @@ rapiecer('pageSans002.svg', [
   { texte: 'Quantité', x0: 159, y0: 330, x1: 264, y1: 360, disque: true },
 ]);
 rapiecer('pageSans003.svg', [
-  { texte: 'FrutiMag hors-série', x0: 89, y0: 2, x1: 206, y1: 18 },
+  { texte: 'FrutiMag hors-série', x0: 89, y0: 3, x1: 206, y1: 18 },
+  // (le bandeau rouge finit à la rangée 88 : la boîte commence sous lui)
   { texte: 'Edition 2004', x0: 102, y0: 92, x1: 202, y1: 111 },
 ]);

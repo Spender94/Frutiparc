@@ -156,7 +156,7 @@ class Menu {
       // mots, il reste.
       if (D.sansTexte && D.sansTexte('menu', frame)) {
         const e = ETIQUETTES[frame];
-        if (e) dessinerEtiquetteDisque(ctx, T(e.cle, e.fr), e);
+        if (e) dessinerEtiquetteDisque(ctx, T(e.cle, e.fr), e, [p, p * 0.6 + 0.4, p]);
       }
       ctx.restore();
     }
@@ -177,15 +177,21 @@ class Menu {
 // base et la taille du corps (une ligne plus longue s'écrit plus petit).
 const ETIQUETTES = {
   5: { cle: 'snake3.menu.retour', fr: 'retour', x: 40, y: 10, angle: -0.16, taille: 112 },
-  9: { cle: 'snake3.menu.entrainement', fr: 'entrainement', x: 0, y: -10, angle: -0.08, taille: 64 },
+  9: { cle: 'snake3.menu.entrainement', fr: 'entrainement', x: 10, y: -12, angle: -0.08, taille: 76 },
 };
 
 // Le lettrage des pastilles imite celui du SWF : une face blanche, l'épaisseur
 // grise d'une lettre en volume (le même mot, décalé pas à pas vers le bas à
 // droite), et l'ombre vert sombre portée sur la pastille. La fonte est Alba,
 // la ronde du jeu ; un trait du même ton l'épaissit, comme les lettres
-// bombées du dessin.
-function dessinerEtiquetteDisque(ctx, texte, e) {
+// bombées du dessin. `teinte` : les multiplicateurs du cxform de la pastille
+// (elle s'assombrit vers le fond du carrousel) — l'étiquette les suit.
+function dessinerEtiquetteDisque(ctx, texte, e, teinte) {
+  const ton = (hex) => {
+    const n = parseInt(hex.slice(1), 16);
+    const c = [n >> 16, (n >> 8) & 255, n & 255].map((v, i) => Math.round(v * teinte[i]));
+    return 'rgb(' + c.join(',') + ')';
+  };
   ctx.save();
   ctx.translate(e.x, e.y);
   ctx.rotate(e.angle);
@@ -204,9 +210,9 @@ function dessinerEtiquetteDisque(ctx, texte, e) {
     ctx.strokeText(texte, dx, dy);
     ctx.fillText(texte, dx, dy);
   };
-  couche(12, 14, '#005500');
-  for (let i = 8; i >= 1; i--) couche(i, i, '#cccccc');
-  couche(0, 0, '#ffffff');
+  couche(12, 14, ton('#005500'));
+  for (let i = 8; i >= 1; i--) couche(i, i, ton('#cccccc'));
+  couche(0, 0, ton('#ffffff'));
   ctx.restore();
 }
 
