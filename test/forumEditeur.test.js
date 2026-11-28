@@ -54,6 +54,8 @@ function editeur(ta) {
   const bac = {
     document: { getElementById: (id) => (id === 'ta' ? ta : null) },
     prompt: () => 'https://frutiparc.example/lien',
+    // Les textes de la barre passent par T() (/js/i18n.js) : côté serveur, le français.
+    T: require('../public/js/i18n.js').T,
   };
   vm.createContext(bac);
   vm.runInContext(code, bac);
@@ -61,9 +63,11 @@ function editeur(ta) {
 }
 
 test('le bouton « Barré » écrit [s]…[/s], que le rendu connaissait déjà', () => {
-  assert.match(PAGE, /<button type="button" class="bb-btn" style="text-decoration:line-through" onclick="bbToggleTag\(\\'' \+ targetId \+ '\\',\\'s\\'\)" title="Barré">Barré<\/button>/);
+  // Le libellé passe par T() (voir `L` dans bbcodeToolbarHtml).
+  assert.match(PAGE, /barre: T\('forum\.barre', 'Barré'\)/);
+  assert.match(PAGE, /<button type="button" class="bb-btn" style="text-decoration:line-through" onclick="bbToggleTag\(\\'' \+ targetId \+ '\\',\\'s\\'\)" title="' \+ L\.barre \+ '">' \+ L\.barre \+ '<\/button>/);
   // Juste après « Souligné », avant la taille.
-  const barre = /title="Souligné">Souligné<\/button>';\n\s*html \+= '<button[^\n]*title="Barré">Barré<\/button>';\n\s*html \+= selHtml\('size'/;
+  const barre = /title="' \+ L\.souligne \+ '">' \+ L\.souligne \+ '<\/button>';\n\s*html \+= '<button[^\n]*title="' \+ L\.barre \+ '">' \+ L\.barre \+ '<\/button>';\n\s*html \+= selHtml\('size'/;
   assert.match(PAGE, barre);
   assert.match(PAGE, /out = out\.replace\(\/\\\[s\\\]\(\[\\s\\S\]\*\?\)\\\[\\\/s\\\]\/gi, '<s>\$1<\/s>'\);/);
 });

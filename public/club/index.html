@@ -14,6 +14,10 @@
 <meta charset="UTF-8">
 <title>Club Frutiparc</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Les langues du parc (voir /js/i18n.js) : en anglais, le dictionnaire du
+     club arrive pendant l'analyse de la page ; en français, rien. -->
+<script src="/js/i18n.js"></script>
+<script>FPI18n.charger(['commun', 'club']);</script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -438,42 +442,44 @@
 <div class="club-shell">
   <div class="club-header">
     <span class="bc-icon">🏆</span>
-    <a class="title-link" href="#" onclick="return false">Club Frutiparc</a>
+    <a class="title-link" href="#" onclick="return false" data-i18n="club.titre">Club Frutiparc</a>
   </div>
 
   <div class="tabs">
-    <button class="tab active" data-tab="medalists">Top médaillés</button>
-    <button class="tab" data-tab="records">Records par jeu</button>
-    <button class="tab" data-tab="consecration">Consécration</button>
-    <button class="tab" data-tab="fiche">Fiche joueur</button>
+    <button class="tab active" data-tab="medalists" data-i18n="club.ongletMedailles">Top médaillés</button>
+    <button class="tab" data-tab="records" data-i18n="club.ongletRecords">Records par jeu</button>
+    <button class="tab" data-tab="consecration" data-i18n="club.consecration">Consécration</button>
+    <button class="tab" data-tab="fiche" data-i18n="club.ongletFiche">Fiche joueur</button>
   </div>
 
   <div id="panel-medalists" class="panel">
     <div class="toolbar">
-      <button class="btn" onclick="loadMedalists()">Actualiser</button>
+      <button class="btn" onclick="loadMedalists()" data-i18n="club.actualiser">Actualiser</button>
       <!-- Le sélecteur de jeu : « Tous les jeux » d'abord, puis ceux qui ont
-           réellement distribué des médailles (le serveur les énumère). -->
-      <label>Jeu&nbsp;:
+           réellement distribué des médailles (le serveur les énumère).
+           Les libellés sont dans un <span> : data-i18n remplace le texte de
+           son élément, et la liste ne doit pas partir avec. -->
+      <label><span data-i18n="club.jeuDeuxPoints">Jeu&nbsp;:</span>
         <select id="medalist-game" onchange="loadMedalists()">
-          <option value="all">Tous les jeux</option>
+          <option value="all" data-i18n="club.tousLesJeux">Tous les jeux</option>
         </select>
       </label>
       <span id="medalist-summary" class="summary"></span>
     </div>
-    <div id="medalists-content" class="loading">Chargement…</div>
+    <div id="medalists-content" class="loading" data-i18n="club.chargement">Chargement…</div>
   </div>
 
   <div id="panel-records" class="panel hidden">
     <div class="toolbar">
-      <button class="btn" onclick="loadRecords()">Actualiser</button>
-      <label>Affichage&nbsp;:
+      <button class="btn" onclick="loadRecords()" data-i18n="club.actualiser">Actualiser</button>
+      <label><span data-i18n="club.affichageDeuxPoints">Affichage&nbsp;:</span>
         <select id="record-filter" onchange="renderRecords()">
-          <option value="all">Tous les classements</option>
-          <option value="C">Challenge (Classique)</option>
-          <option value="L">Championnat</option>
+          <option value="all" data-i18n="club.tousLesClassements">Tous les classements</option>
+          <option value="C" data-i18n="club.challengeClassique">Challenge (Classique)</option>
+          <option value="L" data-i18n="club.championnat">Championnat</option>
         </select>
       </label>
-      <label>Top&nbsp;:
+      <label><span data-i18n="club.topDeuxPoints">Top&nbsp;:</span>
         <select id="record-limit" onchange="loadRecords()">
           <option value="5">5</option>
           <option value="10" selected>10</option>
@@ -481,15 +487,15 @@
         </select>
       </label>
     </div>
-    <div id="records-content" class="loading">Chargement…</div>
+    <div id="records-content" class="loading" data-i18n="club.chargement">Chargement…</div>
   </div>
 
   <!-- La consécration : le pourcentage de chacun, ET d'où il vient — les
        pictos gagnés dans chaque jeu compté, et leur total. -->
   <div id="panel-consecration" class="panel hidden">
     <div class="toolbar">
-      <button class="btn" onclick="loadConsecration()">Actualiser</button>
-      <label>Top&nbsp;:
+      <button class="btn" onclick="loadConsecration()" data-i18n="club.actualiser">Actualiser</button>
+      <label><span data-i18n="club.topDeuxPoints">Top&nbsp;:</span>
         <select id="conse-limit" onchange="loadConsecration()">
           <option value="20">20</option>
           <option value="50" selected>50</option>
@@ -498,25 +504,26 @@
       </label>
       <span id="conse-summary" class="summary"></span>
     </div>
-    <div id="consecration-content" class="loading">Chargement…</div>
+    <div id="consecration-content" class="loading" data-i18n="club.chargement">Chargement…</div>
   </div>
 
   <div id="panel-fiche" class="panel hidden">
     <div class="toolbar">
-      <label>Pseudo&nbsp;:
+      <label><span data-i18n="club.pseudoDeuxPoints">Pseudo&nbsp;:</span>
         <input type="search" id="fiche-pseudo" list="fiche-joueurs" placeholder="un Frutiz…"
-               autocomplete="off" onkeydown="if(event.key==='Enter'){chercherFiche();return false;}">
+               autocomplete="off" onkeydown="if(event.key==='Enter'){chercherFiche();return false;}"
+               data-i18n-attr="placeholder:club.unFrutiz">
         <datalist id="fiche-joueurs"></datalist>
       </label>
-      <button class="btn" onclick="chercherFiche()">Voir la fiche</button>
+      <button class="btn" onclick="chercherFiche()" data-i18n="club.voirFiche">Voir la fiche</button>
       <span id="fiche-summary" class="summary"></span>
     </div>
-    <div id="fiche-content" class="loading">
+    <div id="fiche-content" class="loading" data-i18n="club.ficheAide">
       Cherchez un Frutiz par son pseudo — ou cliquez un nom dans les deux autres onglets.
     </div>
   </div>
 </div>
-<div class="club-footer">
+<div class="club-footer" data-i18n-html="club.piedDePage">
   Club Frutiparc &copy; <a href="https://www.motiontwin.com">Motion Twin</a>
 </div>
 
@@ -530,6 +537,11 @@
 <script src="/js/bouille-variante.js"></script>
 <script src="/js/bouille-vignette.js"></script>
 <script>
+  // Les textes écrits en dur dans la page (data-i18n…) et son titre, dans la
+  // langue du joueur — avant le premier chargement.
+  FPI18n.appliquer(document);
+  document.title = T('club.titre', document.title);
+
   let recordsData = null;
   let consecrationData = null;
   let joueursCharges = false;
@@ -548,7 +560,7 @@
   async function loadConsecration() {
     const root = document.getElementById('consecration-content');
     root.className = 'loading';
-    root.textContent = 'Chargement…';
+    root.textContent = T('club.chargement', 'Chargement…');
     const limit = document.getElementById('conse-limit').value || 50;
     try {
       const r = await fetch('/api/club/consecration?limit=' + limit);
@@ -556,8 +568,13 @@
       renderConsecration();
     } catch (e) {
       root.className = 'loading';
-      root.textContent = 'Erreur de chargement: ' + e.message;
+      root.textContent = erreurChargement(e);
     }
+  }
+
+  // « Erreur de chargement: … » — le détail est celui du navigateur.
+  function erreurChargement(e) {
+    return T('club.erreurChargement', 'Erreur de chargement: {detail}', { detail: e.message });
   }
 
   /*
@@ -575,10 +592,11 @@
     const players = (consecrationData && consecrationData.players) || [];
     const summary = document.getElementById('conse-summary');
     const n = consecrationData && consecrationData.totalPlayers;
-    summary.textContent = n != null ? (n + ' joueur' + (n > 1 ? 's' : '') + ' consacré' + (n > 1 ? 's' : '')) : '';
+    summary.textContent = n != null
+      ? T.n('club.joueursConsacres', n, { one: '{n} joueur consacré', other: '{n} joueurs consacrés' }) : '';
     if (!players.length) {
       root.className = 'loading';
-      root.textContent = 'Aucun joueur à classer pour le moment.';
+      root.textContent = T('club.aucunJoueur', 'Aucun joueur à classer pour le moment.');
       return;
     }
     const jeux = players[0].games || [];
@@ -589,13 +607,15 @@
       return t;
     }, { gagnes: 0, total: 0 });
     let html = '<div class="conse-info">'
-      + jeux.length + ' jeu' + (jeux.length > 1 ? 'x' : '') + ' pris en compte — un album complet vaut '
-      + perGameMax.toFixed(2) + ' % ; Mini-Fever et les pictos inédits restent hors calcul.'
+      + T.n('club.conseInfo', jeux.length, {
+        one: '{n} jeu pris en compte — un album complet vaut {pct} % ; Mini-Fever et les pictos inédits restent hors calcul.',
+        other: '{n} jeux pris en compte — un album complet vaut {pct} % ; Mini-Fever et les pictos inédits restent hors calcul.',
+      }, { pct: perGameMax.toFixed(2) })
       + '</div>';
     html += '<div class="conse-defile"><table class="conse-table"><thead><tr>'
       + '<th class="num">#</th>'
-      + '<th>Joueur</th>'
-      + '<th>Consécration</th>'
+      + '<th>' + T('club.joueur', 'Joueur') + '</th>'
+      + '<th>' + T('club.consecration', 'Consécration') + '</th>'
       + jeux.map((g) => '<th class="jeu">' + escapeHtml(g.name) + '</th>').join('')
       + '<th class="jeu total">Pictos</th>'
       + '</tr></thead><tbody>';
@@ -608,7 +628,7 @@
         + '<td class="' + rkClass + '">' + rk + '</td>'
         + '<td>' + lienJoueur(p.user) + '</td>'
         + '<td><div class="conse-score">'
-        +   '<span class="conse-pct-val">' + pct.toFixed(2) + ' %</span>'
+        +   '<span class="conse-pct-val">' + T('club.pourcent', '{n} %', { n: pct.toFixed(2) }) + '</span>'
         +   '<div class="conse-bar-mini"><div class="conse-fill-mini" style="width:' + Math.min(pct, 100) + '%"></div></div>'
         + '</div></td>'
         + (p.games || []).map((g) => '<td class="jeu' + (g.total > 0 && g.unlocked >= g.total ? ' complet' : '') + '">' + compte(g) + '</td>').join('')
@@ -635,16 +655,18 @@
   // du jeu pour n'en garder que le métal.
   var MEDAILLE = { or: '/fb/medal_gold.svg', argent: '/fb/medal_silver.svg', bronze: '/fb/medal_bronze.svg' };
   var MEDAILLE_NOM = { or: 'Or', argent: 'Argent', bronze: 'Bronze' };
+  // Le nom du métal dans la langue du joueur (club.or, club.argent, club.bronze).
+  function nomMetal(metal) { return T('club.' + metal, MEDAILLE_NOM[metal]); }
   function jeton(metal, taille) {
     var t = taille || 14;
     return '<img class="med" src="' + MEDAILLE[metal] + '" width="' + t + '" height="' + t
-      + '" alt="' + MEDAILLE_NOM[metal] + '">';
+      + '" alt="' + nomMetal(metal) + '">';
   }
   // Les trois en-têtes de colonne, communs au tableau des médaillés et aux deux
   // tableaux de la fiche.
   function enTetesMetaux() {
     return ['or', 'argent', 'bronze']
-      .map(function (m) { return '<th class="num">' + jeton(m) + MEDAILLE_NOM[m] + '</th>'; })
+      .map(function (m) { return '<th class="num">' + jeton(m) + nomMetal(m) + '</th>'; })
       .join('');
   }
   // Un pseudo pour un attribut onclick : les apostrophes sont déjà en &#39;
@@ -665,7 +687,7 @@
     const sel = document.getElementById('medalist-game');
     if (!sel) return;
     const total = (games || []).reduce((n, g) => n + g.total, 0);
-    let html = '<option value="all">Tous les jeux (' + total + ')</option>';
+    let html = '<option value="all">' + T('club.tousLesJeuxN', 'Tous les jeux ({n})', { n: total }) + '</option>';
     (games || []).forEach(function (g) {
       html += '<option value="' + escapeHtml(g.id) + '">'
         + escapeHtml(g.nom) + ' (' + g.total + ')</option>';
@@ -679,29 +701,34 @@
     const sel = document.getElementById('medalist-game');
     const jeu = (sel && sel.value) || 'all';
     root.className = 'loading';
-    root.textContent = 'Chargement…';
+    root.textContent = T('club.chargement', 'Chargement…');
     try {
       const r = await fetch('/api/club/medalists?game=' + encodeURIComponent(jeu));
       const data = await r.json();
       const list = data.medalists || [];
       majSelecteurJeux(data.games, data.game || 'all');
       const nomJeu = (data.games || []).find(function (g) { return g.id === data.game; });
+      // Deux comptes indépendants, séparés d'un point : les joueurs, puis les
+      // médailles (sur un jeu, quand on en a choisi un).
+      const medailles = data.totalMedals || 0;
       document.getElementById('medalist-summary').textContent =
-        list.length + ' joueur' + (list.length > 1 ? 's' : '') +
-        ' • ' + (data.totalMedals || 0) + ' médaille' + ((data.totalMedals || 0) > 1 ? 's' : '') + ' attribuée' + ((data.totalMedals || 0) > 1 ? 's' : '')
-        + (nomJeu ? ' sur ' + nomJeu.nom : '');
+        T.n('club.nbJoueurs', list.length, { one: '{n} joueur', other: '{n} joueurs' }) + ' • '
+        + (nomJeu
+          ? T.n('club.medaillesAttribueesSur', medailles,
+            { one: '{n} médaille attribuée sur {jeu}', other: '{n} médailles attribuées sur {jeu}' }, { jeu: nomJeu.nom })
+          : T.n('club.medaillesAttribuees', medailles, { one: '{n} médaille attribuée', other: '{n} médailles attribuées' }));
 
       if (!list.length) {
         root.className = 'loading';
         root.textContent = nomJeu
-          ? 'Aucune médaille attribuée sur ' + nomJeu.nom + ' pour le moment.'
-          : 'Aucune médaille attribuée pour le moment.';
+          ? T('club.aucuneMedailleSur', 'Aucune médaille attribuée sur {jeu} pour le moment.', { jeu: nomJeu.nom })
+          : T('club.aucuneMedaille', 'Aucune médaille attribuée pour le moment.');
         return;
       }
       root.className = '';
       let html = '<table><thead><tr>'
         + '<th class="num">#</th>'
-        + '<th>Joueur</th>'
+        + '<th>' + T('club.joueur', 'Joueur') + '</th>'
         + enTetesMetaux()
         + '<th class="num">Total</th>'
         + '</tr></thead><tbody>';
@@ -721,7 +748,7 @@
       root.innerHTML = html;
     } catch (e) {
       root.className = 'loading';
-      root.textContent = 'Erreur de chargement: ' + e.message;
+      root.textContent = erreurChargement(e);
     }
   }
 
@@ -735,13 +762,13 @@
       const pad = n => (n < 10 ? '0' + n : '' + n);
       return minutes + ':' + pad(seconds) + '.' + pad(cs);
     }
-    return Number(score).toLocaleString('fr-FR');
+    return T.nombre(Number(score));
   }
 
   async function loadRecords() {
     const root = document.getElementById('records-content');
     root.className = 'loading';
-    root.textContent = 'Chargement…';
+    root.textContent = T('club.chargement', 'Chargement…');
     const limit = document.getElementById('record-limit').value || 10;
     try {
       const r = await fetch('/api/club/records?limit=' + limit);
@@ -749,7 +776,7 @@
       renderRecords();
     } catch (e) {
       root.className = 'loading';
-      root.textContent = 'Erreur de chargement: ' + e.message;
+      root.textContent = erreurChargement(e);
     }
   }
 
@@ -757,7 +784,7 @@
 
   function renderScoreRows(rk) {
     if (!rk.scores || !rk.scores.length) {
-      return '<div class="empty">Aucun score enregistré</div>';
+      return '<div class="empty">' + T('club.aucunScore', 'Aucun score enregistré') + '</div>';
     }
     var html = '';
     rk.scores.forEach(function(s, i) {
@@ -787,7 +814,7 @@
     var container = document.getElementById('bkiwi-scores-' + type);
     if (!container || !recordsData) return;
     var rk = bkiwiRankingFor(track);
-    container.innerHTML = rk ? renderScoreRows(rk) : '<div class="empty">Aucun score enregistré</div>';
+    container.innerHTML = rk ? renderScoreRows(rk) : '<div class="empty">' + T('club.aucunScore', 'Aucun score enregistré') + '</div>';
   }
 
   function renderBkiwiCard(bkiwiRankings, type) {
@@ -802,7 +829,7 @@
     });
     html += '</select></h3>';
     html += '<div id="bkiwi-scores-' + type + '">';
-    html += current ? renderScoreRows(current) : '<div class="empty">Aucun score enregistré</div>';
+    html += current ? renderScoreRows(current) : '<div class="empty">' + T('club.aucunScore', 'Aucun score enregistré') + '</div>';
     html += '</div></div>';
     return html;
   }
@@ -817,7 +844,7 @@
     });
     if (!rankings.length) {
       root.className = 'loading';
-      root.textContent = 'Aucun classement à afficher.';
+      root.textContent = T('club.aucunClassement', 'Aucun classement à afficher.');
       return;
     }
     root.className = 'records-area';
@@ -827,7 +854,11 @@
       if (groups[rk.type]) groups[rk.type].push(rk);
       else { groups.other = groups.other || []; groups.other.push(rk); }
     });
-    var groupLabels = { C: 'Challenge (Classique)', L: 'Championnat', other: 'Autres' };
+    var groupLabels = {
+      C: T('club.challengeClassique', 'Challenge (Classique)'),
+      L: T('club.championnat', 'Championnat'),
+      other: T('club.autres', 'Autres'),
+    };
 
     var html = '';
     // BKiwi n'affiche qu'UNE carte (données Championnat), pas une par section :
@@ -907,7 +938,7 @@
     const root = document.getElementById('fiche-content');
     const resume = document.getElementById('fiche-summary');
     root.className = 'loading';
-    root.textContent = 'Chargement…';
+    root.textContent = T('club.chargement', 'Chargement…');
     resume.textContent = '';
     let d;
     try {
@@ -915,28 +946,33 @@
       d = await r.json();
     } catch (e) {
       root.className = 'loading';
-      root.textContent = 'Erreur de chargement: ' + e.message;
+      root.textContent = erreurChargement(e);
       return;
     }
     if (!d || !d.ok) {
       root.className = 'loading';
-      root.textContent = 'Aucun Frutiz nommé « ' + pseudo +' » n’a de médaille ni de record.';
+      root.textContent = T('club.ficheIntrouvable', 'Aucun Frutiz nommé « {pseudo} » n’a de médaille ni de record.', { pseudo: pseudo });
       return;
     }
 
     const m = d.medailles || { or: 0, argent: 0, bronze: 0, total: 0 };
     const bouille = FPBouilleVignette.html(d.bouille);
+    const nom = '<b>' + escapeHtml(d.user) + '</b>';
+    // Le rang au tableau, en ordinal : « 1<sup>re</sup> », « 3<sup>e</sup> » —
+    // en anglais, une fonction du dictionnaire (1st, 2nd, 3rd, 4th, 11th…).
+    const rang = m.rang ? T('club.rangOrdinal', '{n}<sup>' + (m.rang === 1 ? 're' : 'e') + '</sup>', { n: m.rang }) : '';
 
     let html = '<div class="fiche-tete">'
       + '<div class="fiche-bouille">' + bouille + '</div>'
       + '<div class="fiche-ident">'
       +   '<div class="fiche-nom">' + escapeHtml(d.user) + '</div>'
       +   '<div class="fiche-ligne">'
-      +     (m.total
-              ? '<b>' + escapeHtml(d.user) + '</b> a obtenu <b>' + m.total + '</b> médaille'
-                + (m.total > 1 ? 's' : '')
-                + (m.rang ? ' — ' + m.rang + '<sup>' + (m.rang === 1 ? 're' : 'e') + '</sup> au tableau des médaillés' : '')
-              : '<b>' + escapeHtml(d.user) + '</b> n’a pas encore de médaille.')
+      +     (!m.total ? T('club.pasDeMedaille', '{nom} n’a pas encore de médaille.', { nom: nom })
+            : rang ? T.n('club.aObtenuRang', m.total, {
+              one: '{nom} a obtenu <b>{n}</b> médaille — {rang} au tableau des médaillés',
+              other: '{nom} a obtenu <b>{n}</b> médailles — {rang} au tableau des médaillés',
+            }, { nom: nom, rang: rang })
+            : T.n('club.aObtenu', m.total, { one: '{nom} a obtenu <b>{n}</b> médaille', other: '{nom} a obtenu <b>{n}</b> médailles' }, { nom: nom }))
       +   '</div>'
       +   (m.total
             ? '<div class="fiche-ligne fiche-metaux">'
@@ -947,23 +983,25 @@
             : '')
       + '</div></div>';
 
-    const parMois = (d.medaillesParMois || []).map(l => Object.assign({ libelle: l.mois }, l));
+    // Le mois : le serveur l'écrit en français (« Mars 2026 ») et donne aussi
+    // son code (`cle`, AAAA-MM) — c'est de lui que l'anglais tire le sien.
+    const parMois = (d.medaillesParMois || []).map(l => Object.assign({ libelle: T('club.moisAnnee', l.mois, { cle: l.cle }) }, l));
     const parJeu = (d.medaillesParJeu || []).map(l => Object.assign({ libelle: l.nom }, l));
 
     if (parMois.length) {
-      html += '<div class="fiche-bloc"><div class="fiche-titre">Médailles classées par date</div>'
-        + tableauMedailles(parMois, 'Mois') + '</div>';
-      html += '<div class="fiche-bloc"><div class="fiche-titre">Médailles classées par jeu</div>'
-        + tableauMedailles(parJeu, 'Jeu') + '</div>';
+      html += '<div class="fiche-bloc"><div class="fiche-titre">' + T('club.medaillesParDate', 'Médailles classées par date') + '</div>'
+        + tableauMedailles(parMois, T('club.mois', 'Mois')) + '</div>';
+      html += '<div class="fiche-bloc"><div class="fiche-titre">' + T('club.medaillesParJeu', 'Médailles classées par jeu') + '</div>'
+        + tableauMedailles(parJeu, T('club.jeu', 'Jeu')) + '</div>';
     }
 
     // Les records, groupés par jeu — MotionBall en est absent : son score
     // empile le boss atteint, le temps et un pourcentage, il ne veut rien dire
     // hors de son propre tableau (le serveur l'écarte, cf. /api/club/player).
-    html += '<div class="fiche-bloc"><div class="fiche-titre">Records par jeu</div>';
+    html += '<div class="fiche-bloc"><div class="fiche-titre">' + T('club.ongletRecords', 'Records par jeu') + '</div>';
     const recs = d.records || [];
     if (!recs.length) {
-      html += '<div class="fiche-vide">Aucun record enregistré pour l’instant.</div>';
+      html += '<div class="fiche-vide">' + T('club.aucunRecord', 'Aucun record enregistré pour l’instant.') + '</div>';
     } else {
       const parJeuRec = [];
       recs.forEach(r => {
@@ -984,7 +1022,7 @@
           html += '<div class="rec-row">'
             + '<span class="rname">' + escapeHtml(court) + '</span>'
             + '<span class="rscore">' + escapeHtml(r.label) + '</span>'
-            + '<span class="' + posCls + '">n&deg;&nbsp;' + r.rang + ' / ' + r.sur + '</span>'
+            + '<span class="' + posCls + '">' + T('club.rangSur', 'n&deg;&nbsp;{rang} / {sur}', { rang: r.rang, sur: r.sur }) + '</span>'
             + '</div>';
         });
         html += '</div>';
@@ -994,7 +1032,7 @@
     html += '</div>';
 
     resume.textContent = recs.length
-      ? recs.length + ' record' + (recs.length > 1 ? 's' : '')
+      ? T.n('club.nbRecords', recs.length, { one: '{n} record', other: '{n} records' })
       : '';
     root.className = 'fiche';
     root.innerHTML = html;

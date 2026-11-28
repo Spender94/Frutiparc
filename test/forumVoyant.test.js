@@ -543,8 +543,8 @@ test('l\'en-tête du forum tient sur UNE ligne, même sur un téléphone', () =>
   // page qu'on quitte.
   assert.match(fil, /actions\.innerHTML = '';/, 'setBreadcrumb repart d\'une barre vide');
   // Le libellé raccourcit quand la place manque, sans perdre le bouton.
-  assert.match(forum, /<span class="lb-long">Tout marquer comme lu<\/span>/);
-  assert.match(forum, /<span class="lb-court">Tout lu<\/span>/);
+  assert.match(forum, /<span class="lb-long">' \+ T\('forum\.toutMarquerLu', 'Tout marquer comme lu'\) \+ '<\/span>/);
+  assert.match(forum, /<span class="lb-court">' \+ T\('forum\.toutLu', 'Tout lu'\) \+ '<\/span>/);
   assert.match(forum, /\.forum-header \.lb-long \{ display: none; \}/,
     'à l\'étroit, c\'est le court qui parle');
   // Et l'attente ne mange pas la paire de libellés.

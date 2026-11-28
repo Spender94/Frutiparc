@@ -60,6 +60,21 @@
    (`icon_minipost.gif`, `icon_latest_reply.gif`) : plus rien ici ne passe par
    le filtre du châssis. */
 
+/* « NEW » ET « REPLY », LES PASTILLES DE LA VERSION ANGLAISE (`.pastille-fb`,
+   à la place de post.gif et reply.gif). Leur cerise est découpée dans
+   post-nuit.png / reply-nuit.png — la règle engendrée y pointe d'elle-même —,
+   et ces deux dessins la posent sur un PRUNE. Le générateur, lui, ne voit
+   dans le corps de la pastille qu'un fond vert pâle, et le passe au violet du
+   châssis : la cerise flotterait dans une pièce d'une autre couleur. Le corps
+   reprend donc les couleurs des dessins de nuit eux-mêmes, relevées pixel par
+   pixel sur leur colonne 24 : le liseré, le fond, l'ombre du bas, le mot. */
+.pastille-fb { color: #f4f3f6; }
+.pastille-fb .mot {
+  border-color: #a762a0;
+  background: linear-gradient(#763a5d 0 20px, #7b3d63 20px 21px, #82426c 21px 22px, #804169 22px 23px,
+    #7c3e65 23px 24px, #783b5f 24px);
+}
+
 /* LES DEUX BOUTONS DE LA MODALE DE SIGNATURE. Le forum n'habille ses boutons
    que dans `.editor-actions` — la barre verte sous la zone de saisie ; ceux
    de la modale sont ailleurs et portent donc le gris par défaut du navigateur,

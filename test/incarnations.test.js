@@ -504,7 +504,7 @@ test('le light range les incarnations à part, et on en sort d’un clic', () =>
 
 test('le forum a son menu d’incarnation, et seulement pour qui en possède', () => {
   assert.match(FORUM, /function incarnationSelectHtml\(formId\)/);
-  assert.match(FORUM, /<option value=""' \+ \(courant \? '' : ' selected'\) \+ '>Ma bouille<\/option>/);
+  assert.match(FORUM, /<option value=""' \+ \(courant \? '' : ' selected'\) \+ '>' \+ T\('forum\.maBouille', 'Ma bouille'\) \+ '<\/option>/);
   assert.match(FORUM, /if \(myIncarnations\.length\) \{/, 'pas de ligne vide pour les autres');
   // L'accessoire se pose SUR l'incarnation choisie — les deux tiennent ensemble.
   assert.match(FORUM, /function baseDuFormulaire\(sel\) \{\s*\n\s*return \(sel && sel\.incarnation\) \|\| myBouillePrincipale \|\| myBouille;/);

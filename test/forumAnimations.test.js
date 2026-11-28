@@ -208,7 +208,7 @@ test('le client reçoit de quoi masquer les boutons', async (t) => {
 test('on prévisualise une CORRECTION, pas seulement un message neuf', () => {
   const forum = require('node:fs').readFileSync(path.join(ROOT, 'public/fb/index.html'), 'utf8');
   // Le bouton, dans le formulaire d'édition d'un message…
-  assert.match(forum, /onclick="previewEdit\(' \+ postId \+ '\)">Prévisualiser</,
+  assert.match(forum, /onclick="previewEdit\(' \+ postId \+ '\)">' \+ T\('forum\.previsualiser', 'Prévisualiser'\)/,
     'le bouton Prévisualiser existe à l\'édition');
   assert.match(forum, /<div id="edit-preview-' \+ postId \+ '"><\/div>/,
     'et il a où écrire');
