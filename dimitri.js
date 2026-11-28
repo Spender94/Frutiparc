@@ -17,7 +17,16 @@
  *
  * Ce module ne touche ni la base ni le forum : il rend du texte. C'est
  * server.js (dimitriAnnoncer) qui le poste.
+ *
+ * DEUX LANGUES, UN MESSAGE. Dimitri parle à tout le monde : son message porte
+ * le français, puis une version anglaise en italique sous un trait
+ * (forumBilingue.js). `messageGrosCoups` et `messageMois` prennent la langue
+ * (« fr » par défaut) ; le tirage ne dépend que des paris, les deux versions
+ * disent donc la même chose — chaque phrase a sa traduction au même rang
+ * (zone « forumbots »). `completerMessageDuJour` complète chaque moitié.
  */
+const EN = require('./i18n-serveur/outils-en.js');
+const { traduire, postBilingue, separerBilingue } = require('./forumBilingue.js');
 
 // La clé du compte porte un tiret : aucun joueur ne peut s'inscrire sous ce
 // pseudo (les pseudos sont en [a-zA-Z0-9_]) — un « Dimitri » du parc garde le sien.
@@ -80,9 +89,14 @@ function tirageSeme(graine) {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
-const choisir = (tirage, liste) => liste[Math.floor(tirage() * liste.length) % liste.length];
+const choisirRang = (tirage, liste) => Math.floor(tirage() * liste.length) % liste.length;
 const nombre = (n) => Number(n || 0).toLocaleString('fr-FR');
 const cote = (c) => '×' + String(c).replace('.', ',');
+// La phrase tirée dans une liste, dans la langue (forumbots.dimitri.<groupe>.<rang>).
+function dire(lang, tirage, groupe, liste, arg, params) {
+  const i = choisirRang(tirage, liste);
+  return traduire(lang, `forumbots.dimitri.${groupe}.${i}`, liste[i](arg), params);
+}
 
 /**
  * Une ligne par coup. `c` : { parieur, quoi, mise, cote, gain }
@@ -90,43 +104,49 @@ const cote = (c) => '×' + String(c).replace('.', ',');
  *   contre Goyave, sur Papaye »…), `cote` facultative (pari mutuel : elle est
  *   le rapport gain / mise).
  */
-function ligne(c) {
+function ligne(c, lang) {
   const k = c.cote != null ? Number(c.cote) : (Number(c.mise) ? Math.round((Number(c.gain) / Number(c.mise)) * 100) / 100 : null);
-  return `@${c.parieur} avait misé ${nombre(c.mise)} kikooz sur ${c.quoi}${k ? `, à ${cote(k)}` : ''} : `
+  const fr = `@${c.parieur} avait misé ${nombre(c.mise)} kikooz sur ${c.quoi}${k ? `, à ${cote(k)}` : ''} : `
     + `[b]${nombre(c.gain)} kikooz[/b] empochés !`;
+  return traduire(lang, 'forumbots.dimitri.ligne', fr, { parieur: c.parieur, mise: c.mise, quoi: c.quoi, cote: k, gain: c.gain });
 }
 
 /**
  * Le message d'un lot de gros coups, du plus gros au plus petit.
- * @param {Array<{id, parieur, quoi, mise, cote, gain}>} coups
+ * @param {Array<{id, parieur, quoi, mise, cote, gain}>} coups — `quoi` dans
+ *   la langue demandée
+ * @param {string} [lang] — « fr » par défaut
  */
-function messageGrosCoups(coups) {
+function messageGrosCoups(coups, lang) {
   const liste = (coups || []).slice().sort((a, b) => (Number(b.gain) - Number(b.mise)) - (Number(a.gain) - Number(a.mise)));
   if (!liste.length) return '';
   const tirage = tirageSeme(hacher(liste.map((c) => `${c.id}:${c.parieur}:${c.gain}`).join('|')));
   const l = [];
   if (liste.length === 1) {
-    l.push(choisir(tirage, OUVERTURES_UN)());
+    l.push(dire(lang, tirage, 'ouvertureUn', OUVERTURES_UN));
     l.push('');
-    l.push(ligne(liste[0]));
+    l.push(ligne(liste[0], lang));
   } else {
-    l.push(choisir(tirage, OUVERTURES_PLUSIEURS)(liste.length));
+    l.push(dire(lang, tirage, 'ouverturePlusieurs', OUVERTURES_PLUSIEURS, liste.length, { n: liste.length }));
     l.push('');
-    for (const c of liste) l.push('• ' + ligne(c));
+    for (const c of liste) l.push('• ' + ligne(c, lang));
   }
   l.push('');
-  l.push(choisir(tirage, CHUTES)());
+  l.push(dire(lang, tirage, 'chute', CHUTES));
   return l.join('\n');
 }
 
 /**
  * Le Prunostiqueur du mois, au début du mois suivant.
- * @param {{ mois: string, gagnant: {nom, net, paris, gagnes}, suivants: Array<{nom, net}>,
+ * @param {{ mois: string, cle: string, gagnant: {nom, net, paris, gagnes}, suivants: Array<{nom, net}>,
  *           objet: string|null, cagnotte: number, titre: string|null }} s
- *   `mois` : « septembre 2026 » ; `objet` : l'objet de la boutique offert, s'il
- *   y en a un ; `titre` : le frutijob qu'il porte tout le mois qui commence.
+ *   `mois` : « septembre 2026 » (il sème aussi le tirage : le même dans les
+ *   deux langues) ; `cle` : « 2026-09 », pour le dire dans une autre langue ;
+ *   `objet` : l'objet de la boutique offert, s'il y en a un ; `titre` : le
+ *   frutijob qu'il porte tout le mois qui commence, dans la langue demandée.
+ * @param {string} [lang] — « fr » par défaut
  */
-function messageMois(s) {
+function messageMois(s, lang) {
   const g = s.gagnant;
   const tirage = tirageSeme(hacher(`mois:${s.mois}:${g.nom}:${g.net}`));
   const ouvertures = [
@@ -134,22 +154,25 @@ function messageMois(s) {
     () => `Le comptoir a fait ses comptes, et le [b]Prunostiqueur du mois[/b], c'est…`,
     () => `Mesdames et messieurs, voici le [b]Prunostiqueur du mois[/b] !`,
   ];
-  const l = [choisir(tirage, ouvertures)(), ''];
-  l.push(`@${g.nom}, avec [b]+${nombre(g.net)} kikooz[/b] de bénéfice en ${s.mois} (${g.gagnes} pari${g.gagnes > 1 ? 's' : ''} gagné${g.gagnes > 1 ? 's' : ''} sur ${g.paris}).`);
-  if (s.titre) l.push(`Tout ce mois-ci, il porte fièrement le titre de [b]${s.titre}[/b] !`);
-  if (s.cagnotte > 0) l.push(`Et il rafle [b]la cagnotte : ${nombre(s.cagnotte)} kikooz[/b], les mises des pronos que personne n'a vus venir !`);
-  if (s.objet) l.push(`Il repart avec un cadeau du parc : [b]${s.objet}[/b] !`);
+  const l = [dire(lang, tirage, 'mois.ouverture', ouvertures), ''];
+  l.push(traduire(lang, 'forumbots.dimitri.mois.gagnant',
+    `@${g.nom}, avec [b]+${nombre(g.net)} kikooz[/b] de bénéfice en ${s.mois} (${g.gagnes} pari${g.gagnes > 1 ? 's' : ''} gagné${g.gagnes > 1 ? 's' : ''} sur ${g.paris}).`,
+    { nom: g.nom, net: g.net, moisCle: s.cle, gagnes: g.gagnes, paris: g.paris }));
+  if (s.titre) l.push(traduire(lang, 'forumbots.dimitri.mois.titre', `Tout ce mois-ci, il porte fièrement le titre de [b]${s.titre}[/b] !`, { titre: s.titre }));
+  if (s.cagnotte > 0) l.push(traduire(lang, 'forumbots.dimitri.mois.cagnotte', `Et il rafle [b]la cagnotte : ${nombre(s.cagnotte)} kikooz[/b], les mises des pronos que personne n'a vus venir !`, { n: s.cagnotte }));
+  if (s.objet) l.push(traduire(lang, 'forumbots.dimitri.mois.objet', `Il repart avec un cadeau du parc : [b]${s.objet}[/b] !`, { objet: s.objet }));
   const suivants = (s.suivants || []).filter((x) => x && x.net > 0).slice(0, 2);
   if (suivants.length) {
     l.push('');
-    l.push(`Sur le podium aussi : ${suivants.map((x, i) => `@${x.nom}, ${i + 2}e (+${nombre(x.net)})`).join(', ')}.`);
+    l.push(traduire(lang, 'forumbots.dimitri.mois.podium',
+      `Sur le podium aussi : ${suivants.map((x, i) => `@${x.nom}, ${i + 2}e (+${nombre(x.net)})`).join(', ')}.`, { suivants }));
   }
   l.push('');
-  l.push(choisir(tirage, [
+  l.push(dire(lang, tirage, 'mois.chute', [
     () => `Un nouveau mois commence : à vos Prunostics !`,
     () => `Les compteurs sont remis à zéro. Qui fera mieux ce mois-ci ?`,
     () => `Bravo ! Et pour les autres : la revanche commence aujourd'hui.`,
-  ])());
+  ]));
   return l.join('\n');
 }
 
@@ -163,8 +186,26 @@ function messageMois(s) {
  * @param {string} ajout — ce que Dimitri veut y ajouter
  * @param {string} heure — « 14 h 05 », heure de Paris
  */
+//
+// Un message À DEUX LANGUES (forumBilingue.js) se complète moitié par moitié :
+// la mise à jour française sous le français, l'anglaise sous l'anglais — le
+// message garde un seul bloc anglais, à la fin.
 function completerMessageDuJour(avant, ajout, heure) {
-  return `${String(avant || '').replace(/\s+$/, '')}\n\n[b]— Mise à jour de ${heure} —[/b]\n\n${ajout}`;
+  const a = separerBilingue(avant), b = separerBilingue(ajout);
+  const fr = `${String(a.fr || '').replace(/\s+$/, '')}\n\n[b]— Mise à jour de ${heure} —[/b]\n\n${b.fr}`;
+  if (!a.en && !b.en) return fr;
+  const heureEn = String(heure || '').replace(/\s*h\s*/, ':');
+  const enAvant = String(a.en || '').replace(/\s+$/, '');
+  const en = enAvant
+    ? `${enAvant}\n\n[b]${traduire('en', 'forumbots.dimitri.miseAJour', `— Mise à jour de ${heure} —`, { heure: heureEn })}[/b]\n\n${b.en}`
+    : b.en;
+  return postBilingue(fr, en);
 }
 
-module.exports = { PSEUDO_NPC, NOM, BOUILLE, HUMEUR, RUBRIQUE, SUJET, INTRO, messageGrosCoups, messageMois, completerMessageDuJour };
+// Le message entier, le français puis l'anglais. `fabrique(lang)` rend l'une
+// ou l'autre version (messageGrosCoups, messageMois).
+function messageBilingue(fabrique) {
+  return postBilingue(fabrique('fr'), fabrique('en'));
+}
+
+module.exports = { PSEUDO_NPC, NOM, BOUILLE, HUMEUR, RUBRIQUE, SUJET, INTRO, messageGrosCoups, messageMois, completerMessageDuJour, messageBilingue };

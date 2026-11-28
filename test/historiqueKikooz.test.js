@@ -172,8 +172,10 @@ test('le parrain reçoit un nœud <g> qui NOMME son filleul', () => {
   const f = /function grantReferralReward\(username, role, filleul\) \{[\s\S]*?\n\}/.exec(SERVEUR);
   assert.ok(f, 'grantReferralReward doit prendre le filleul');
   assert.match(f[0], /\{ type: 'g', t: quand, k: REFERRAL\.kikooz, f: getDisplayName\(filleul\) \}/);
-  // Le FILLEUL, lui, garde `c` : il n'a pas de filleul à nommer.
-  assert.match(f[0], /\{ type: 'c', t: quand, k: REFERRAL\.kikooz, c: 'parrainage' \}/);
+  // Le FILLEUL, lui, garde `c` : il n'a pas de filleul à nommer. Son motif est
+  // rangé en code (il se dit dans la langue du joueur), « parrainage » en
+  // français.
+  assert.match(f[0], /\{ type: 'c', t: quand, k: REFERRAL\.kikooz, c: \{ k: 'historique\.kikooz\.motif\.parrainage', fr: 'parrainage' \} \}/);
   // Les deux points d'appel passent le nom, et seulement pour le parrain.
   assert.match(SERVEUR, /grantReferralReward\(filleulName, 'Filleul'\);\n\s+if \(parrain\) grantReferralReward\(parrainName, 'Parrain', filleulName\);/);
   assert.match(SERVEUR, /if \(parrain\) grantReferralReward\(u\.referredBy, 'Parrain', username\);/);
