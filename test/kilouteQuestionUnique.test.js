@@ -164,7 +164,9 @@ test('elle se consomme au moment où elle est DITE, pas au tirage', () => {
    */
   const ask = /const askAndArm = \(\) => \{[\s\S]*?\n    \};/.exec(SERVEUR);
   assert.ok(ask, 'askAndArm');
-  assert.match(ask[0], /kilouteSay\(channelName, q\.q\);\s*\n(?:\s*\/\/[^\n]*\n)*\s*kilouteConsommerQuestion\(q\);/,
+  // (La question se dit dans la langue de chacun : `kilouteEnonce(q)`, son
+  // français et son anglais.)
+  assert.match(ask[0], /kilouteSay\(channelName, kilouteEnonce\(q\)\);\s*\n(?:\s*\/\/[^\n]*\n)*\s*kilouteConsommerQuestion\(q\);/,
     'la consommation suit immédiatement la question');
   const cons = /function kilouteConsommerQuestion\(q\) \{[\s\S]*?\n\}/.exec(SERVEUR);
   assert.ok(cons, 'kilouteConsommerQuestion');

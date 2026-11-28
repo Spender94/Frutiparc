@@ -884,6 +884,11 @@ async function initSchema() {
       -- Optional image attached to a question (id referencing quiz_images) — for
       -- the "image" quizzes animated by MikeHorny.
       ALTER TABLE kiloute_questions ADD COLUMN IF NOT EXISTS image TEXT DEFAULT NULL;
+      -- La version anglaise, facultative : MikeHorny pose la question à chacun
+      -- dans sa langue, et accepte les réponses des deux listes.
+      ALTER TABLE kiloute_questions ADD COLUMN IF NOT EXISTS question_en TEXT NOT NULL DEFAULT '';
+      ALTER TABLE kiloute_questions ADD COLUMN IF NOT EXISTS answers_en TEXT NOT NULL DEFAULT '[]';
+      ALTER TABLE kiloute_questions ADD COLUMN IF NOT EXISTS reveal_en TEXT NOT NULL DEFAULT '';
 
       -- Quiz images uploaded from the admin panel. Like custom wallpapers, the
       -- image BYTES live in the DB (not on disk) so they survive an ephemeral-
@@ -918,6 +923,9 @@ async function initSchema() {
       );
       -- Migration des bases existantes (table créée avant la programmation).
       ALTER TABLE quizzes ADD COLUMN IF NOT EXISTS schedule_time TEXT DEFAULT NULL;
+      -- Le nom anglais du quiz, facultatif (ses questions anglaises sont dans
+      -- le JSON des questions : qEn, aEn, rEn).
+      ALTER TABLE quizzes ADD COLUMN IF NOT EXISTS name_en TEXT NOT NULL DEFAULT '';
 
       -- Trombinoscope : annuaire des Frutiz (pseudo + code bouille), alimenté par
       -- l'admin depuis des CSV (données retrouvées sur les blogs archivés).
@@ -4298,21 +4306,30 @@ function parseAnswersField(s) {
   try { const v = JSON.parse(s); if (Array.isArray(v)) return v.map((x) => String(x)); } catch (e) { /* fall through */ }
   return String(s || '').split(',').map((x) => x.trim()).filter(Boolean);
 }
+// La version anglaise d'une question : `en` = { q, a, r } (facultatif). En
+// mémoire, elle se range à plat : qEn, aEn, rEn.
 async function loadKilouteQuestions() {
   const { rows } = await pool.query('SELECT * FROM kiloute_questions ORDER BY sort_order, id');
-  return rows.map((r) => ({ id: r.id, q: r.question, a: parseAnswersField(r.answers), r: r.reveal || '', image: r.image || null }));
+  return rows.map((r) => ({ id: r.id, q: r.question, a: parseAnswersField(r.answers), r: r.reveal || '', image: r.image || null,
+    qEn: r.question_en || '', aEn: parseAnswersField(r.answers_en || '[]'), rEn: r.reveal_en || '' }));
 }
-async function insertKilouteQuestion(question, answers, reveal, sortOrder, image) {
+async function insertKilouteQuestion(question, answers, reveal, sortOrder, image, en) {
+  const e = en || {};
   const { rows } = await pool.query(
-    'INSERT INTO kiloute_questions (question, answers, reveal, sort_order, image) VALUES ($1, $2, $3, $4, $5) RETURNING id',
-    [question, JSON.stringify(answers || []), reveal || '', sortOrder || 0, image || null]
+    'INSERT INTO kiloute_questions (question, answers, reveal, sort_order, image, question_en, answers_en, reveal_en) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id',
+    [question, JSON.stringify(answers || []), reveal || '', sortOrder || 0, image || null,
+     e.q || '', JSON.stringify(e.a || []), e.r || '']
   );
   return rows[0].id;
 }
-async function updateKilouteQuestion(id, question, answers, reveal, image) {
+// `en` absent : la version anglaise ne bouge pas.
+async function updateKilouteQuestion(id, question, answers, reveal, image, en) {
   await pool.query(
-    'UPDATE kiloute_questions SET question = $2, answers = $3, reveal = $4, image = $5 WHERE id = $1',
-    [id, question, JSON.stringify(answers || []), reveal || '', image || null]
+    `UPDATE kiloute_questions SET question = $2, answers = $3, reveal = $4, image = $5,
+       question_en = COALESCE($6, question_en), answers_en = COALESCE($7, answers_en), reveal_en = COALESCE($8, reveal_en)
+     WHERE id = $1`,
+    [id, question, JSON.stringify(answers || []), reveal || '', image || null,
+     en ? (en.q || '') : null, en ? JSON.stringify(en.a || []) : null, en ? (en.r || '') : null]
   );
 }
 async function deleteKilouteQuestion(id) {
@@ -4326,19 +4343,20 @@ function parseQuizQuestions(s) {
 }
 async function loadQuizzes() {
   const { rows } = await pool.query('SELECT * FROM quizzes ORDER BY sort_order, id');
-  return rows.map((r) => ({ id: r.id, name: r.name, reward: r.reward || 60, windowSec: r.window_sec || 90, time: r.schedule_time || null, questions: parseQuizQuestions(r.questions) }));
+  return rows.map((r) => ({ id: r.id, name: r.name, nameEn: r.name_en || '', reward: r.reward || 60, windowSec: r.window_sec || 90, time: r.schedule_time || null, questions: parseQuizQuestions(r.questions) }));
 }
-async function insertQuiz(name, reward, windowSec, questions, sortOrder, scheduleTime) {
+async function insertQuiz(name, reward, windowSec, questions, sortOrder, scheduleTime, nameEn) {
   const { rows } = await pool.query(
-    'INSERT INTO quizzes (name, reward, window_sec, questions, sort_order, schedule_time) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
-    [name, reward || 60, windowSec || 90, JSON.stringify(questions || []), sortOrder || 0, scheduleTime || null]
+    'INSERT INTO quizzes (name, reward, window_sec, questions, sort_order, schedule_time, name_en) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id',
+    [name, reward || 60, windowSec || 90, JSON.stringify(questions || []), sortOrder || 0, scheduleTime || null, nameEn || '']
   );
   return rows[0].id;
 }
-async function updateQuiz(id, name, reward, windowSec, questions, scheduleTime) {
+// `nameEn` absent : le nom anglais ne bouge pas.
+async function updateQuiz(id, name, reward, windowSec, questions, scheduleTime, nameEn) {
   await pool.query(
-    'UPDATE quizzes SET name = $2, reward = $3, window_sec = $4, questions = $5, schedule_time = $6 WHERE id = $1',
-    [id, name, reward || 60, windowSec || 90, JSON.stringify(questions || []), scheduleTime || null]
+    'UPDATE quizzes SET name = $2, reward = $3, window_sec = $4, questions = $5, schedule_time = $6, name_en = COALESCE($7, name_en) WHERE id = $1',
+    [id, name, reward || 60, windowSec || 90, JSON.stringify(questions || []), scheduleTime || null, nameEn == null ? null : String(nameEn)]
   );
 }
 async function deleteQuiz(id) {

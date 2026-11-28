@@ -1509,6 +1509,12 @@
     <input id="kq-question" placeholder="Question (ex : Quelle est la capitale de l'Italie ?)">
     <input id="kq-answers" placeholder="Réponses acceptées, séparées par des virgules (ex : rome)">
     <input id="kq-reveal" placeholder="Réponse affichée (ex : Rome) — vide = 1re réponse">
+    <!-- La version anglaise, facultative : MikeHorny pose la question à chacun
+         dans sa langue, et accepte les réponses des deux listes. -->
+    <div style="font-size:11px;color:#666;margin-top:2px">Version anglaise (facultative) — vide, la question se pose en français à tous. Les réponses EN s'ajoutent aux réponses FR.</div>
+    <input id="kq-question-en" placeholder="Question (EN) (ex : What is the capital of Italy?)">
+    <input id="kq-answers-en" placeholder="Réponses acceptées (EN), séparées par des virgules (ex : rome)">
+    <input id="kq-reveal-en" placeholder="Réponse affichée (EN) (ex : Rome) — vide = 1re réponse EN">
     <label style="font-size:12px;color:#555">Image (optionnel)
       <select id="kq-image" style="margin-left:6px;padding:4px"><option value="">— aucune —</option></select>
     </label>
@@ -1527,7 +1533,10 @@
     "q": "Quelle est la capitale de l'Italie ?", // requis : l'énoncé
     "a": ["Rome", "rome"],                       // requis : réponses acceptées (tableau OU "a;b;c")
     "r": "Rome",                                 // optionnel : réponse affichée (défaut = 1re de "a")
-    "image": "drapeau_it"                        // optionnel : id d'une image de quiz déjà téléversée
+    "image": "drapeau_it",                       // optionnel : id d'une image de quiz déjà téléversée
+    "qEn": "What is the capital of Italy?",      // optionnel : l'énoncé anglais
+    "aEn": ["Rome"],                             // optionnel : réponses acceptées en plus, en anglais
+    "rEn": "Rome"                                // optionnel : réponse affichée en anglais (défaut = 1re de "aEn")
   }
 ]
 Notes : chaque question importée rejoint le backlog quotidien, à la suite, et vaut
@@ -1575,9 +1584,13 @@ place de "q" / "a" / "r". Les questions sans énoncé ou sans réponse sont igno
         "q": "Capitale de la France ?", // requis : l'énoncé
         "a": ["Paris", "paris"],        // requis : réponses acceptées (tableau OU "a;b;c")
         "r": "Paris",                   // optionnel : réponse affichée (défaut = 1re de "a")
-        "image": "drapeau_fr"           // optionnel : id d'une image de quiz déjà téléversée
+        "image": "drapeau_fr",          // optionnel : id d'une image de quiz déjà téléversée
+        "qEn": "Capital of France?",    // optionnel : l'énoncé anglais (posé aux anglophones)
+        "aEn": ["Paris"],               // optionnel : réponses acceptées en plus, en anglais
+        "rEn": "Paris"                  // optionnel : réponse affichée en anglais
       }
-    ]
+    ],
+    "nameEn": "General knowledge"       // optionnel : le nom anglais du quiz
   }
 ]
 Notes : la comparaison des réponses ignore accents, casse et ponctuation. Les
@@ -1595,6 +1608,9 @@ questions sans énoncé ou sans réponse sont ignorées. "image" doit correspond
     <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:10px">
       <label style="display:flex;flex-direction:column;gap:2px;font-size:12px">Nom du quiz
         <input id="qd-name" placeholder="ex : Spécial cinéma" style="width:260px;padding:5px">
+      </label>
+      <label style="display:flex;flex-direction:column;gap:2px;font-size:12px" title="Facultatif : vide, les anglophones lisent le nom français.">Nom (EN)
+        <input id="qd-name-en" placeholder="ex : Movie special" style="width:200px;padding:5px">
       </label>
       <label style="display:flex;flex-direction:column;gap:2px;font-size:12px">Kikooz / question
         <input id="qd-reward" type="number" value="60" min="1" max="10000" style="width:120px;padding:5px">
@@ -5922,10 +5938,10 @@ async function loadKiloute() {
     $('#kiloute-count').innerHTML = `<span class="count">${n}</span> question${n > 1 ? 's' : ''} en réserve${alerte}`;
     $('#kiloute-body').innerHTML = kilouteQuestions.map((q, i) => `<tr>
       <td>${q.id}${i === 0 ? ' <b title="la prochaine posée">▶</b>' : ''}</td>
-      <td style="max-width:300px">${esc(q.q || '')}</td>
+      <td style="max-width:300px">${esc(q.q || '')}${q.qEn ? `<br><span style="font-size:11px;color:#888">EN : ${esc(q.qEn)}</span>` : ''}</td>
       <td style="font-size:11px;white-space:nowrap">${q.image ? '📷 <code>' + esc(q.image) + '</code>' : '—'}</td>
-      <td style="max-width:220px"><code style="font-size:11px">${esc((q.a || []).join(', '))}</code></td>
-      <td>${esc(q.r || '')}</td>
+      <td style="max-width:220px"><code style="font-size:11px">${esc((q.a || []).join(', '))}</code>${q.qEn && (q.aEn || []).length ? `<br><code style="font-size:11px;color:#888">EN : ${esc(q.aEn.join(', '))}</code>` : ''}</td>
+      <td>${esc(q.r || '')}${q.qEn && q.rEn ? `<br><span style="font-size:11px;color:#888">EN : ${esc(q.rEn)}</span>` : ''}</td>
       <td style="white-space:nowrap">
         <button class="btn btn-sm" onclick="editKilouteQuestion(${q.id})">Modifier</button>
         <button class="btn-danger btn-sm" onclick="deleteKilouteQuestion(${q.id})">Supprimer</button>
@@ -6109,6 +6125,7 @@ function renderQuizDraft() {
   if (!quizDraft) return;
   document.getElementById('quiz-editor-title').textContent = quizDraft.id ? ('Modifier : ' + quizDraft.name) : 'Nouveau quiz';
   document.getElementById('qd-name').value = quizDraft.name || '';
+  document.getElementById('qd-name-en').value = quizDraft.nameEn || '';
   document.getElementById('qd-reward').value = quizDraft.reward || 60;
   document.getElementById('qd-window').value = quizDraft.windowSec || 90;
   document.getElementById('qd-time').value = quizDraft.time || '';
@@ -6121,6 +6138,10 @@ function renderQuizDraft() {
       <input class="qd-r" placeholder="Réponse affichée" value="${esc(q.r || '')}" style="width:150px;padding:4px">
       <select class="qd-image" style="padding:4px">${quizImageOptions(q.image || '')}</select>
       <button class="btn-danger btn-sm" onclick="draftRemoveQuestion(${i})" title="Retirer cette question">🗑</button>
+      <span style="font-size:11px;color:#888;width:18px">EN</span>
+      <input class="qd-q-en" placeholder="Question (EN, facultative)" value="${esc(q.qEn || '')}" style="flex:2;min-width:200px;padding:4px">
+      <input class="qd-a-en" placeholder="Réponses EN (virgules)" value="${esc((q.aEn || []).join(', '))}" style="flex:1;min-width:150px;padding:4px">
+      <input class="qd-r-en" placeholder="Réponse affichée (EN)" value="${esc(q.rEn || '')}" style="width:150px;padding:4px">
     </div>`).join('') || '<span style="font-size:12px;color:#888">Aucune question — clique « + Ajouter une question ».</span>';
 }
 // Lit les champs du DOM dans quizDraft (avant un ajout/retrait/sauvegarde, pour
@@ -6128,6 +6149,7 @@ function renderQuizDraft() {
 function syncDraftFromDOM() {
   if (!quizDraft) return;
   quizDraft.name = document.getElementById('qd-name').value.trim();
+  quizDraft.nameEn = document.getElementById('qd-name-en').value.trim();
   quizDraft.reward = Number(document.getElementById('qd-reward').value) || 60;
   quizDraft.windowSec = Number(document.getElementById('qd-window').value) || 90;
   quizDraft.time = document.getElementById('qd-time').value || '';
@@ -6136,6 +6158,9 @@ function syncDraftFromDOM() {
     a: row.querySelector('.qd-a').value.split(',').map(s => s.trim()).filter(Boolean),
     r: row.querySelector('.qd-r').value.trim(),
     image: row.querySelector('.qd-image').value || '',
+    qEn: row.querySelector('.qd-q-en').value.trim(),
+    aEn: row.querySelector('.qd-a-en').value.split(',').map(s => s.trim()).filter(Boolean),
+    rEn: row.querySelector('.qd-r-en').value.trim(),
   }));
 }
 function newQuiz() {
@@ -6145,7 +6170,7 @@ function newQuiz() {
 }
 function editQuiz(id) {
   const qz = quizzes.find(x => x.id === id); if (!qz) return;
-  quizDraft = { id: qz.id, name: qz.name, reward: qz.reward, windowSec: qz.windowSec, time: qz.time || '', questions: (qz.questions || []).map(q => ({ q: q.q, a: (q.a || []).slice(), r: q.r, image: q.image || '' })) };
+  quizDraft = { id: qz.id, name: qz.name, nameEn: qz.nameEn || '', reward: qz.reward, windowSec: qz.windowSec, time: qz.time || '', questions: (qz.questions || []).map(q => ({ q: q.q, a: (q.a || []).slice(), r: q.r, image: q.image || '', qEn: q.qEn || '', aEn: (q.aEn || []).slice(), rEn: q.rEn || '' })) };
   if (!quizDraft.questions.length) quizDraft.questions.push({ q: '', a: [], r: '', image: '' });
   document.getElementById('quiz-editor').style.display = '';
   renderQuizDraft();
@@ -6162,7 +6187,7 @@ async function saveQuiz() {
   if (!quizDraft.name) { toast('Donne un nom au quiz'); return; }
   const questions = quizDraft.questions.filter(q => q.q && q.a.length);
   if (!questions.length) { toast('Ajoute au moins une question (avec sa/ses réponse(s))'); return; }
-  const body = { name: quizDraft.name, reward: quizDraft.reward, windowSec: quizDraft.windowSec, time: quizDraft.time || '', questions };
+  const body = { name: quizDraft.name, nameEn: quizDraft.nameEn || '', reward: quizDraft.reward, windowSec: quizDraft.windowSec, time: quizDraft.time || '', questions };
   const url = quizDraft.id ? `/api/admin/kiloute/quizzes/${quizDraft.id}` : '/api/admin/kiloute/quizzes';
   const r = await fetch(url, { method: quizDraft.id ? 'PATCH' : 'POST', headers: hdr(), body: JSON.stringify(body) });
   const d = await r.json();
@@ -6216,12 +6241,14 @@ setInterval(() => {
 }, 5000);
 async function addKilouteQuestion() {
   const imgSel = $('#kq-image');
-  const body = { question: $('#kq-question').value, answers: $('#kq-answers').value, reveal: $('#kq-reveal').value, image: imgSel ? imgSel.value : '' };
+  const body = { question: $('#kq-question').value, answers: $('#kq-answers').value, reveal: $('#kq-reveal').value, image: imgSel ? imgSel.value : '',
+    questionEn: $('#kq-question-en').value, answersEn: $('#kq-answers-en').value, revealEn: $('#kq-reveal-en').value };
   if (!body.question.trim() || !body.answers.trim()) { toast('Question et réponses requises'); return; }
   const r = await fetch('/api/admin/kiloute/questions', { method: 'POST', headers: hdr(), body: JSON.stringify(body) });
   const d = await r.json();
   if (!r.ok) { toast('Erreur: ' + (d.error || 'inconnu')); return; }
   $('#kq-question').value = ''; $('#kq-answers').value = ''; $('#kq-reveal').value = ''; if (imgSel) imgSel.value = '';
+  $('#kq-question-en').value = ''; $('#kq-answers-en').value = ''; $('#kq-reveal-en').value = '';
   toast('Question ajoutée'); loadKiloute();
 }
 async function editKilouteQuestion(id) {
@@ -6231,7 +6258,11 @@ async function editKilouteQuestion(id) {
   const reveal = prompt('Réponse affichée :', q.r || ''); if (reveal === null) return;
   const ids = quizImages.map(im => im.id).join(', ');
   const image = prompt('Image (id, vide = aucune)' + (ids ? '\nDisponibles : ' + ids : ''), q.image || ''); if (image === null) return;
-  const r = await fetch(`/api/admin/kiloute/questions/${id}`, { method: 'PATCH', headers: hdr(), body: JSON.stringify({ question, answers, reveal, image }) });
+  // La version anglaise (facultative : vide, la question se pose en français à tous).
+  const questionEn = prompt('Question (EN) — vide = pas de version anglaise :', q.qEn || ''); if (questionEn === null) return;
+  const answersEn = questionEn.trim() ? prompt('Réponses acceptées (EN), séparées par des virgules :', (q.aEn || []).join(', ')) : ''; if (answersEn === null) return;
+  const revealEn = questionEn.trim() ? prompt('Réponse affichée (EN) :', q.rEn || '') : ''; if (revealEn === null) return;
+  const r = await fetch(`/api/admin/kiloute/questions/${id}`, { method: 'PATCH', headers: hdr(), body: JSON.stringify({ question, answers, reveal, image, questionEn, answersEn, revealEn }) });
   if (!r.ok) { toast('Erreur'); return; }
   toast('Question modifiée'); loadKiloute();
 }
