@@ -121,7 +121,10 @@ function verifierRequetes(requetes, jeu) {
 // invité, on sème d'abord les deux sessions qu'un navigateur partagé pourrait
 // garder : celle du light, et celle de l'onglet (sid-discret.js).
 async function ouvrir(chemin, viewport, semer) {
-  const ctx = await navigateur.newContext({ viewport: viewport || { width: 900, height: 620 } });
+  // Un navigateur FRANCOPHONE : ces tests lisent et cliquent le texte français
+  // (« facile »…), et les jeux traduits suivent la langue du navigateur quand
+  // fp_lang n'est pas posé — celui de Playwright dit en-US.
+  const ctx = await navigateur.newContext({ viewport: viewport || { width: 900, height: 620 }, locale: 'fr-FR' });
   if (semer) {
     await ctx.addInitScript(() => {
       try {
@@ -614,8 +617,11 @@ test('au doigt, sur un téléphone, « Rejouer » ferme le panneau dans les cinq
 // ── LES PAGES ───────────────────────────────────────────────────────────────
 
 test('les cinq pages chargent invite.js juste après sid-discret.js, avant tout autre script', () => {
+  // Une page traduite glisse entre les deux le module des langues et ses
+  // dictionnaires (docs/I18N.md, « Les jeux ») — rien d'autre.
+  const ordre = /<script src="\/js\/sid-discret\.js"><\/script>\n(?:<!--[^]*?-->\n<script src="\/js\/i18n\.js"><\/script>\n<script>FPI18n\.charger\([^)]*\);<\/script>\n)?<script src="\/js\/invite\.js"><\/script>/;
   for (const jeu of ['swapou', 'snake3', 'kaluga', 'bkiwi', 'minifever']) {
     const html = fs.readFileSync(path.join(ROOT, 'public', jeu, 'index.html'), 'utf8');
-    assert.ok(html.includes('<script src="/js/sid-discret.js"></script>\n<script src="/js/invite.js"></script>'), jeu);
+    assert.match(html, ordre, jeu);
   }
 });

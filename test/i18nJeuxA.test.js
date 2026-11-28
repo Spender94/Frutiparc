@@ -436,8 +436,12 @@ test('Mini-Fever en français : le texte d’avant, à l’identique', { skip: S
 // page. Les noms de niveaux et de missions, des jeux de mots, restent en
 // français — « Fruit d'artifice » sous « level 12 ».
 
-const wavePret = (page) => page.waitForFunction(() => window.__ui && window.__ui.visible && window.__ui.boites.length, null, { timeout: 60000 });
+// Prêt quand tous les encadrés de l'accueil sont ouverts : un encadré qui
+// s'ouvre encore ne répond pas au survol.
+const wavePret = (page) => page.waitForFunction(() => window.__ui && window.__ui.visible && window.__ui.boites.length
+  && window.__ui.boites.every((b) => b.etape === 2), null, { timeout: 60000 });
 async function waveParcours(page) {
+  await attendre(3600);                                       // le salut s'écrit d'abord
   for (let i = 0; i < 5; i++) {
     await page.evaluate((i) => {
       const b = window.__ui.boites.find((x) => x.rubrique === i);
@@ -485,7 +489,8 @@ test('Miniwave en anglais : menu, partie et fin — dans ses polices, sans débo
     for (const m of ['Drive the mutant', 'choose your', 'section.', 'Spend your', 'Warning!', 'driven']) {
       assert.ok(tout.includes(m), 'dessiné : ' + m);
     }
-    assert.ok(vus.includes('Apprentice,') && (vus.includes('Good evening') || vus.some((t) => /^Hello\b/.test(t))),
+    // (« Hello Apprentice, » tient sur une ligne, « Good evening » non.)
+    assert.ok(/(^| )(Hello Apprentice,|Apprentice,)( |$)/.test(tout) && /\b(Hello|Good evening)\b/.test(tout),
       'le salut et le grade en anglais — ' + vus.join(' / '));
     assert.ok(!/Repoussez|Bienvenue|Bonjour|Bonsoir|Apprenti\b|escadron selection|palier \d|Échap/.test(tout), 'plus de français dans l’interface');
     // Chaque texte s'écrit dans sa police (les sous-ensembles du SWF)…
