@@ -152,7 +152,8 @@ test('le bouton suit la parole du lecteur, jamais notre intention', () => {
   assert.match(BLOC_BUREAU,
     /function sonne\(\) \{ return etat\.repond \? !etat\.muet : etat\.arme; \}/,
     'même règle au bureau');
-  assert.match(BLOC_BUREAU, /bo\.textContent = sonne\(\) \? "Couper" : "Écouter"/);
+  // Les deux étiquettes passent par T() (le français en repli) : la règle ne change pas.
+  assert.match(BLOC_BUREAU, /bo\.textContent = sonne\(\) \? T\("pages\.ruffleCouper", "Couper"\) : T\("pages\.ruffleEcouter", "Écouter"\)/);
 
   // Ce qu'on écoute, et de qui. Le filtre d'origine n'est pas une formalité :
   // n'importe quelle page ouverte peut poster un message.

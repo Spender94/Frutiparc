@@ -3,6 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <title>Mes Pictos - Frutiparc</title>
+<!-- Les langues du parc (voir /js/i18n.js) : en anglais, les dictionnaires
+     arrivent pendant l'analyse de la page ; en français, rien. -->
+<script src="/js/i18n.js"></script>
+<script>FPI18n.charger(['commun', 'pages']);</script>
 <style>
   html, body { margin: 0; padding: 0; }
   body {
@@ -46,9 +50,11 @@
 </style>
 </head>
 <body>
-<div id="app"><div class="state">Chargement...</div></div>
+<div id="app"><div class="state" data-i18n="pages.pictosChargement">Chargement...</div></div>
 <script>
 (function () {
+  FPI18n.appliquer(document);
+  document.title = T('pages.pictosTitrePage', document.title);
   var sid = new URLSearchParams(window.location.search).get('sid') || '';
   var app = document.getElementById('app');
   function esc(s) { var d = document.createElement('div'); d.textContent = String(s == null ? '' : s); return d.innerHTML; }
@@ -57,16 +63,20 @@
     .then(function (r) { return r.json(); })
     .then(function (pictos) {
       if (!Array.isArray(pictos) || pictos.length === 0) {
-        app.innerHTML = '<div class="state">Aucun picto pour le moment.<br>Joue aux jeux pour en collecter !</div>';
+        app.innerHTML = '<div class="state">' + T('pages.pictosAucun', 'Aucun picto pour le moment.<br>Joue aux jeux pour en collecter !') + '</div>';
         return;
       }
       var byGame = {};
+      // Les noms de jeux viennent du serveur ; seul le groupe « sans jeu »,
+      // un intitulé local, se traduit.
+      var autre = T('pages.pictosAutre', 'Autre');
       pictos.forEach(function (p) {
-        var g = p.game || 'Autre';
+        var g = p.game || autre;
         (byGame[g] = byGame[g] || []).push(p);
       });
       var games = Object.keys(byGame).sort(function (a, b) { return a.localeCompare(b, 'fr'); });
-      var html = '<h1>Mes Pictos</h1><div class="count">' + pictos.length + ' picto' + (pictos.length > 1 ? 's' : '') + '</div>';
+      var html = '<h1>' + esc(T('pages.pictosMesPictos', 'Mes Pictos')) + '</h1><div class="count">'
+        + esc(T.n('pages.pictosNombre', pictos.length, { one: '{n} picto', other: '{n} pictos' })) + '</div>';
       games.forEach(function (g) {
         var items = byGame[g];
         html += '<div class="picto-gallery-section"><h4>' + esc(g) + ' (' + items.length + ')</h4><div class="picto-gallery">';
@@ -79,10 +89,10 @@
         html += '</div></div>';
       });
       app.innerHTML = html;
-      document.title = 'Mes Pictos (' + pictos.length + ') - Frutiparc';
+      document.title = T('pages.pictosTitreCompte', 'Mes Pictos ({n}) - Frutiparc', { n: pictos.length });
     })
     .catch(function () {
-      app.innerHTML = '<div class="state">Erreur de chargement des pictos.</div>';
+      app.innerHTML = '<div class="state">' + esc(T('pages.pictosErreur', 'Erreur de chargement des pictos.')) + '</div>';
     });
 })();
 </script>

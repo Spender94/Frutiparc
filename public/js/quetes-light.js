@@ -24,9 +24,29 @@
  *
  * Le serveur fait foi pour tout : ce module ne calcule rien, il affiche
  * /api/quetes/etat et prévient /api/quetes/vu quand la fenêtre s'ouvre.
+ *
+ * LES LANGUES : ce que le module écrit lui-même passe par T() (/js/i18n.js,
+ * l'anglais dans /i18n/en/widgets.js). Les titres, les détails, les records et
+ * la parole de Gromelin viennent du serveur : ils ne se traduisent pas ici.
  */
 (function (global) {
   'use strict';
+
+  function remplir(s, p) {
+    return String(s).replace(/\{(\w+)\}/g, function (m, k) { return p && p[k] != null ? String(p[k]) : m; });
+  }
+  // Sans i18n.js (une page qui ne le charge pas encore), le français, gabarit rempli.
+  function T(cle, fr, p) {
+    var I = global.FPI18n;
+    return I && I.T ? I.T(cle, fr, p) : remplir(fr, p);
+  }
+  T.n = function (cle, n, formes, p) {
+    var I = global.FPI18n;
+    if (I && I.T && I.T.n) return I.T.n(cle, n, formes, p);
+    var q = { n: n };
+    for (var k in (p || {})) if (Object.prototype.hasOwnProperty.call(p, k)) q[k] = p[k];
+    return remplir(Math.abs(n) < 2 ? formes.one : formes.other, q);
+  };
 
   var SAC = '/minipixiz/sprites/shape446.svg';
   var CASE = '/minipixiz/sprites/shape981.svg';
@@ -47,7 +67,12 @@
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
     });
   }
-  function nombre(n) { return String(Math.round(Number(n) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
+  // 12 345 en français (l’espace fine insécable, comme toujours ici) ; 12,345 en anglais.
+  function nombre(n) {
+    var I = global.FPI18n, v = Math.round(Number(n) || 0);
+    if (I && I.langue && I.langue !== 'fr' && I.T && I.T.nombre) return I.T.nombre(v);
+    return String(v).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  }
   function reduit() {
     try { return global.matchMedia && global.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; }
   }
@@ -75,8 +100,9 @@
     var neuf = acces && etat.nouveau && !ouverte;
     t.classList.toggle('nouvelles', !!neuf);
     t.title = !acces ? '' : (neuf
-      ? (etat.nouvelleSemaine ? 'Quêtes — Gromelin a de nouvelles quêtes pour toi' : 'Quêtes — Gromelin a quelque chose à te dire')
-      : 'Quêtes');
+      ? (etat.nouvelleSemaine ? T('widgets.quetesTuileNouvelles', 'Quêtes — Gromelin a de nouvelles quêtes pour toi')
+        : T('widgets.quetesTuileMessage', 'Quêtes — Gromelin a quelque chose à te dire'))
+      : T('widgets.quetesTuile', 'Quêtes'));
     // Le bureau range ses icônes à l'ouverture : une icône qui apparaît ou
     // disparaît doit lui être signalée, comme celle des Prunostics.
     if (acces !== etait && global.BureauFrutiz && BureauFrutiz.actif && BureauFrutiz.actif()) {
@@ -122,12 +148,13 @@
   function section(titre) { return '<div class="qt-section"><img src="/frutiz/sprites/shop-puce-rubrique.svg" alt="">' + esc(titre) + '</div>'; }
   // La case de mission de Gromelin (caseMission : la case, et sa coche).
   function caseMission(fait) {
-    return '<span class="qt-case' + (fait ? ' cochee' : '') + '" aria-label="' + (fait ? 'faite' : 'à faire') + '">'
+    return '<span class="qt-case' + (fait ? ' cochee' : '') + '" aria-label="' + esc(fait ? T('widgets.quetesFaite', 'faite') : T('widgets.quetesAFaire', 'à faire')) + '">'
       + '<img src="/minipixiz/sprites/shape981.svg" alt="">' + (fait ? '<img class="coche" src="/minipixiz/sprites/shape983.svg" alt="">' : '') + '</span>';
   }
   function carte(q) {
     var changer = (!q.fait && !q.contrat && !q.gromelin && etat && etat.echange && etat.echange.possible)
-      ? '<button type="button" class="qt-swapou qt-changer" data-id="' + esc(q.id) + '" title="Une fois par semaine, une seule quête">Changer</button>' : '';
+      ? '<button type="button" class="qt-swapou qt-changer" data-id="' + esc(q.id) + '" title="' + esc(T('widgets.quetesChangerTitre', 'Une fois par semaine, une seule quête')) + '">'
+        + esc(T('widgets.quetesChanger', 'Changer')) + '</button>' : '';
     return '<div class="qt-ligne' + (q.fait ? ' faite' : '') + (q.contrat ? ' qt-signee' : '') + '">'
       + (q.contrat ? '<span class="qt-sceau" aria-hidden="true">G</span>' : caseMission(q.fait))
       + '<div class="qt-corps"><div class="qt-titre">' + (q.contrat ? '' : voyant(q)) + esc(q.titre) + '</div>'
@@ -141,9 +168,11 @@
   function primes() {
     var l = (etat && etat.primes) || [];
     if (!l.length) return '';
-    return '<div class="qt-enseigne" data-texte="Mises à prix"><span>Mises à prix</span></div>'
-      + '<div class="qt-note qt-note-primes">Bats un <b>record absolu du parc</b> au Challenge (un score, le temps d’un circuit de Burning Kiwi, la série de victoires à Grapiz ou Frutibandas) en détrônant son tenant : Gromelin paie la prime. '
-      + 'La prime <b>grossit chaque semaine</b> que le record tient, et repart de peu une fois payée. Une prime par record et par semaine ; battre son propre record ne compte pas.</div>'
+    // L'enseigne : son texte est peint sur la planche de Pixiz (QuetesForet.enseigne).
+    var enseigne = esc(T('widgets.quetesMisesAPrix', 'Mises à prix'));
+    return '<div class="qt-enseigne" data-texte="' + enseigne + '"><span>' + enseigne + '</span></div>'
+      + '<div class="qt-note qt-note-primes">' + T('widgets.quetesPrimesNote1', 'Bats un <b>record absolu du parc</b> au Challenge (un score, le temps d’un circuit de Burning Kiwi, la série de victoires à Grapiz ou Frutibandas) en détrônant son tenant : Gromelin paie la prime.') + ' '
+      + T('widgets.quetesPrimesNote2', 'La prime <b>grossit chaque semaine</b> que le record tient, et repart de peu une fois payée. Une prime par record et par semaine ; battre son propre record ne compte pas.') + '</div>'
       + '<div class="qt-avis">' + l.map(function (p) {
         var portrait = PORTRAIT[p.jeu];
         return '<div class="qt-affiche' + (p.ouverte ? '' : ' prise') + '">'
@@ -151,10 +180,11 @@
           + '<div class="qt-aff-jeu">' + voyant(p) + esc(nomJeu(p)) + '</div>'
           + (p.circuit ? '<div class="qt-aff-circuit">' + esc(p.circuit) + '</div>' : '')
           + '<div class="qt-aff-record">' + esc(p.record) + '</div>'
-          + '<div class="qt-aff-tenant">record de <b>' + esc(p.tenant) + '</b>' + (p.semaines ? '<br>tenu depuis ' + p.semaines + ' semaine' + (p.semaines > 1 ? 's' : '') : '') + '</div>'
+          + '<div class="qt-aff-tenant">' + T('widgets.quetesRecordDe', 'record de <b>{tenant}</b>', { tenant: esc(p.tenant) })
+          + (p.semaines ? '<br>' + T.n('widgets.quetesTenuDepuis', p.semaines, { one: 'tenu depuis {n} semaine', other: 'tenu depuis {n} semaines' }) : '') + '</div>'
           + '<div class="qt-aff-prime">' + piece(p.gain) + '</div>'
-          + (p.ouverte ? (p.moi ? '<span class="qt-aff-prise qt-aff-moi">Ton record : à toi de le défendre !</span>' : '')
-            : '<span class="qt-aff-prise">Prise par ' + esc(p.prisePar) + '</span>')
+          + (p.ouverte ? (p.moi ? '<span class="qt-aff-prise qt-aff-moi">' + esc(T('widgets.quetesTonRecord', 'Ton record : à toi de le défendre !')) + '</span>' : '')
+            : '<span class="qt-aff-prise">' + T('widgets.quetesPrisePar', 'Prise par {nom}', { nom: esc(p.prisePar) }) + '</span>')
           + '</div>';
       }).join('') + '</div>';
   }
@@ -165,51 +195,57 @@
       + '<div class="qt-corps"><div class="qt-titre">' + esc(p.titre) + '</div>'
       + '<div class="qt-detail">' + esc(p.detail) + '</div></div>'
       + '<div class="qt-gain">' + piece(p.gain)
-      + '<button type="button" class="qt-gelule qt-signer" data-i="' + Number(p.i) + '">Signer</button></div>'
+      + '<button type="button" class="qt-gelule qt-signer" data-i="' + Number(p.i) + '">' + esc(T('widgets.quetesSigner', 'Signer')) + '</button></div>'
       + '</div>';
   }
   function contrat() {
     var c = etat && etat.contrat;
     if (!c || c.etat === 'inactif') return '';
-    var tete = section('Rien que pour toi');
+    var tete = section(T('widgets.quetesRienQuePourToi', 'Rien que pour toi'));
     if (c.etat === 'aucun') {
       var sem = Math.max(1, Math.round((Number(c.fenetre) || 28) / 7));
-      return tete + '<div class="qt-note">Joue au Challenge au moins <b>' + nombre(c.minJours || 3) + ' jours</b> sur '
-        + (sem > 1 ? 'les ' + sem + ' dernières semaines' : 'la dernière semaine')
-        + ', et Gromelin te taillera un contrat sur mesure, d’après tes propres scores.</div>';
+      // `n` : le nombre de jours, pour l'accord de l'anglais (le texte
+      // français d'origine dit toujours « jours »).
+      var p = { jours: nombre(c.minJours || 3), n: Number(c.minJours || 3), sem: sem };
+      return tete + '<div class="qt-note">' + (sem > 1
+        ? T('widgets.quetesContratAucun', 'Joue au Challenge au moins <b>{jours} jours</b> sur les {sem} dernières semaines, et Gromelin te taillera un contrat sur mesure, d’après tes propres scores.', p)
+        : T('widgets.quetesContratAucunSemaine', 'Joue au Challenge au moins <b>{jours} jours</b> sur la dernière semaine, et Gromelin te taillera un contrat sur mesure, d’après tes propres scores.', p))
+        + '</div>';
     }
     if (c.etat === 'a_signer') {
-      return tete + '<div class="qt-note">Trois contrats taillés sur tes scores du Challenge. <b>Signes-en un seul</b> : '
-        + 'seuls les résultats obtenus après la signature comptent.</div>'
+      return tete + '<div class="qt-note">' + T('widgets.quetesContratASigner', 'Trois contrats taillés sur tes scores du Challenge. <b>Signes-en un seul</b> : '
+        + 'seuls les résultats obtenus après la signature comptent.') + '</div>'
         + '<div class="qt-liste">' + (c.propositions || []).map(proposition).join('') + '</div>';
     }
-    return tete + '<div class="qt-note">Ton contrat de la semaine. Seuls les résultats obtenus depuis la signature comptent.</div>'
+    return tete + '<div class="qt-note">' + T('widgets.quetesContratSigne', 'Ton contrat de la semaine. Seuls les résultats obtenus depuis la signature comptent.') + '</div>'
       + '<div class="qt-liste">' + (c.quete ? carte(c.quete) : '') + '</div>';
   }
   function rendre() {
     var corps = document.getElementById('quetes-corps');
     if (!corps || !etat) return;
-    if (!etat.acces) { corps.innerHTML = '<div class="qt-ferme">Gromelin n’a pas de quêtes pour toi en ce moment.</div>'; return; }
+    if (!etat.acces) { corps.innerHTML = '<div class="qt-ferme">' + esc(T('widgets.quetesFermees', 'Gromelin n’a pas de quêtes pour toi en ce moment.')) + '</div>'; return; }
     var S = etat.semaine || {};
-    var pied = 'Les kikooz sont versés dès que la quête est faite. Nouvelles quêtes chaque lundi à minuit ; une quête non finie dimanche est perdue.'
-      + (etat.echange ? '<br>' + (etat.echange.fait ? 'Tu as changé une quête cette semaine (« ' + esc(etat.echange.fait.titre) + ' »).'
-        : 'Une quête ne te plaît pas ? Tu peux en <b>changer une</b> par semaine.') : '');
+    var pied = T('widgets.quetesPied', 'Les kikooz sont versés dès que la quête est faite. Nouvelles quêtes chaque lundi à minuit ; une quête non finie dimanche est perdue.')
+      + (etat.echange ? '<br>' + (etat.echange.fait ? T('widgets.quetesDejaChangee', 'Tu as changé une quête cette semaine (« {titre} »).', { titre: esc(etat.echange.fait.titre) })
+        : T('widgets.quetesPeutChanger', 'Une quête ne te plaît pas ? Tu peux en <b>changer une</b> par semaine.')) : '');
     var dejaLa = corps.querySelector('.qt');
-    var planches = (etat.quetes || []).map(carte).join('') || '<div class="qt-vide">Pas de quêtes cette semaine.</div>';
+    var planches = (etat.quetes || []).map(carte).join('') || '<div class="qt-vide">' + esc(T('widgets.quetesAucune', 'Pas de quêtes cette semaine.')) + '</div>';
     // Où il en est, le bonus de la semaine, et le compteur de la boutique (gagnés / possibles) —
     // tamponné « max! » (Swapou) quand toute la semaine est faite.
     var Q = etat.quetes || [];
     var faites = Q.filter(function (q) { return q.fait; }).length;
     var tout = Q.length > 0 && faites === Q.length;
-    var semaine = '<img class="qt-cabane" src="/minipixiz/sprites/shape429.svg" alt="" title="La cabane de Gromelin">'
-      + '<span class="qt-sem-txt">Semaine ' + esc(S.lisible || '') + '<br>'
-      + (!Q.length ? 'Pas de quêtes cette semaine' : tout ? '<b>Toutes les quêtes sont faites !</b>'
-        : '<b>' + faites + ' quête' + (faites > 1 ? 's' : '') + ' faite' + (faites > 1 ? 's' : '') + '</b> sur ' + Q.length) + '</span>'
+    // La semaine (`S.lisible`) est écrite par le serveur.
+    var semaine = '<img class="qt-cabane" src="/minipixiz/sprites/shape429.svg" alt="" title="' + esc(T('widgets.quetesCabane', 'La cabane de Gromelin')) + '">'
+      + '<span class="qt-sem-txt">' + T('widgets.quetesSemaine', 'Semaine {semaine}', { semaine: esc(S.lisible || '') }) + '<br>'
+      + (!Q.length ? esc(T('widgets.quetesAucuneSemaine', 'Pas de quêtes cette semaine')) : tout ? '<b>' + esc(T('widgets.quetesToutesFaites', 'Toutes les quêtes sont faites !')) + '</b>'
+        : T.n('widgets.quetesFaitesSur', faites, { one: '<b>{n} quête faite</b> sur {total}', other: '<b>{n} quêtes faites</b> sur {total}' }, { total: Q.length })) + '</span>'
       + '<span class="qt-sem-droite">' + (etat.bonus ? '<span class="qt-bonus' + (etat.bonus.verse ? ' verse' : '') + '" title="'
-        + (etat.bonus.verse ? 'Bonus de la semaine versé' : 'Toutes les quêtes faites : un bonus d’XP') + '"><img src="/fb/Niveau.svg" alt="">'
-        + (etat.bonus.verse ? '✔ ' : 'tout finir : ') + '+' + nombre(etat.bonus.xp) + ' XP</span>' : '')
-      + '<span class="qt-compteur" title="kikooz gagnés / possibles cette semaine"><img src="' + PIECE + '" alt="kikooz"><b>' + nombre(etat.gagnes) + '</b>&nbsp;/ ' + nombre(etat.total)
-      + (tout ? '<img class="qt-max" src="/swapou/ui/max.svg" alt="max !">' : '') + '</span></span>';
+        + esc(etat.bonus.verse ? T('widgets.quetesBonusVerse', 'Bonus de la semaine versé') : T('widgets.quetesBonusTitre', 'Toutes les quêtes faites : un bonus d’XP')) + '"><img src="/fb/Niveau.svg" alt="">'
+        + (etat.bonus.verse ? T('widgets.quetesBonusVerseXp', '✔ +{xp} XP', { xp: nombre(etat.bonus.xp) })
+          : T('widgets.quetesBonusXp', 'tout finir : +{xp} XP', { xp: nombre(etat.bonus.xp) })) + '</span>' : '')
+      + '<span class="qt-compteur" title="' + esc(T('widgets.quetesCompteurTitre', 'kikooz gagnés / possibles cette semaine')) + '"><img src="' + PIECE + '" alt="kikooz"><b>' + nombre(etat.gagnes) + '</b>&nbsp;/ ' + nombre(etat.total)
+      + (tout ? '<img class="qt-max" src="/swapou/ui/max.svg" alt="' + esc(T('widgets.quetesMax', 'max !')) + '">' : '') + '</span></span>';
     if (dejaLa) {
       // Déjà affichée : on ne touche ni à la forêt ni à la feuille (Gromelin écrit peut-être).
       dejaLa.querySelector('.qt-semaine').innerHTML = semaine;
@@ -222,7 +258,7 @@
     }
     corps.innerHTML = '<div class="qt">'
       + '<div class="qt-scene">'
-      + '<div class="qt-dit" role="status" aria-live="polite" title="Clique pour la suite"><span class="qt-txt"></span><span class="qt-curseur"></span><span class="qt-suite"></span></div></div>'
+      + '<div class="qt-dit" role="status" aria-live="polite" title="' + esc(T('widgets.quetesCliqueSuite', 'Clique pour la suite')) + '"><span class="qt-txt"></span><span class="qt-curseur"></span><span class="qt-suite"></span></div></div>'
       + '<div class="qt-semaine">' + semaine + '</div>'
       + '<div class="qt-planches qt-liste">' + planches + '</div>'
       + '<div class="qt-contrat">' + contrat() + '</div>'
@@ -258,11 +294,11 @@
     if (!b || b.disabled) return;
     if (!b.classList.contains('arme')) {
       var autres = document.querySelectorAll('#quetes-corps .qt-changer.arme');
-      for (var k = 0; k < autres.length; k++) { autres[k].classList.remove('arme'); autres[k].textContent = 'Changer'; }
+      for (var k = 0; k < autres.length; k++) { autres[k].classList.remove('arme'); autres[k].textContent = T('widgets.quetesChanger', 'Changer'); }
       b.classList.add('arme');
-      b.textContent = 'Sûr ?';
+      b.textContent = T('widgets.quetesSur', 'Sûr ?');
       clearTimeout(b._qt);
-      b._qt = setTimeout(function () { b.classList.remove('arme'); b.textContent = 'Changer'; }, 4000);
+      b._qt = setTimeout(function () { b.classList.remove('arme'); b.textContent = T('widgets.quetesChanger', 'Changer'); }, 4000);
       return;
     }
     clearTimeout(b._qt);
@@ -278,7 +314,8 @@
           if (ouverte) { rendre(); parler(d.messages); }
           return;
         }
-        if (ouverte) parler([esc((d && d.message) || 'Grumpf. Ça n’a pas marché. Réessaie.')]);
+        // Le message du serveur, tel quel ; à défaut, le nôtre.
+        if (ouverte) parler([esc((d && d.message) || T('widgets.quetesEchecEchange', 'Grumpf. Ça n’a pas marché. Réessaie.'))]);
         return rafraichir();
       });
   }
@@ -290,11 +327,11 @@
     if (!b || b.disabled) return;
     if (!b.classList.contains('arme')) {
       var autres = document.querySelectorAll('#quetes-corps .qt-signer.arme');
-      for (var k = 0; k < autres.length; k++) { autres[k].classList.remove('arme'); autres[k].textContent = 'Signer'; }
+      for (var k = 0; k < autres.length; k++) { autres[k].classList.remove('arme'); autres[k].textContent = T('widgets.quetesSigner', 'Signer'); }
       b.classList.add('arme');
-      b.textContent = 'Sûr ?';
+      b.textContent = T('widgets.quetesSur', 'Sûr ?');
       clearTimeout(b._qt);
-      b._qt = setTimeout(function () { b.classList.remove('arme'); b.textContent = 'Signer'; }, 4000);
+      b._qt = setTimeout(function () { b.classList.remove('arme'); b.textContent = T('widgets.quetesSigner', 'Signer'); }, 4000);
       return;
     }
     clearTimeout(b._qt);
@@ -313,7 +350,7 @@
           if (ouverte) { rendre(); parler(d.messages); }
           return;
         }
-        if (ouverte) parler([esc((d && d.message) || 'Grumpf. Ta signature n’est pas passée. Réessaie.')]);
+        if (ouverte) parler([esc((d && d.message) || T('widgets.quetesEchecSignature', 'Grumpf. Ta signature n’est pas passée. Réessaie.'))]);
         return rafraichir();
       });
   }
@@ -349,7 +386,7 @@
     d.querySelector('.qt-curseur').style.display = fini ? 'none' : '';
     var plus = parole.i < parole.msgs.length - 1;
     d.querySelector('.qt-suite').innerHTML = parole.msgs.length > 1
-      ? (parole.i + 1) + ' / ' + parole.msgs.length + (fini && plus ? ' · <b>Suite ›</b>' : '') : '';
+      ? (parole.i + 1) + ' / ' + parole.msgs.length + (fini && plus ? ' · <b>' + esc(T('widgets.quetesSuite', 'Suite ›')) + '</b>' : '') : '';
   }
   function taire() {
     clearInterval(parole.minuteur); parole.minuteur = null;

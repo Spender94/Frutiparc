@@ -4,6 +4,11 @@
   <meta charset="UTF-8" />
   <link rel="icon" href="/favicon.ico" type="image/x-icon" />
   <title>Frutiparc Game</title>
+  <!-- Les langues du parc (voir /js/i18n.js) : en anglais, les dictionnaires
+       arrivent pendant l'analyse de la page ; en français, rien. « widgets » :
+       le bandeau des parties classées (fd-badge.js) et le voile d'éjection. -->
+  <script src="/js/i18n.js"></script>
+  <script>FPI18n.charger(['commun', 'pages', 'widgets']);</script>
   <style>
     html, body {
       margin: 0;
@@ -396,8 +401,8 @@
     var panel = null, allowed = false, coups = 0, ncoupsPrec = null, debutSerie = null;
     var cipher = null;        // glyphes de la police du score (public/fb/cipher-glyphs.json)
     var CADRANS = [
-      { cle: "coups", titre: "COUPS" },
-      { cle: "etoile", titre: "AV. ÉTOILE" },
+      { cle: "coups", titre: T("pages.popupCoups", "COUPS") },
+      { cle: "etoile", titre: T("pages.popupAvantEtoile", "AV. ÉTOILE") },
     ];
     var BANDE_H = 76;         // hauteur de la bande recopiée (rouleaux compris)
     var HAUT = 82;            // sous le parchemin du score
@@ -691,11 +696,11 @@
   (function setupSnakeHud() {
     var panel = null, allowed = false, hideTimer = null, alba = null;
     var LIGNES = [
-      { cle: "len", titre: "Longueur" },
-      { cle: "fruits", titre: "Fruits aval\u00e9s" },
-      { cle: "dyn", titre: "Dynamites" },
-      { cle: "bonus", titre: "Dur\u00e9e bonus en cours" },
-      { cle: "chrono", titre: "Dur\u00e9e de la partie" },
+      { cle: "len", titre: T("pages.popupLongueur", "Longueur") },
+      { cle: "fruits", titre: T("pages.popupFruitsAvales", "Fruits aval\u00e9s") },
+      { cle: "dyn", titre: T("pages.popupDynamites", "Dynamites") },
+      { cle: "bonus", titre: T("pages.popupDureeBonus", "Dur\u00e9e bonus en cours") },
+      { cle: "chrono", titre: T("pages.popupDureePartie", "Dur\u00e9e de la partie") },
     ];
     // Chronomètre tenu ICI, pas dans le SWF : le jeu ne compte pas le temps
     // écoulé. On cumule les intervalles entre deux envois, ce qui donne trois
@@ -878,13 +883,14 @@
             setTimeout(function () {
               if (window.closed) return;
               try {
-                document.title = "Disque éjecté";
+                // Les mêmes mots que le guetteur des jeux natifs (eject-watch.js).
+                document.title = T("widgets.ejecteTitre", "Disque éjecté");
                 var voile = document.createElement("div");
                 voile.setAttribute("style", "position:fixed;inset:0;z-index:2147483647;"
                   + "background:#1d2b12;color:#EAF3D8;display:flex;align-items:center;"
                   + "justify-content:center;text-align:center;padding:24px;"
                   + "font:16px/1.6 Verdana,Geneva,sans-serif");
-                voile.textContent = "Disque éjecté de la Frusion — cette fenêtre peut être fermée.";
+                voile.textContent = T("widgets.ejecteVoile", "Disque éjecté de la Frusion — cette fenêtre peut être fermée.");
                 document.body.appendChild(voile);
               } catch (e) {}
             }, 400);
@@ -923,7 +929,7 @@
           '</div>' +
           '<p style="font-family:Verdana,Arial,sans-serif;font-size:14px;line-height:1.5;margin:0 0 20px">' + texte + '</p>' +
           '<div style="text-align:center">' +
-            '<button style="width:124px;height:30px;border:0;padding:0 0 2px;background:url(/fb/bouton_popin.png) no-repeat center/100% 100%;font-family:Verdana,Arial,sans-serif;font-weight:bold;font-size:13px;color:#660000;cursor:pointer">Fermer</button>' +
+            '<button style="width:124px;height:30px;border:0;padding:0 0 2px;background:url(/fb/bouton_popin.png) no-repeat center/100% 100%;font-family:Verdana,Arial,sans-serif;font-weight:bold;font-size:13px;color:#660000;cursor:pointer">' + T("commun.fermer", "Fermer") + '</button>' +
           '</div>' +
         '</div>' +
       '</div>';
@@ -935,9 +941,9 @@
   }
 
   function showFdOverlay(fd, sidArg) {
-    popinFrutiparc("fd-overlay",
+    popinFrutiparc("fd-overlay", T("pages.popupQuotaEpuise",
       "Nom d\u2019un Pamplefrousse ! Tu as \u00e9puis\u00e9 ton quota de parties Challenge " +
-      "pour aujourd\u2019hui ! Retente ta chance demain ou ach\u00e8te un pass en boutique !");
+      "pour aujourd\u2019hui ! Retente ta chance demain ou ach\u00e8te un pass en boutique !"));
   }
 
   // \u2500\u2500 Avertissement AVANT la premi\u00e8re partie hors quota \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
@@ -966,11 +972,11 @@
         .then(function (j) {
           if (!j || !j.ok || !j.limited || j.remaining !== 0 || averti) return;
           averti = true;
-          popinFrutiparc("fd-preavis",
+          popinFrutiparc("fd-preavis", T("pages.popupPreavis",
             "Tu as \u00e9puis\u00e9 tes parties Challenge du jour. Tu peux continuer \u00e0 jouer " +
             "autant que tu veux, mais le score de tes prochaines parties ne sera pas class\u00e9 " +
             "au Challenge. Le Pass quotidien (Boutique, rubrique Pass) ajoute une partie par " +
-            "jour, pour toujours !");
+            "jour, pour toujours !"));
         })
         .catch(function () {});
     }
@@ -1371,10 +1377,10 @@
     var bar = document.createElement("div");
     bar.id = "zoom-bar";
     bar.innerHTML =
-      '<button type="button" data-z="out" title="Dézoomer (Ctrl+molette)">−</button>' +
+      '<button type="button" data-z="out" title="' + T("pages.popupDezoomer", "Dézoomer (Ctrl+molette)") + '">−</button>' +
       '<span class="z-label"></span>' +
-      '<button type="button" data-z="in" title="Zoomer (Ctrl+molette)">+</button>' +
-      '<button type="button" data-z="reset" title="Taille d\'origine (Ctrl+0)">1:1</button>';
+      '<button type="button" data-z="in" title="' + T("pages.popupZoomer", "Zoomer (Ctrl+molette)") + '">+</button>' +
+      '<button type="button" data-z="reset" title="' + T("pages.popupTailleOrigine", "Taille d'origine (Ctrl+0)") + '">1:1</button>';
     document.body.appendChild(bar);
     var label = bar.querySelector(".z-label");
 

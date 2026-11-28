@@ -161,6 +161,35 @@
   // actionList nomme « siffle » et « pleure » ce que la pellicule étiquette
   // « sifflote » et « pleurer ». playAnim() vise les étiquettes.
   const ETIQUETTES = { siffle: 'sifflote', pleure: 'pleurer' };
+  /*
+   * LES NOMS À L'ÉCRAN, dans la langue du joueur. Les deux tables ci-dessus
+   * restent en français : ce sont les noms de référence, ceux du forum, et
+   * l'argument de repli de T() (/js/i18n.js ; l'anglais vit dans
+   * /i18n/en/widgets.js). `nomHumeur(i)` et `nomAnimation(i)` les traduisent
+   * pour l'affichage — un indice, jamais un nom, sert d'identifiant.
+   *
+   * Sans FPI18n (le serveur, les tests, une page qui ne charge pas i18n.js),
+   * on rend le français.
+   */
+  const CLES_HUMEURS = ['widgets.humeurNeutre', 'widgets.humeurColere', 'widgets.humeurTriste',
+    'widgets.humeurSourire', 'widgets.humeurJoie', 'widgets.humeurDetermine', 'widgets.humeurEmbarrasse',
+    'widgets.humeurTotoche'];
+  const CLES_ANIMATIONS = ['widgets.animRepos', 'widgets.animParler', 'widgets.animRire', 'widgets.animMdr',
+    'widgets.animLangue', 'widgets.animRougir', 'widgets.animRegard', 'widgets.animSifflote',
+    'widgets.animChewingGum', 'widgets.animQuestion', 'widgets.animMiam', 'widgets.animPleurer',
+    'widgets.animLarme', 'widgets.animBeurk', 'widgets.animJutsu', 'widgets.animTousse',
+    'widgets.animGumHiko', 'widgets.animClinOeil', 'widgets.animBisou', 'widgets.animSixSept',
+    'widgets.animAssomme', 'widgets.animExplose'];
+  function traduireNom(cle, fr) {
+    const I = global.FPI18n;
+    return (I && I.T && cle) ? I.T(cle, fr) : fr;
+  }
+  function nomHumeur(i) {
+    return NOMS_HUMEURS[i] === undefined ? '' : traduireNom(CLES_HUMEURS[i], NOMS_HUMEURS[i]);
+  }
+  function nomAnimation(i) {
+    return NOMS_ANIMATIONS[i] === undefined ? '' : traduireNom(CLES_ANIMATIONS[i], NOMS_ANIMATIONS[i]);
+  }
 
   // ── Transformations de couleur ───────────────────────────────────────────
   const CX_NEUTRE = { mr: 256, mv: 256, mb: 256, ma: 256, ar: 0, av: 0, ab: 0, aa: 0 };
@@ -2843,6 +2872,7 @@
   const API = {
     Moteur, Bouille, Clip,
     PALETTE, CHAUVE_VARIANTE, HUMEURS, ANIMATIONS, NOMS_HUMEURS, NOMS_ANIMATIONS, ETIQUETTES,
+    nomHumeur, nomAnimation,
     prechargerSixSept,
     decode62, encode62, teindre, cxTeinte, composerCx, composerM, etatsDe, facteurPour,
     // Les prunelles : le rouleau d'iris d'une famille, et la greffe de celles

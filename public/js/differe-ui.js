@@ -11,25 +11,60 @@
 // même format sert aux horloges de la partie (fmtDelai), où trois jours ne se
 // lisent pas en minutes et secondes.
 //
+// LES LANGUES : chaque texte passe par T() (/js/i18n.js), le français écrit
+// ici en repli, l'anglais dans /i18n/en/widgets.js. Les pages des jeux ne
+// chargent pas encore i18n.js : sans lui, T() rend le français, gabarit rempli.
+//
 (function (root) {
   "use strict";
 
+  function remplir(s, p) {
+    return String(s).replace(/\{(\w+)\}/g, function (m, k) { return p && p[k] != null ? String(p[k]) : m; });
+  }
+  // FPI18n est cherché à CHAQUE appel : la page peut charger i18n.js après nous.
+  function T(cle, fr, p) {
+    var I = root.FPI18n;
+    return I && I.T ? I.T(cle, fr, p) : remplir(fr, p);
+  }
+  T.n = function (cle, n, formes, p) {
+    var I = root.FPI18n;
+    if (I && I.T && I.T.n) return I.T.n(cle, n, formes, p);
+    var q = { n: n };
+    for (var k in (p || {})) if (Object.prototype.hasOwnProperty.call(p, k)) q[k] = p[k];
+    // La règle française : 0 et 1 au singulier.
+    return remplir(Math.abs(n) < 2 ? formes.one : formes.other, q);
+  };
+
   function esc(s) { var d = document.createElement("div"); d.textContent = String(s == null ? "" : s); return d.innerHTML; }
   function same(a, b) { return String(a == null ? "" : a).toLowerCase() === String(b == null ? "" : b).toLowerCase(); }
+  // Les identifiants des salles et des raisons viennent du serveur ; seul
+  // l'affichage se traduit. SALLES reste en français : Grapiz le lit tel quel.
   var SALLES = { amical: "Amical", champ: "Championnat" };
-  var RAISONS = {
-    delai: "délai dépassé", forfeit: "abandon", connection: "jetons reliés", elimination: "élimination",
-    victory: "victoire", draw: "égalité", timeout: "délai dépassé",
-  };
+  function nomSalle(sa) {
+    if (sa === "amical") return T("widgets.differeAmical", "Amical");
+    if (sa === "champ") return T("widgets.differeChampionnat", "Championnat");
+    return sa;
+  }
+  function nomRaison(r) {
+    switch (r) {
+      case "delai": case "timeout": return T("widgets.differeRaisonDelai", "délai dépassé");
+      case "forfeit": return T("widgets.differeRaisonAbandon", "abandon");
+      case "connection": return T("widgets.differeRaisonJetons", "jetons reliés");
+      case "elimination": return T("widgets.differeRaisonElimination", "élimination");
+      case "victory": return T("widgets.differeRaisonVictoire", "victoire");
+      case "draw": return T("widgets.differeRaisonEgalite", "égalité");
+      default: return r;
+    }
+  }
 
   // 259 200 000 ms → « 3 j » ; 93 600 000 → « 1 j 2 h » ; 4 500 000 → « 1 h 15 min ».
   function fmtDelai(ms) {
     ms = Math.max(0, Number(ms) || 0);
     var min = Math.floor(ms / 60000), h = Math.floor(min / 60), j = Math.floor(h / 24);
-    if (j >= 1) return j + " j" + (h % 24 ? " " + (h % 24) + " h" : "");
-    if (h >= 1) return h + " h" + (min % 60 ? " " + (min % 60) + " min" : "");
-    if (min >= 1) return min + " min";
-    return "moins d’une minute";
+    if (j >= 1) return h % 24 ? T("widgets.differeJoursHeures", "{j} j {h} h", { j: j, h: h % 24 }) : T("widgets.differeJours", "{j} j", { j: j });
+    if (h >= 1) return min % 60 ? T("widgets.differeHeuresMinutes", "{h} h {min} min", { h: h, min: min % 60 }) : T("widgets.differeHeures", "{h} h", { h: h });
+    if (min >= 1) return T("widgets.differeMinutes", "{min} min", { min: min });
+    return T("widgets.differeMoinsMinute", "moins d’une minute");
   }
 
   var CSS = ""
@@ -100,17 +135,23 @@
     function etat(p) {
       var a = adv(p), r;
       if (p.st === "invitation") {
-        return p.moi === 1 ? "<b>" + esc(a.n) + " t’invite</b> · à répondre sous " + fmtDelai(restant(p))
-          : "Invitation envoyée · sans réponse, elle s’éteint dans " + fmtDelai(restant(p));
+        return p.moi === 1 ? T("widgets.differeTInvite", "<b>{nom} t’invite</b> · à répondre sous {delai}", { nom: esc(a.n), delai: fmtDelai(restant(p)) })
+          : T("widgets.differeInvitationEnvoyee", "Invitation envoyée · sans réponse, elle s’éteint dans {delai}", { delai: fmtDelai(restant(p)) });
       }
       if (p.st === "en_cours") {
         r = fmtDelai(restant(p));
-        return p.tour === p.moi ? "<b>À toi de jouer</b> · il te reste " + r + (p.coups ? " · coup " + (p.coups + 1) : "")
-          : esc(a.n) + " doit jouer · il lui reste " + r + (p.coups ? " · coup " + (p.coups + 1) : "");
+        // Le numéro du coup est une information à part, posée après un « · ».
+        var coup = p.coups ? " · " + T("widgets.differeCoup", "coup {n}", { n: p.coups + 1 }) : "";
+        return (p.tour === p.moi ? T("widgets.differeATonTour", "<b>À toi de jouer</b> · il te reste {delai}", { delai: r })
+          : T("widgets.differeIlDoitJouer", "{nom} doit jouer · il lui reste {delai}", { nom: esc(a.n), delai: r })) + coup;
       }
       var nul = p.w !== 0 && p.w !== 1;
-      var issue = nul ? "Égalité" : (p.w === p.moi ? '<span class="gagne">Victoire</span>' : '<span class="perdu">Défaite</span>');
-      return "Terminée · " + issue + (p.r ? " (" + esc(RAISONS[p.r] || p.r) + ")" : "") + " · " + p.coups + " coup" + (p.coups > 1 ? "s" : "");
+      var issue = nul ? T("widgets.differeEgalite", "Égalité")
+        : (p.w === p.moi ? '<span class="gagne">' + T("widgets.differeVictoire", "Victoire") + "</span>"
+          : '<span class="perdu">' + T("widgets.differeDefaite", "Défaite") + "</span>");
+      var coups = T.n("widgets.differeCoups", p.coups, { one: "{n} coup", other: "{n} coups" });
+      return p.r ? T("widgets.differeTermineeRaison", "Terminée · {issue} ({raison}) · {coups}", { issue: issue, raison: esc(nomRaison(p.r)), coups: coups })
+        : T("widgets.differeTerminee", "Terminée · {issue} · {coups}", { issue: issue, coups: coups });
     }
 
     function ligne(p) {
@@ -120,23 +161,23 @@
       var fb = (a.f && a.f.length >= 15) ? a.f : "000000010000000000000000";
       var tete = (root.FPBouilleVignette && root.FPBouilleVignette.html) ? root.FPBouilleVignette.html(fb) : "";
       row.innerHTML = '<div class="dif-av">' + tete + '</div><div class="dif-txt"><div class="dif-nom">' + esc(a.n || a.u)
-        + '<small>' + esc(SALLES[p.sa] || p.sa) + '</small></div><div class="dif-etat">' + etat(p) + '</div></div><div class="dif-btns"></div>';
+        + '<small>' + esc(nomSalle(p.sa)) + '</small></div><div class="dif-etat">' + etat(p) + '</div></div><div class="dif-btns"></div>';
       var btns = row.querySelector(".dif-btns");
       function bouton(txt, cls, fn) { var b = document.createElement("button"); b.textContent = txt; if (cls) b.className = cls; b.onclick = fn; btns.appendChild(b); return b; }
       if (p.st === "invitation") {
         if (p.moi === 1) {
-          bouton("Accepter", "", function () { opts.envoyer({ a: "daccept", id: p.id }); });
-          bouton("Décliner", "sec", function () { opts.envoyer({ a: "ddecline", id: p.id }); });
+          bouton(T("widgets.differeAccepter", "Accepter"), "", function () { opts.envoyer({ a: "daccept", id: p.id }); });
+          bouton(T("widgets.differeDecliner", "Décliner"), "sec", function () { opts.envoyer({ a: "ddecline", id: p.id }); });
         } else {
-          bouton("Annuler", "sec", function () { opts.envoyer({ a: "ddecline", id: p.id }); });
+          bouton(T("widgets.differeAnnuler", "Annuler"), "sec", function () { opts.envoyer({ a: "ddecline", id: p.id }); });
         }
       } else if (p.st === "en_cours") {
-        bouton(p.tour === p.moi ? "Jouer" : "Voir", "", function () { opts.ouvrir(p.id, p); });
-        bouton("Abandonner", "danger", function () {
-          if (window.confirm("Abandonner cette partie contre " + (a.n || a.u) + " ? " + (a.n || a.u) + " l’emporte.")) opts.envoyer({ a: "dpart", id: p.id });
+        bouton(p.tour === p.moi ? T("widgets.differeJouer", "Jouer") : T("widgets.differeVoir", "Voir"), "", function () { opts.ouvrir(p.id, p); });
+        bouton(T("widgets.differeAbandonner", "Abandonner"), "danger", function () {
+          if (window.confirm(T("widgets.differeConfirmerAbandon", "Abandonner cette partie contre {nom} ? {nom} l’emporte.", { nom: a.n || a.u }))) opts.envoyer({ a: "dpart", id: p.id });
         });
       } else {
-        bouton("Revoir", "sec", function () { opts.ouvrir(p.id, p); });
+        bouton(T("widgets.differeRevoir", "Revoir"), "sec", function () { opts.ouvrir(p.id, p); });
       }
       if (root.FPBouilleVignette && root.FPBouilleVignette.brancher) root.FPBouilleVignette.brancher(row);
       return row;
@@ -147,17 +188,18 @@
       var liste = ui.parties.filter(function (p) { return !salle || p.sa === salle; });
       box.innerHTML = "";
       var intro = document.createElement("p"); intro.className = "dif-intro";
-      intro.innerHTML = "Une partie <b>en différé</b> se joue à son rythme : chacun joue son coup quand il passe, et dispose de "
-        + "<b>" + fmtDelai(ui.delai) + " par coup</b>. Passé ce délai, la partie est perdue. Tu es prévenu dans l’appli (et sur ton téléphone) quand c’est à toi."
-        + (salle === "champ" ? " Au championnat, ta note bouge comme en direct." : "");
+      intro.innerHTML = T("widgets.differeIntro", "Une partie <b>en différé</b> se joue à son rythme : chacun joue son coup quand il passe, et dispose de "
+        + "<b>{delai} par coup</b>. Passé ce délai, la partie est perdue. Tu es prévenu dans l’appli (et sur ton téléphone) quand c’est à toi.", { delai: fmtDelai(ui.delai) })
+        + (salle === "champ" ? " " + T("widgets.differeIntroChamp", "Au championnat, ta note bouge comme en direct.") : "");
       box.appendChild(intro);
 
       // Inviter
       var inv = document.createElement("div"); inv.className = "dif-inviter";
       var plein = ui.enCours() >= ui.max;
-      inv.innerHTML = '<input type="text" list="dif-pseudos" placeholder="Pseudo du joueur à inviter" maxlength="20" autocomplete="off"><datalist id="dif-pseudos"></datalist>'
-        + (salle ? "" : '<select><option value="amical">Amical</option><option value="champ">Championnat</option></select>')
-        + '<button type="button"' + (plein ? " disabled" : "") + ">Inviter</button><div class=\"dif-err\">" + (plein ? "Tu as déjà " + ui.max + " parties en cours : termine-en une d’abord." : "") + "</div>";
+      inv.innerHTML = '<input type="text" list="dif-pseudos" placeholder="' + esc(T("widgets.differePseudoAInviter", "Pseudo du joueur à inviter")) + '" maxlength="20" autocomplete="off"><datalist id="dif-pseudos"></datalist>'
+        + (salle ? "" : '<select><option value="amical">' + esc(nomSalle("amical")) + '</option><option value="champ">' + esc(nomSalle("champ")) + "</option></select>")
+        + '<button type="button"' + (plein ? " disabled" : "") + ">" + esc(T("widgets.differeInviter", "Inviter")) + "</button><div class=\"dif-err\">"
+        + (plein ? esc(T("widgets.differeTropDeParties", "Tu as déjà {max} parties en cours : termine-en une d’abord.", { max: ui.max })) : "") + "</div>";
       var input = inv.querySelector("input"), sel = inv.querySelector("select"), err = inv.querySelector(".dif-err"), dl = inv.querySelector("datalist");
       var minuteur = null;
       input.addEventListener("input", function () {
@@ -173,7 +215,7 @@
       function inviter() {
         var u = input.value.trim();
         if (!u) { input.focus(); return; }
-        if (same(u, opts.moi())) { err.textContent = "Tu ne peux pas t’inviter toi-même."; return; }
+        if (same(u, opts.moi())) { err.textContent = T("widgets.differePasToiMeme", "Tu ne peux pas t’inviter toi-même."); return; }
         err.textContent = "";
         opts.envoyer({ a: "dinvite", u: u.toLowerCase(), sa: salle || sel.value });
         input.value = "";
@@ -181,26 +223,35 @@
       inv.querySelector("button").onclick = inviter;
       input.addEventListener("keydown", function (e) { if (e.key === "Enter") inviter(); });
       box.appendChild(inv);
+      // Le serveur envoie un CODE : le texte se choisit ici, dans la langue du joueur.
       ui.erreur = function (m) {
         var textes = {
-          "unknown-player": "Ce pseudo n’existe pas.", "already-playing": "Vous avez déjà une partie en cours ensemble dans cette salle.",
-          "too-many-games": "Tu as trop de parties en cours.", "target-busy": "Ce joueur a déjà trop de parties en cours.",
-          "self-challenge": "Tu ne peux pas t’inviter toi-même.", "bad-room": "Pas de différé au Challenge.",
+          "unknown-player": T("widgets.differeErrInconnu", "Ce pseudo n’existe pas."),
+          "already-playing": T("widgets.differeErrDejaEnsemble", "Vous avez déjà une partie en cours ensemble dans cette salle."),
+          "too-many-games": T("widgets.differeErrTropDeParties", "Tu as trop de parties en cours."),
+          "target-busy": T("widgets.differeErrJoueurOccupe", "Ce joueur a déjà trop de parties en cours."),
+          "self-challenge": T("widgets.differePasToiMeme", "Tu ne peux pas t’inviter toi-même."),
+          "bad-room": T("widgets.differeErrPasAuChallenge", "Pas de différé au Challenge."),
         };
         err.textContent = textes[m] || ("⚠ " + m);
       };
 
-      // Les sections
+      // Les sections : [identifiant, titre affiché, parties]. On compare
+      // l'identifiant, jamais le titre, qui change avec la langue.
       var sections = [
-        ["À toi de jouer", liste.filter(function (p) { return aMoiDeJouer(p); })],
-        ["En attente de l’adversaire", liste.filter(function (p) { return p.st !== "finie" && !aMoiDeJouer(p); })],
-        ["Terminées", liste.filter(function (p) { return p.st === "finie"; })],
+        ["atoi", T("widgets.differeSectionATonTour", "À toi de jouer"), liste.filter(function (p) { return aMoiDeJouer(p); })],
+        ["attente", T("widgets.differeSectionAttente", "En attente de l’adversaire"), liste.filter(function (p) { return p.st !== "finie" && !aMoiDeJouer(p); })],
+        ["finies", T("widgets.differeSectionTerminees", "Terminées"), liste.filter(function (p) { return p.st === "finie"; })],
       ];
       sections.forEach(function (s) {
-        if (!s[1].length && s[0] === "Terminées") return;
-        var h = document.createElement("h4"); h.textContent = s[0]; box.appendChild(h);
-        if (!s[1].length) { var v = document.createElement("div"); v.className = "dif-vide"; v.textContent = s[0] === "À toi de jouer" ? "Rien à jouer pour l’instant." : "Aucune partie en attente. Invite quelqu’un !"; box.appendChild(v); return; }
-        s[1].forEach(function (p) { box.appendChild(ligne(p)); });
+        if (!s[2].length && s[0] === "finies") return;
+        var h = document.createElement("h4"); h.textContent = s[1]; box.appendChild(h);
+        if (!s[2].length) {
+          var v = document.createElement("div"); v.className = "dif-vide";
+          v.textContent = s[0] === "atoi" ? T("widgets.differeRienAJouer", "Rien à jouer pour l’instant.") : T("widgets.differeAucuneEnAttente", "Aucune partie en attente. Invite quelqu’un !");
+          box.appendChild(v); return;
+        }
+        s[2].forEach(function (p) { box.appendChild(ligne(p)); });
       });
     };
 
@@ -234,5 +285,5 @@
     });
   }
 
-  root.DiffereUI = { creer: creer, fmtDelai: fmtDelai, ecouterOuverture: ecouterOuverture, SALLES: SALLES };
+  root.DiffereUI = { creer: creer, fmtDelai: fmtDelai, ecouterOuverture: ecouterOuverture, SALLES: SALLES, nomSalle: nomSalle };
 })(typeof self !== "undefined" ? self : this);

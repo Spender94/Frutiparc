@@ -8345,6 +8345,13 @@ app.get('/.well-known/assetlinks.json', (req, res) => {
  * (une adresse e-mail). Sans eux, la page reste servie, avec un repli honnête
  * (« l'équipe bénévole », le courrier interne) et un avertissement au
  * démarrage : un site en règle a les deux.
+ *
+ * DEUX LANGUES. Le texte français fait foi ; public/confidentialite-en.html
+ * en est la traduction de commodité (elle le dit), avec les mêmes gabarits.
+ * On la sert quand la requête est en anglais — `langueDeRequete` : la langue
+ * du compte si la requête porte un sid, sinon `?lang=`, sinon le navigateur —,
+ * et le français dans tous les autres cas. Les replis du responsable et du
+ * contact suivent la langue de la page.
  */
 const RGPD_RESPONSABLE = String(process.env.RGPD_RESPONSABLE || '').trim();
 const RGPD_CONTACT = String(process.env.RGPD_CONTACT || '').trim();
@@ -8352,17 +8359,34 @@ if (!RGPD_RESPONSABLE || !RGPD_CONTACT) {
   console.warn('[RGPD] RGPD_RESPONSABLE et/ou RGPD_CONTACT manquent : la politique de confidentialité '
     + 'ne nomme pas le responsable du traitement (art. 13). À poser dans l’environnement.');
 }
-let confidentialiteCache = null;
+const CONFIDENTIALITE = {
+  fr: {
+    fichier: 'confidentialite.html',
+    responsable: 'l’équipe bénévole de Frutiparc',
+    contact: 'le courrier interne du site (bouton « Courrier », destinataire <b>admin</b>)',
+  },
+  en: {
+    fichier: 'confidentialite-en.html',
+    responsable: 'the Frutiparc volunteer team',
+    contact: 'the site’s internal mail (recipient: <b>admin</b>)',
+  },
+};
+const confidentialiteCache = {};
 app.get('/confidentialite', (req, res) => {
+  const langue = langueDeRequete(req) === 'en' ? 'en' : 'fr';
+  const version = CONFIDENTIALITE[langue];
+  // La page dépend de la langue du navigateur : qu'un cache intermédiaire ne
+  // serve pas l'une à la place de l'autre.
+  res.vary('Accept-Language');
   try {
-    if (!confidentialiteCache) {
-      confidentialiteCache = fs.readFileSync(path.join(__dirname, 'public', 'confidentialite.html'), 'utf8');
+    if (!confidentialiteCache[langue]) {
+      confidentialiteCache[langue] = fs.readFileSync(path.join(__dirname, 'public', version.fichier), 'utf8');
     }
     const contactHtml = RGPD_CONTACT
       ? `<a href="mailto:${escapeXml(RGPD_CONTACT)}">${escapeXml(RGPD_CONTACT)}</a>`
-      : 'le courrier interne du site (bouton « Courrier », destinataire <b>admin</b>)';
-    const page = confidentialiteCache
-      .replace(/\{\{RESPONSABLE\}\}/g, escapeXml(RGPD_RESPONSABLE || 'l’équipe bénévole de Frutiparc'))
+      : version.contact;
+    const page = confidentialiteCache[langue]
+      .replace(/\{\{RESPONSABLE\}\}/g, escapeXml(RGPD_RESPONSABLE || version.responsable))
       .replace(/\{\{CONTACT\}\}/g, contactHtml);
     res.type('html').send(page);
   } catch (e) {

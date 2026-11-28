@@ -12,9 +12,26 @@
   Partagé par l'éditeur d'accessoires de l'admin, l'éditeur « Ma Frutibouille »
   de /light, et — côté serveur, via require() — la vitrine hebdomadaire qui
   puise ses accessoires dans le Bouilloscope (voir vitrineBanque, server.js).
+
+  LES LANGUES. Les tables COLORS et ACCESSORIES restent telles quelles : ce
+  sont les noms de RÉFÉRENCE (l'admin en tire des noms de pack, l'atelier
+  d'accessoires les enregistre). Seuls colorName() et accName(), qui servent à
+  l'AFFICHAGE, passent par T() (/js/i18n.js ; l'anglais vit dans
+  /i18n/en/widgets.js). Le serveur n'appelle ni l'un ni l'autre — il ne lit
+  que accessoryParts() et accessoryName(), dont les surnoms (« Kiwix ») sont
+  des identifiants et ne se traduisent pas. Sans FPI18n (le serveur, l'admin,
+  une page qui ne charge pas i18n.js), tout reste en français.
 */
 (function (global) {
   "use strict";
+
+  function remplir(s, p) {
+    return String(s).replace(/\{(\w+)\}/g, function (m, k) { return p && p[k] != null ? String(p[k]) : m; });
+  }
+  function T(cle, fr, p) {
+    var I = global.FPI18n;
+    return I && I.T ? I.T(cle, fr, p) : remplir(fr, p);
+  }
 
   // index → { name, hex }  (table fournie par l'admin du jeu)
   var COLORS = [
@@ -43,6 +60,36 @@
     "Bananocle", "Bandeau", "Grand chapeau", "Bonnet de nuit", "Lunettes", "Coquille",
     "Banane", "Bois de cerf", "Nez", "Bonnet type 3", "Carapace"
   ];
+
+  // L'affichage traduit. Les couleurs vont par FAMILLES numérotées (« Gris
+  // bleu 2 ») : une clé par famille, le numéro en paramètre. Les familles déjà
+  // nommées en anglais par la table d'origine (« Skin dark », « Red »…) n'en
+  // ont pas besoin. Bananocle est un nom propre : il ne se traduit pas.
+  var CLES_COULEURS = {
+    "Mega jaune": "widgets.couleurMegaJaune", "Rose": "widgets.couleurRose",
+    "Gris bleu": "widgets.couleurGrisBleu", "Gris bronze": "widgets.couleurGrisBronze",
+    "Gris vert": "widgets.couleurGrisVert", "Gris azur": "widgets.couleurGrisAzur",
+    "Blanc": "widgets.couleurBlanc"
+  };
+  var CLES_ACCESSOIRES = [
+    "widgets.accRien", "widgets.accChapeauChinois", "widgets.accBonnet1", "widgets.accCasquette",
+    "widgets.accChapeauCowboy", "widgets.accBonnet2", null, "widgets.accBandeau",
+    "widgets.accGrandChapeau", "widgets.accBonnetNuit", "widgets.accLunettes", "widgets.accCoquille",
+    "widgets.accBanane", "widgets.accBoisCerf", "widgets.accNez", "widgets.accBonnet3", "widgets.accCarapace"
+  ];
+  function nomCouleur(i) {
+    var c = COLORS[i];
+    if (!c) return "#" + i;
+    if (CLES_COULEURS[c.name]) return T(CLES_COULEURS[c.name], c.name);
+    var m = /^(.*) (\d+)$/.exec(c.name);
+    // Le gabarit français redonne exactement le nom de la table.
+    if (m && CLES_COULEURS[m[1]]) return T(CLES_COULEURS[m[1]], m[1] + " {n}", { n: m[2] });
+    return c.name;
+  }
+  function nomAccessoire(i) {
+    if (!ACCESSORIES[i]) return T("widgets.accType", "Type {n}", { n: String(i) });
+    return CLES_ACCESSOIRES[i] ? T(CLES_ACCESSOIRES[i], ACCESSORIES[i]) : ACCESSORIES[i];
+  }
 
   // ── Baptiser un accessoire ─────────────────────────────────────────────────
   //
@@ -183,8 +230,9 @@
     accessoryParts: accessoryParts,
     accessoryName: accessoryName,
     colorHex: function (i) { return (COLORS[i] && COLORS[i].hex) || "#000"; },
-    colorName: function (i) { return (COLORS[i] && COLORS[i].name) || ("#" + i); },
-    accName: function (i) { return ACCESSORIES[i] || ("Type " + i); }
+    // Les deux noms À AFFICHER, dans la langue du joueur (voir plus haut).
+    colorName: nomCouleur,
+    accName: nomAccessoire
   };
 
   global.FPBouille = FPBouille;
