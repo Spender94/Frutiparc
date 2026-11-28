@@ -22790,6 +22790,8 @@ app.post('/api/admin/kiloute/session/start', adminScope('kiloute'), (req, res) =
     channel: b.channel ? String(b.channel) : '',
     reward: b.reward,
     windowSec: b.windowSec,
+    // `pas` (ms entre deux répliques) : pour l'essayer vite, et pour les tests.
+    pas: b.pas !== undefined ? Math.max(100, Math.min(10000, Number(b.pas) || 0)) : undefined,
   });
   if (!r.ok) return res.status(409).json({ error: r.error });
   console.log(`[ADMIN] Quiz "${r.name}" lancé dans #${r.channel} (${r.count} questions)`);
@@ -37327,7 +37329,8 @@ const KILOUTE_DAILY_HELLO = kilouteBanque('bonsoir', [
   'Bonsoir la Frutifamille ! {anim} à votre service pour la question du jour !',
 ]);
 
-// Démarre un quiz (événement multi-questions). opts: { quizId, channel?, reward?, windowSec? }.
+// Démarre un quiz (événement multi-questions). opts: { quizId, channel?, reward?, windowSec?, pas? }.
+// `pas` : les millisecondes entre deux répliques (d'ordinaire, celles d'un animateur qui prend son temps).
 // Le quiz porte ses propres questions + récompense + délai ; channel/reward/window
 // sont surchargeables au lancement. Renvoie { ok, channel, count, name } ou { ok:false, error }.
 function kilouteStartSession(opts) {
@@ -37354,7 +37357,7 @@ function kilouteStartSession(opts) {
     // betweenMs = pause après la révélation, avant d'annoncer la question
     // suivante. Relevé de 5s à 7s : les joueurs reprochaient un enchaînement
     // trop rapide « sans respirer entre les questions ». Réglable ici.
-    reward, windowMs, betweenMs: 7000, quizName: quiz.name,
+    reward, windowMs, betweenMs: opts.pas ? opts.pas * 2 : 7000, quizName: quiz.name, pas: opts.pas || null,
   };
   npcJoin('kiloute79', channel);
   console.log(`[KILOUTE] Quiz "${quiz.name}" lancé dans #${channel} — ${questions.length} questions, ${reward} kikooz/question`);
@@ -37365,7 +37368,7 @@ function kilouteStartSession(opts) {
         other: "Aujourd'hui, le quiz « {nom} » : {n} questions, et {kz} kikooz par bonne réponse !" } },
     kilouteLigne('quiz.regle', "Le premier qui donne la bonne réponse rafle la mise. Tenez-vous prêts..."),
     kilouteLigne('quiz.parti', "C'est partiiii !"),
-  ], () => kilouteSessionAsk(kilouteSession), 'c', 4000);
+  ], () => kilouteSessionAsk(kilouteSession), 'c', kilouteSession.pas || 4000);
   return { ok: true, channel, count: questions.length, name: quiz.name };
 }
 
@@ -37404,7 +37407,7 @@ function kilouteSessionAsk(s) {
     // bureau (SWF), inline dans le chat en mode Light.
     if (qImage) { kilouteSayImage(s.channel, qImage); setTimeout(ask, 2000); }
     else ask();
-  }, 'c', 3000);
+  }, 'c', s.pas || 3000);
 }
 
 // Passe à la question suivante après une courte pause.
@@ -37435,7 +37438,7 @@ function kilouteSessionCheckAnswer(channelName, username, rawText) {
   npcSaySequence('kiloute79', s.channel, [
     kpick(KILOUTE_CORRECT)(winner, kilouteAffiche(q)),
     kpick(KILOUTE_REWARD)(winner, s.scores[username].n, s.reward),
-  ], () => kilouteSessionAdvance(s), 'c', 3000);
+  ], () => kilouteSessionAdvance(s), 'c', s.pas || 3000);
 }
 
 // Clôt la session : classement final + remerciements, puis Kiloute s'en va.
@@ -37462,7 +37465,7 @@ function kilouteSessionEnd(s) {
   lines.push(kilouteLigne('quiz.merci', "Merci à toutes et à tous d'avoir joué, vous êtes formidables ! À très vite !"));
   npcSaySequence('kiloute79', s.channel, lines, () => {
     setTimeout(() => { if (kilouteSession === s) { kilouteSession = null; npcLeave('kiloute79'); } }, 3000);
-  }, 'c', 4000);
+  }, 'c', s.pas || 4000);
 }
 
 // Interrompt une session en cours (bouton admin "Arrêter").
