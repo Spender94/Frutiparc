@@ -36,7 +36,8 @@
 // commence et finit chaque ligne, sa fonte, son corps, sa couleur, son
 // alignement — et, pour les mots écrits lettre à lettre, quelles profondeurs
 // du clip forment chaque phrase, image par image. Le moteur
-// (public/kaluga/moteur/figes.js) n'a plus qu'à écrire l'anglais par-dessus.
+// (public/kaluga/moteur/texte.js, K.poserFiges et K.ecrireFige) n'a plus qu'à
+// écrire l'anglais par-dessus.
 //
 // ── Ce que contient public/<jeu>/data/figes.json ──
 //
@@ -56,7 +57,7 @@
 // `a` est l'alignement (gauche, centre, droite), déduit des positions des
 // glyphes français ; `lmax` la largeur que l'anglais peut prendre avant d'être
 // resserré. Les cas que la déduction ne devine pas sont réglés plus bas
-// (REGLAGES), après avoir regardé les écrans anglais.
+// (les `reglages` de chaque jeu), après avoir regardé les écrans anglais.
 
 'use strict';
 
