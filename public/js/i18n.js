@@ -39,6 +39,10 @@
  *   FPI18n.langue               'fr' ou 'en'.
  *   FPI18n.ajouter(lang, table) ajoute des traductions (les dictionnaires
  *                               /i18n/en/*.js l'appellent).
+ *   FPI18n.possede(lang, cle)   la langue a-t-elle SA traduction de la clé ?
+ *                               (le serveur s'en sert pour refaire une ligne
+ *                               rangée en français : sans traduction, il la
+ *                               laisse telle quelle).
  *   FPI18n.charger(zones)       pendant le chargement de la page, ajoute les
  *                               dictionnaires des zones demandées — seulement
  *                               hors français.
@@ -161,6 +165,11 @@
     try { return Number(n).toLocaleString(l === 'en' ? 'en-US' : 'fr-FR'); } catch (e) { return String(n); }
   }
 
+  function possede(l, cle) {
+    l = valide(l);
+    return !!l && brut(l, cle) !== undefined;
+  }
+
   function ajouter(l, table) {
     l = valide(l);
     if (!l || !table) return;
@@ -252,6 +261,7 @@
     date: date,
     nombre: nombre,
     ajouter: ajouter,
+    possede: possede,
     charger: charger,
     appliquer: appliquer,
     changer: changer,

@@ -13186,35 +13186,38 @@
   var EMOTE_MAP = {};
   (function () {
     function add(anim, label, toks) { for (var i = 0; i < toks.length; i++) EMOTE_MAP[toks[i]] = { anim: anim, label: label }; }
-    add("rire", "rigole", [":))", "rigole"]);                                  // id 2
-    add("mdr", "éclate de rire", [":D", "mdr", "lol", "ptdr"]);                // id 3
-    add("langue", "tire la langue", [":p", ":P", ":d"]);                       // id 4
-    add("rougir", "rougit", [':">', ":#)", "rougit"]);                         // id 5
-    add("regard", "regarde ailleurs", ["regard", "regarde"]);                 // id 6
-    add("sifflote", "sifflote", [':-"', "siffle", "sifflote"]);               // id 7
-    add("gum", "fait une bulle de chewing-gum", ["gum"]);                      // id 8
-    add("question", "se pose des questions", [":?", "question", "curieux", "oO"]); // id 9
-    add("miam", "se régale", ["miam", "slurp", "bave", "regale"]);            // id 10
-    add("pleurer", "pleure", [':-"(', ";((", "pleure", "ouin"]);              // id 11
+    /* Les mots ANGLAIS (« haha », « cry », « wink »…) jouent les mêmes
+       animations — tapés seuls, comme les autres. Même table que le serveur
+       (CHAT_EMOTES), qui fait la ligne ; celle-ci rattrape le texte reçu. */
+    add("rire", "rigole", [":))", "rigole", "haha", "hehe", "giggle"]);       // id 2
+    add("mdr", "éclate de rire", [":D", "mdr", "lol", "ptdr", "lmao", "rofl"]); // id 3
+    add("langue", "tire la langue", [":p", ":P", ":d", "tongue"]);             // id 4
+    add("rougir", "rougit", [':">', ":#)", "rougit", "blush", "blushes"]);     // id 5
+    add("regard", "regarde ailleurs", ["regard", "regarde", "lookaway", "look away"]); // id 6
+    add("sifflote", "sifflote", [':-"', "siffle", "sifflote", "whistle", "whistles"]); // id 7
+    add("gum", "fait une bulle de chewing-gum", ["gum", "bubblegum"]);         // id 8
+    add("question", "se pose des questions", [":?", "question", "curieux", "oO", "hmm", "curious", "wonder"]); // id 9
+    add("miam", "se régale", ["miam", "slurp", "bave", "regale", "yum", "yummy", "drool"]); // id 10
+    add("pleurer", "pleure", [':-"(', ";((", "pleure", "ouin", "cry", "sob"]); // id 11
     /* CE SONT DEUX ANIMATIONS, PAS UNE. `actionList` en compte treize, et les
        deux dernières ne se ressemblent pas : la 11 (`pleurer`) est la grosse
        crise — les yeux fermés, le compteur à quatre tours — et la 12 (`larme`)
        une seule larme, l'œil triste, jouée une fois. On les envoyait toutes
        deux sur la 11 : « larme » donnait donc un sanglot. */
-    add("larme", "laisse couler une larme", [":'(", ";(", "larme", "snif"]);  // id 12
+    add("larme", "laisse couler une larme", [":'(", ";(", "larme", "snif", "tear", "sniff"]); // id 12
     /* LA QUATORZIÈME, ET LA SEULE QUI NE VIENNE PAS DE 2005. `actionInfo` en
        comptait treize ; « beurk » s'ajoute au bout, sans rien inventer de
        dessiné : la tristesse (humeur 2) et le fard de « rougir » repeint en
        vert. Un desktop d'époque ne la connaît pas — il imprimera le mot, comme
        il le fait déjà de tout ce qu'il ne sait pas jouer. */
-    add("beurk", "a la nausée", ["beurk", "berk", "bwark"]);              // id 13
+    add("beurk", "a la nausée", ["beurk", "berk", "bwark", "gross", "yuck", "eww"]); // id 13
     /* LES DEUX EMPRUNTÉES. « jutsu » est la chute d'hiko (famille 12) : la
        tête part en fumée et il ne reste qu'un chocapic. « tousse » est la
        quinte de la famille 15, sans sa bulle de chewing-gum. Leurs dessins
        sont récoltés dans public/fbouille/emotes.json — jusqu'ici elles ne
        jouaient que sur la famille qui les portait. */
     add("jutsu", "chocapic no jutsu", ["jutsu", "chocapic"]);             // id 14
-    add("tousse", "tousse", ["tousse", "cough", "keuf"]);                // id 15
+    add("tousse", "tousse", ["tousse", "cough", "keuf", "ahem"]);        // id 15
     /* ET LE GUM D'HIKO. C'est la MÊME animation que la 8 — la pellicule du
        chewing-gum est identique dans toutes les familles, au bytecode près —,
        mais avec les dessins de fin d'hiko : là où la famille 0 prend une
@@ -13224,16 +13227,16 @@
     /* DEUX RECETTES, sans un dessin de plus (cf. jouerAnim) : le clin d'œil
        ferme un œil sur l'image de « pleurer » et sourit ; le bisou prend le
        fard de « rougir », les yeux clos et la bouche en bec du sifflote. */
-    add("clin", "fait un clin d’œil", [";)", ";-)", "clin"]);               // id 17
-    add("bisou", "envoie un bisou", [":*", ":-*", "bisou", "smack"]);        // id 18
+    add("clin", "fait un clin d’œil", [";)", ";-)", "clin", "wink"]);       // id 17
+    add("bisou", "envoie un bisou", [":*", ":-*", "bisou", "smack", "kiss", "mwah"]); // id 18
     /* « 67 » — réclamée par tout le parc. Les yeux clignent l'un après
        l'autre, et le 6 et le 7 des points de Frutisnake se pèsent de chaque
        côté de la tête (recette du moteur, cf. bouille-moteur.js). */
-    add("sixsept", "fait six-seveeen", ["67", "6 7", "6-7", "sixseven"]);     // id 19
+    add("sixsept", "fait six-seveeen", ["67", "6 7", "6-7", "sixseven", "six seven"]); // id 19
     /* LES EFFETS RECYCLÉS DES JEUX (cf. bouille-moteur.js) : les étoiles de
        MiniPixiz autour d'une tête assommée ; la bombe de Frutisnake sur le
        crâne, puis le visage noirci sous les nuages de MiniPixiz. */
-    add("assomme", "est confus", ["confus", "confuse", "assommé", "assomme", "ouille", "aïe"]);   // id 20
+    add("assomme", "est confus", ["confus", "confuse", "assommé", "assomme", "ouille", "aïe", "confused", "dazed", "ouch", "dizzy"]); // id 20
     /* « explose » (id 21) est prête dans le moteur, mais gardée pour plus
        tard : aucun mot ne la déclenche encore.
        add("explose", "explose", ["boum", "explose", "kaboom"]); */
