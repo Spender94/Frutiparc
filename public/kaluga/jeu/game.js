@@ -20,6 +20,7 @@ const J = racine.KalugaJeu;
 const Cs = J.Cs;
 const random = J.random;
 const Key = K.Key;
+const T = K.T;
 
 // ── Map ───────────────────────────────────────────────────────────────────
 class Map extends K.Clip {
@@ -264,17 +265,17 @@ class Game extends J.Slot {
   addReplayPanel() {
     this.endPanelEnd.push({ list: [
       { type: 'margin', value: 100 },
-      { type: 'title', title: 'Rejouer?' },
-      { type: 'but', title: 'oui', callback: { obj: this, method: 'reset' } },
-      { type: 'but', title: 'non', callback: { obj: this.mng, method: 'backToMenu' } },
+      { type: 'title', title: T('kaluga.fin.rejouer', 'Rejouer?') },
+      { type: 'but', title: T('kaluga.fin.oui', 'oui'), callback: { obj: this, method: 'reset' } },
+      { type: 'but', title: T('kaluga.fin.non', 'non'), callback: { obj: this.mng, method: 'backToMenu' } },
     ] });
   }
   addContinuePanel() {
     this.endPanelEnd.push({ list: [
       { type: 'margin', value: 100 },
-      { type: 'title', title: 'Continuer?' },
-      { type: 'but', title: 'oui', callback: { obj: this, method: 'kill' } },
-      { type: 'but', title: 'non', callback: { obj: this.mng, method: 'backToMenu' } },
+      { type: 'title', title: T('kaluga.fin.continuer', 'Continuer?') },
+      { type: 'but', title: T('kaluga.fin.oui', 'oui'), callback: { obj: this, method: 'kill' } },
+      { type: 'but', title: T('kaluga.fin.non', 'non'), callback: { obj: this.mng, method: 'backToMenu' } },
     ] });
   }
   initList() {
@@ -569,7 +570,7 @@ class Game extends J.Slot {
     }
   }
   loose(msg) {
-    this.endPanelStart.push({ label: 'basic', list: [{ type: 'msg', title: 'Perdu !', msg }] });
+    this.endPanelStart.push({ label: 'basic', list: [{ type: 'msg', title: T('kaluga.fin.perdu', 'Perdu !'), msg }] });
     this.endGame();
   }
   endGame(timer) { if (!this.flEndingGame) this.initEndGame(timer); }
@@ -595,7 +596,7 @@ class Game extends J.Slot {
       partie: this.trace || {},
     };
     this.mng.client.saveScore(score, { tz: this.tzongreInfo.id, gOr: this.gOr | 0, gMax: this.gMax | 0, duree, releve });
-    this.endPanelStart.push({ label: 'basic', wait: { o: this, v: 'flSavingScore' }, list: [{ type: 'msg', title: '', msg: 'sauvegarde du score...' }] });
+    this.endPanelStart.push({ label: 'basic', wait: { o: this, v: 'flSavingScore' }, list: [{ type: 'msg', title: '', msg: T('kaluga.fin.sauvegarde', 'sauvegarde du score...') }] });
   }
   genEndGamePanel() { this.attachMovie('endGamePanel', 'endGamePanel', this.dp_endGamePanel); }
   setEndGamePanel(sheet) {
@@ -606,7 +607,11 @@ class Game extends J.Slot {
     if (this.mng.client.isWhite()) {
       const list = this.mng.card.$mode[n];
       if (this.level < 3 && !list[this.level + 1]) {
-        this.endPanelMiddle.push({ label: 'congrat', list: [{ type: 'congrat', text: 'Vous avez débloqué le mode ' + this.mng.difNameList[this.level + 1] + '!!\n', id: 10 }] });
+        // La page porte la clé de son texte (Panel.setPart la traduit) : cette
+        // méthode et addTitem sont rejouées seules par test/kalugaPictos.test.js,
+        // hors du module des langues — elles n'y nomment pas T.
+        this.endPanelMiddle.push({ label: 'congrat', list: [{ type: 'congrat', text: 'Vous avez débloqué le mode ' + this.mng.difNameList[this.level + 1] + '!!\n',
+          cle: 'kaluga.fin.modeDebloque', p: { mode: this.mng.difNameList[this.level + 1] }, id: 10 }] });
         this.mng.card.$mode[n][this.level + 1] = 1;
       }
       switch (this.level) {
@@ -615,7 +620,8 @@ class Game extends J.Slot {
         case 2: {
           const tzUnlockList = [1, 4, 3, 2];
           const id = tzUnlockList[n - 2];
-          this.endPanelMiddle.push({ label: 'congrat', list: [{ type: 'congrat', text: 'Vous avez débloqué une nouvelle tzongre : ' + this.mng.tzInfo[id].name + '!!\n', id }] });
+          this.endPanelMiddle.push({ label: 'congrat', list: [{ type: 'congrat', text: 'Vous avez débloqué une nouvelle tzongre : ' + this.mng.tzInfo[id].name + '!!\n',
+            cle: 'kaluga.fin.tzongreDebloquee', p: { nom: this.mng.tzInfo[id].name }, id }] });
           this.mng.card.$tz[id] = 1;
           this.addTitem('$tz' + id);
           break;
@@ -634,7 +640,7 @@ class Game extends J.Slot {
     // L'invité n'a pas d'inventaire : on ne lui annonce pas un Titem qu'il
     // n'aura nulle part (même règle pour la Kagulga, plus bas).
     if (this.mng.client.invite) return;
-    this.endPanelMiddle.push({ label: 'congrat', list: [{ type: 'congrat', text: 'Un nouveau Titem est disponible dans votre inventaire !\n', id: 10 }] });
+    this.endPanelMiddle.push({ label: 'congrat', list: [{ type: 'congrat', text: 'Un nouveau Titem est disponible dans votre inventaire !\n', cle: 'kaluga.fin.titem', id: 10 }] });
     this.mng.client.giveItem(str);
   }
   /*
@@ -663,14 +669,16 @@ class Game extends J.Slot {
       for (const part of page.list) {
         if (!part || part.type !== 'bigScore' || (part.frame !== 1 && part.frame !== 3)) continue;
         const score = String(part.score);
-        return { score, libelle: part.frame === 3 ? 'Ton temps' : (/cm$/.test(score) ? 'Ta distance' : 'Ton score') };
+        const quoi = part.frame === 3 ? 'temps' : (/cm$/.test(score) ? 'distance' : 'score');
+        return { score, libelle: { temps: 'Ton temps', distance: 'Ta distance', score: 'Ton score' }[quoi],
+          libelleEn: { temps: 'Your time', distance: 'Your distance', score: 'Your score' }[quoi] };
       }
     }
     return {};
   }
   addKagulga() {
     if (this.mng.client.invite) return;
-    this.endPanelMiddle.push({ label: 'congrat', list: [{ type: 'congrat', text: 'Vous avez gagné la kagulga !\nEn véritable cuir de Tzongre, cette cagoule vous permettra de garder la fruticlasse en toutes circonstances !', id: 14 }] });
+    this.endPanelMiddle.push({ label: 'congrat', list: [{ type: 'congrat', text: T('kaluga.fin.kagulga', 'Vous avez gagné la kagulga !\nEn véritable cuir de Tzongre, cette cagoule vous permettra de garder la fruticlasse en toutes circonstances !'), id: 14 }] });
     this.mng.client.giveAccessory('$kagulga');
   }
   fade() {

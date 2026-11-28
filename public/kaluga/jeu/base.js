@@ -25,9 +25,56 @@
 
 const K = racine.KalugaMoteur;
 const J = racine.KalugaJeu = racine.KalugaJeu || {};
+// Les langues (/js/i18n.js, par le moteur : voir texte.js). Le dictionnaire
+// anglais est public/kaluga/lang/en.js ; le français reste écrit ici.
+const T = K.T;
 
 const random = (n) => Math.floor(Math.random() * n);
 J.random = random;
+
+/*
+ * LES NOMS QUE LE JEU COMPOSE EN FRANÇAIS — et qui sont aussi des CLÉS.
+ *
+ * Une figure (« pure tete dunk », « granite »), une statistique (« Nombre de
+ * pomme », « Lancer de vers 3 »), un titre du bandeau (« beurk! ») : le jeu
+ * les forme en français, et ces chaînes servent ailleurs que sur l'écran —
+ * le relevé de la partie part au serveur avec ses compteurs nommés ainsi
+ * (Game.saveScore, `releve`), les Épreuves reconnaissent leurs figures à leur
+ * nom. On ne les traduit donc qu'au moment de les AFFICHER : le bandeau
+ * (Scroller), les listes du panneau de fin (Stat.getList).
+ *
+ * `kaluga.noms` traduit un nom entier (un nom suivi d'un numéro garde son
+ * numéro) ; `kaluga.figures` les mots d'une figure, les plus longues
+ * expressions d'abord (« tete plongeante » avant « tete »). Un mot inconnu —
+ * les « -grappe », jeux de mots gardés en français — reste tel quel.
+ */
+const aSa = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+J.nomAffiche = function (fr) {
+  const s = String(fr == null ? '' : fr);
+  const nu = s.trim();
+  if (!nu) return s;
+  const noms = T.table('kaluga.noms', {});
+  if (aSa(noms, nu)) return s.replace(nu, noms[nu]);
+  const num = /^(.*?)\s+(\d+)$/.exec(nu);
+  if (num && aSa(noms, num[1])) return s.replace(nu, noms[num[1]] + ' ' + num[2]);
+  const mots = T.table('kaluga.figures', {});
+  const cles = Object.keys(mots);
+  if (!cles.length) return s;
+  let longueur = 1;
+  for (const c of cles) longueur = Math.max(longueur, c.split(' ').length);
+  const morceaux = nu.split(/\s+/);
+  const sortie = [];
+  for (let i = 0; i < morceaux.length;) {
+    let pris = 0;
+    for (let n = Math.min(longueur, morceaux.length - i); n > 0 && !pris; n--) {
+      const essai = morceaux.slice(i, i + n).join(' ');
+      if (aSa(mots, essai)) { sortie.push(mots[essai]); pris = n; }
+    }
+    if (!pris) { sortie.push(morceaux[i]); pris = 1; }
+    i += pris;
+  }
+  return s.replace(nu, sortie.join(' '));
+};
 
 // ── Cs ────────────────────────────────────────────────────────────────────
 const Cs = { mcw: 700, mch: 480, tmod: 1 };
@@ -75,9 +122,10 @@ class Stat {
     // Le for…in de l'AVM1 énumère du plus récent au plus ancien.
     for (let i = this.ordre.length - 1; i >= 0; i--) {
       const name = this.ordre[i];
-      if (type === 'name') l.push(name + ' : \n');
+      // Le NOM s'affiche dans la langue du joueur ; la clé reste française.
+      if (type === 'name') l.push(T('kaluga.statNom', '{nom} : ', { nom: J.nomAffiche(name) }) + '\n');
       else if (type === 'score') l.push(Math.round(this.vals[name] * 10) / 10 + '\n');
-      else l.push(name + ' : ' + this.vals[name] + '\n');
+      else l.push(T('kaluga.statNom', '{nom} : ', { nom: J.nomAffiche(name) }) + this.vals[name] + '\n');
     }
     return l.join('');
   }
@@ -115,6 +163,9 @@ Object.assign(KEYNAMES, {
   45: 'Insérer', 46: 'Supprimer', 47: 'Aide', 144: 'VerrNum', 186: '$ £', 187: ' =  +', 189: '- _', 191: ': /', 192: 'ù %',
   219: '° )', 220: '* µ', 221: '^ ¨', 222: '²',
 });
+// Les noms anglais des touches (kaluga.nomsTouches, par code) ; les touches
+// d'un clavier français (« ù % ») gardent leur étiquette.
+Object.assign(KEYNAMES, T.table('kaluga.nomsTouches', {}));
 class KeyManager {
   constructor() { this.config = []; }
   setConfig(id, key) { this.config[id] = key; }
@@ -291,7 +342,7 @@ class Scroller extends K.Clip {
     const d = (this.tNum++) % 100;
     this.attachMovie('scrollText', 't' + d, d);
     const mc = this['t' + d];
-    mc.nameField.text = this.list[0].name + ' ' + this.list[0].bonus;
+    mc.nameField.text = J.nomAffiche(this.list[0].name) + ' ' + this.list[0].bonus;
     mc.regular = { x: 0, y: -40 };
     mc.pos = { x: 0, y: 0 };
     mc._x = mc.regular.x;
@@ -580,6 +631,10 @@ class Panel extends K.Clip {
   }
   setPart(part, y) {
     let d, mc;
+    // Une page peut porter la CLÉ de son texte (`cle`, et ses paramètres `p`)
+    // à côté du français déjà écrit : Game.checkUnlock et Game.addTitem le
+    // font ainsi (un test les rejoue seules, hors du module des langues).
+    if (part.cle) part = Object.assign({}, part, { text: T(part.cle, part.text, part.p) });
     switch (part.type) {
       case 'bigScore':
         d = this.depth++;
@@ -616,7 +671,8 @@ class Panel extends K.Clip {
         mc._y = y;
         return part.box.h + 12;
       case 'msg':
-        this.fieldTitle.text = part.title;
+        // Le titre est souvent un cri (« Splorch! », tiré au sort) : un nom.
+        this.fieldTitle.text = J.nomAffiche(part.title);
         this.fieldText.text = part.msg;
         return this.fieldText.textHeight + 40;
       case 'congrat':

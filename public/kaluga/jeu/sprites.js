@@ -20,6 +20,13 @@ const J = racine.KalugaJeu;
 const Cs = J.Cs;
 const random = J.random;
 const Key = K.Key;
+const T = K.T;
+// Les phrases de fin d'une tzongre : les tables anglaises ont la même
+// longueur que les françaises — le tirage au sort ne change pas d'une langue
+// à l'autre. `{nom}` est le nom de la tzongre. (Les cris, « Splorch! »,
+// « Miam! », restent tels quels ici : le panneau les traduit à l'affichage,
+// comme les autres noms — voir J.nomAffiche.)
+const phrases = (cle, fr, nom) => T.table(cle, fr).map((m) => m.split('{nom}').join(nom));
 const RAD = Math.PI / 180;
 // Un clip disparu (retiré de la scène) : ses propriétés valent « undefined » en Flash.
 const vif = (mc) => !!(mc && mc._parent);
@@ -607,25 +614,25 @@ class Tzongre extends Phys {
   }
   groundCrash() {
     const titleList = ['Splorch!', 'Sbleurch!', 'Ploush!', 'Skonk!'];
-    const msgList = [
-      this.name + " s'est ecrasé(e) sur le sol...",
-      'La gravité a rattrapé ' + this.name,
-      this.name + ' a joué trop près du sol...',
-    ];
+    const msgList = phrases('kaluga.sol.phrases', [
+      "{nom} s'est ecrasé(e) sur le sol...",
+      'La gravité a rattrapé {nom}',
+      '{nom} a joué trop près du sol...',
+    ], this.name);
     this.game.endPanelStart.push({ label: 'basic', list: [{ type: 'msg', title: titleList[random(titleList.length)], msg: msgList[random(msgList.length)] }] });
     this.flGround = true;
     this.scotch();
   }
   fruitCrash(fruit) {
     const titleList = ['Plourch!', 'Blaarch!', 'Sponk!', 'Paf!'];
-    const msgList = [
-      this.name + ' a percuté la pomme un peu trop fort.',
-      this.name + " n'a pas réussi à éviter la pomme.",
-      'La pomme a percuté de plein fouet notre pauvre ' + this.name + ', paix a son  âme...',
-      'Malgré de bons reflexes, ' + this.name + " n'a pas pu esquiver la pomme à temps.",
-      'La pomme dans un élan meurtrier a emporté ' + this.name + ' dans sa chute.',
-      'La pomme lancée a grande vitesse, a ecrasé ' + this.name + ' qui passait par là.',
-    ];
+    const msgList = phrases('kaluga.pomme.phrases', [
+      '{nom} a percuté la pomme un peu trop fort.',
+      "{nom} n'a pas réussi à éviter la pomme.",
+      'La pomme a percuté de plein fouet notre pauvre {nom}, paix a son  âme...',
+      "Malgré de bons reflexes, {nom} n'a pas pu esquiver la pomme à temps.",
+      'La pomme dans un élan meurtrier a emporté {nom} dans sa chute.',
+      'La pomme lancée a grande vitesse, a ecrasé {nom} qui passait par là.',
+    ], this.name);
     this.game.endPanelStart.push({ label: 'basic', list: [{ type: 'msg', title: titleList[random(titleList.length)], msg: msgList[random(msgList.length)] }] });
     this.scotch(fruit);
   }
@@ -1643,12 +1650,12 @@ class Bird extends Bads {
     this.sub.h.h.bec.gotoAndStop(mc.type);
     if (mc.type === 'Tzongre') {
       const titleList = ['Miam!', 'Crunch!', 'Glurps!', 'Scrounch!'];
-      const msgList = [
-        mc.name + ' a été avalé par le corbeau.',
-        mc.name + " n'a pas réussi a esquiver les attaques du corbeau.",
-        'Le corbeau a avalé ' + mc.name + ' en une seule bouchée',
-        'Les assauts répétés du corbeau ont eu raison de notre pauvre ' + mc.name,
-      ];
+      const msgList = phrases('kaluga.corbeau.phrases', [
+        '{nom} a été avalé par le corbeau.',
+        "{nom} n'a pas réussi a esquiver les attaques du corbeau.",
+        'Le corbeau a avalé {nom} en une seule bouchée',
+        'Les assauts répétés du corbeau ont eu raison de notre pauvre {nom}',
+      ], mc.name);
       this.game.endPanelStart.push({ label: 'basic', list: [{ type: 'msg', title: titleList[random(titleList.length)], msg: msgList[random(msgList.length)] }] });
       this.sub.h.h.bec.gotoAndStop(20 + mc.id);
       mc.kill();
@@ -1864,12 +1871,12 @@ class Frog extends Bads {
   crunch() {
     const titleList = ['Miam!', 'Crunch!', 'Glurps!', 'Scrounch!'];
     const nom = this.focus ? this.focus.name : '';
-    const msgList = [
-      nom + ' a été absorbé par la grenouille.',
-      nom + " n'a pas éviter la langue de la grenouille.",
-      'La grenouille a gobé ' + nom + ' en un éclair.',
-      'La persévérance de la grenouille a eu raison de notre pauvre ' + nom + '.',
-    ];
+    const msgList = phrases('kaluga.grenouille.phrases', [
+      '{nom} a été absorbé par la grenouille.',
+      "{nom} n'a pas éviter la langue de la grenouille.",
+      'La grenouille a gobé {nom} en un éclair.',
+      'La persévérance de la grenouille a eu raison de notre pauvre {nom}.',
+    ], nom);
     this.game.endPanelStart.push({ label: 'basic', list: [{ type: 'msg', title: titleList[random(titleList.length)], msg: msgList[random(msgList.length)] }] });
     this.h.h.tz.gotoAndStop(this.game.tzongreInfo.id + 1);
     if (this.focus) this.focus.kill();

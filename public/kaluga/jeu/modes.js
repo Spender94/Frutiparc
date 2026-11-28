@@ -14,6 +14,7 @@ const J = racine.KalugaJeu;
 const Cs = J.Cs;
 const random = J.random;
 const Key = K.Key;
+const T = K.T;
 const temps = (t) => J.MTNumber.getTimeStr(t, "'", "''");
 
 /*
@@ -324,9 +325,9 @@ class Classic extends J.Game {
   initEndGame(timer) {
     if (this.mng.client.isWhite()) {
       if (this.score > this.mng.card.$classic.$s) {
-        let text = 'Record général battu !!\n';
-        if (this.mng.card.$classic.$s > 0) text += 'Ancien record : ' + this.mng.card.$classic.$s + ' (' + this.mng.tzInfo[this.mng.card.$classic.$t].name + ')\n';
-        text += 'Nouveau record : ' + this.score + ' (' + this.mng.tzInfo[this.tzongreInfo.id].name + ')\n';
+        let text = T('kaluga.fin.recordGeneral', 'Record général battu !!') + '\n';
+        if (this.mng.card.$classic.$s > 0) text += T('kaluga.fin.ancienRecordDe', 'Ancien record : {score} ({nom})', { score: this.mng.card.$classic.$s, nom: this.mng.tzInfo[this.mng.card.$classic.$t].name }) + '\n';
+        text += T('kaluga.fin.nouveauRecordDe', 'Nouveau record : {score} ({nom})', { score: this.score, nom: this.mng.tzInfo[this.tzongreInfo.id].name }) + '\n';
         this.endPanelMiddle.push({ label: 'congrat', list: [{ type: 'congrat', text, id: 12 }] });
         this.mng.card.$classic.$s = this.score;
         this.mng.card.$classic.$t = this.tzongreInfo.id;
@@ -340,9 +341,9 @@ class Classic extends J.Game {
   scoreSaved() {
     super.scoreSaved();
     let name = '', score = '';
-    name += '<b>Général:</b>\n'; score += '\n';
+    name += '<b>' + T('kaluga.fin.general', 'Général:') + '</b>\n'; score += '\n';
     name += this.stat.getList('name'); score += this.stat.getList('score');
-    name += '<b>Combo:</b>\n'; score += '\n';
+    name += '<b>' + T('kaluga.fin.combo', 'Combo:') + '</b>\n'; score += '\n';
     name += this.statCombo.getList('name'); score += this.statCombo.getList('score');
     const obj = { list: [
       { type: 'bigScore', frame: 1, score: this.score },
@@ -353,9 +354,10 @@ class Classic extends J.Game {
       obj.list.splice(1, 0, { type: 'bigScore', frame: 7, score: rnk.bestScorePos });
       if (rnk.rankingScore === rnk.bestScore && rnk.oldPos > 0) {
         const dif = rnk.oldPos - rnk.bestScorePos;
-        let txt = 'Vous avez battu votre meilleur score!!\n Vous avez gagné ' + dif + ' place';
-        if (dif > 1) txt += 's ';
-        txt += '\n';
+        // Le pluriel de 2005 (« places » au-delà d'une seule), tel quel.
+        const txt = dif > 1
+          ? T('kaluga.fin.placesGagnees', 'Vous avez battu votre meilleur score!!\n Vous avez gagné {n} places \n', { n: dif })
+          : T('kaluga.fin.placeGagnee', 'Vous avez battu votre meilleur score!!\n Vous avez gagné {n} place\n', { n: dif });
         this.endPanelMiddle.push({ label: 'congrat', list: [{ type: 'congrat', text: txt, id: 11 }] });
       }
     }
@@ -406,7 +408,7 @@ class Chrono extends J.Game {
   initStartPanel() {
     super.initStartPanel();
     this.startPanel.toRead = 1;
-    this.startPanel.text = 'Ramassez la totalité des pommes en moins de ' + temps(this.goalList[this.level]) + ' !';
+    this.startPanel.text = T('kaluga.chrono.consigne', 'Ramassez la totalité des pommes en moins de {temps} !', { temps: temps(this.goalList[this.level]) });
   }
   initSprites() {
     super.initSprites();
@@ -462,7 +464,7 @@ class Chrono extends J.Game {
       { type: 'bigScore', frame: 2, score: temps(best) },
       { type: 'margin', value: 15 },
       { type: 'graph', gfx: 'partGraphCurve', box: { x: 20, y: 6, w: 420, h: 230 }, maxResult: this.max, margin: 10, list: statList,
-        flGhost: true, flLine: true, flNode: true, flCurve: false, nodeFrame: 1, line: lineCoef, lineBase: 5, marginInt: 16, marginUp: 16, lineSuffix: 'sec.', flBackground: true },
+        flGhost: true, flLine: true, flNode: true, flCurve: false, nodeFrame: 1, line: lineCoef, lineBase: 5, marginInt: 16, marginUp: 16, lineSuffix: T('kaluga.fin.secondes', 'sec.'), flBackground: true },
     ] });
     if (this.mng.client && this.mng.client.rapporterQuete) this.mng.client.rapporterQuete('chrono' + this.level, this.score);
     if (this.score <= this.goalList[this.level]) this.checkUnlock(2);
@@ -470,13 +472,14 @@ class Chrono extends J.Game {
   }
   reset() { super.reset({ level: this.level }); }
   timeUp() {
-    const msgList = [
-      this.tzongre.name + " n'a pas réussi à rassembler toutes les pommes à temps.",
-      'Le temps reglementaire est écoulé, ' + this.tzongre.name + ' a échoué.',
-      this.tzongre.name + ' a manqué de précision sur cette partie.',
-      'Le panier de ' + this.tzongre.name + " n'a pas été rempli dans les temps.",
-    ];
-    this.endPanelStart.push({ label: 'basic', list: [{ type: 'msg', title: 'Trops tard!', msg: msgList[random(msgList.length)] }] });
+    // Le tirage est le même dans toutes les langues : la table a quatre phrases.
+    const msgList = T.table('kaluga.chrono.echecs', [
+      "{nom} n'a pas réussi à rassembler toutes les pommes à temps.",
+      'Le temps reglementaire est écoulé, {nom} a échoué.',
+      '{nom} a manqué de précision sur cette partie.',
+      "Le panier de {nom} n'a pas été rempli dans les temps.",
+    ]).map((m) => m.split('{nom}').join(this.tzongre.name));
+    this.endPanelStart.push({ label: 'basic', list: [{ type: 'msg', title: T('kaluga.chrono.tropTard', 'Trops tard!'), msg: msgList[random(msgList.length)] }] });
     this.step = 3;
     this.endGame();
   }
@@ -496,7 +499,7 @@ class Invasion extends J.Game {
   }
   initStartPanel() {
     super.initStartPanel();
-    this.startPanel.text = 'Si vous tenez plus de ' + temps(this.goalList[this.level]) + " c'est gagné !";
+    this.startPanel.text = T('kaluga.invasion.consigne', "Si vous tenez plus de {temps} c'est gagné !", { temps: temps(this.goalList[this.level]) });
     this.startPanel.toRead = 1;
   }
   startGame() {
@@ -578,8 +581,8 @@ class Survival extends J.Game {
   }
   initStartPanel() {
     super.initStartPanel();
-    let txt = 'Repoussez les assauts des corbeaux le plus longtemps possible.\n';
-    txt += 'Si vous tenez plus de ' + temps(this.goalList[this.level]) + ", c'est gagné !!!";
+    let txt = T('kaluga.survie.consigne', 'Repoussez les assauts des corbeaux le plus longtemps possible.') + '\n';
+    txt += T('kaluga.survie.but', "Si vous tenez plus de {temps}, c'est gagné !!!", { temps: temps(this.goalList[this.level]) });
     this.startPanel.text = txt;
     this.startPanel.toRead = 1;
   }
@@ -908,8 +911,10 @@ class Defi extends J.Game {
       }
     }
     this.startPanel.toRead = 1;
-    this.startPanel.text = this.regle.consigne + '\n'
-      + 'Temps imparti : ' + temps(this.regle.temps) + '.';
+    // La table DEFI_NIVEAUX est la règle (et ce que les tests relisent) : sa
+    // consigne se traduit ici, au moment de l'écrire, par le rang du niveau.
+    this.startPanel.text = T('kaluga.defi.consigne' + this.level, this.regle.consigne) + '\n'
+      + T('kaluga.defi.tempsImparti', 'Temps imparti : {temps}.', { temps: temps(this.regle.temps) });
   }
   startGame() {
     super.startGame();
@@ -1024,7 +1029,7 @@ class Defi extends J.Game {
   tableauObjectifs() {
     const lignes = [{ type: 'margin', value: 8 }];
     for (const o of this.regle.objectifs) {
-      lignes.push({ type: 'littleScore', title: o.label + ' :',
+      lignes.push({ type: 'littleScore', title: T('kaluga.defi.case', '{nom} :', { nom: J.nomAffiche(o.label) }),
         score: Math.min(this.fait[o.cle] || 0, o.n) + ' / ' + o.n });
     }
     return lignes;
@@ -1037,8 +1042,8 @@ class Defi extends J.Game {
     return r || null;
   }
   reussite() {
-    this.endPanelStart.push({ label: 'basic', list: [{ type: 'msg', title: 'Réussi !',
-      msg: this.tzongre.name + ' a relevé le défi en ' + temps(this.score) + '.' }] });
+    this.endPanelStart.push({ label: 'basic', list: [{ type: 'msg', title: T('kaluga.defi.reussi', 'Réussi !'),
+      msg: T('kaluga.defi.releve', '{nom} a relevé le défi en {temps}.', { nom: this.tzongre.name, temps: temps(this.score) }) }] });
     /*
      * LE RECORD DU NIVEAU. Il ne part nulle part : les Épreuves n'ont pas de
      * classement, elles ont une CARTE — le meilleur temps par niveau et la
@@ -1061,7 +1066,7 @@ class Defi extends J.Game {
     if (carte && carte.$defi && this.level < DEFI_NIVEAUX.length - 1 && !carte.$defi[this.level + 1]) {
       carte.$defi[this.level + 1] = 1;
       this.endPanelMiddle.push({ label: 'congrat', list: [{ type: 'congrat',
-        text: 'Vous avez débloqué le défi ' + DEFI_NIVEAUX[this.level + 1].nom + ' !!\n', id: 10 }] });
+        text: T('kaluga.defi.debloque' + (this.level + 1), 'Vous avez débloqué le défi {nom} !!', { nom: DEFI_NIVEAUX[this.level + 1].nom }) + '\n', id: 10 }] });
     }
     /*
      * LE DIFFICILE DONNE L'ACCESSOIRE. On passe par `giveAccessory`, le crochet
@@ -1079,8 +1084,8 @@ class Defi extends J.Game {
     if (this.level === DEFI_NIVEAUX.length - 1) {
       if (carte && !carte.$makulo) {
         this.endPanelMiddle.push({ label: 'congrat', list: [{ type: 'congrat', id: 4,
-          text: 'Vous avez gagné le Makulo !\nIl vous attend dans votre inventaire '
-            + 'd’accessoires.' }] });
+          text: T('kaluga.defi.makulo', 'Vous avez gagné le Makulo !\nIl vous attend dans votre inventaire '
+            + 'd’accessoires.') }] });
       }
       this.mng.client.giveAccessory('$makulo', (reponse) => {
         // Accordée à l'instant, ou déjà possédée : la marque est méritée.
@@ -1110,8 +1115,8 @@ class Defi extends J.Game {
     // Sans le S. La coquille du SWF de 2005 (Chrono.as) est reproduite telle
     // quelle dans les modes d'époque ; les Épreuves n'en sont pas, elles
     // écrivent le français.
-    this.endPanelStart.push({ label: 'basic', list: [{ type: 'msg', title: 'Trop tard !',
-      msg: this.tzongre.name + " n'a pas relevé le défi dans les temps." }] });
+    this.endPanelStart.push({ label: 'basic', list: [{ type: 'msg', title: T('kaluga.defi.tropTard', 'Trop tard !'),
+      msg: T('kaluga.defi.rate', "{nom} n'a pas relevé le défi dans les temps.", { nom: this.tzongre.name }) }] });
     this.endPanelMiddle.push({ list: this.pageEchec() });
     this.step = 3;
     this.endGame();
@@ -1218,14 +1223,14 @@ class Trial extends J.Game {
         while (list.length > 12) list.shift();
         if (this.score > this.card.$max) {
           this.card.$max = this.score;
-          this.endPanelMiddle.push({ label: 'congrat', list: [{ type: 'congrat', text: 'Record général battu!!\n', id: 12 }] });
+          this.endPanelMiddle.push({ label: 'congrat', list: [{ type: 'congrat', text: T('kaluga.fin.recordGeneral2', 'Record général battu!!') + '\n', id: 12 }] });
         }
         const data = this.card.$tz[this.tzongreInfo.id];
         const best = data.$s == null ? 0 : data.$s;
         if (this.score > best) {
           data.$s = this.score;
           data.$t = this.tzongreInfo.id;
-          this.endPanelMiddle.push({ label: 'congrat', list: [{ type: 'congrat', text: 'Félicitation!\nVous avez amélioré le score maximum de ' + this.tzongreInfo.name + ' !!\n', id: this.tzongre.id }] });
+          this.endPanelMiddle.push({ label: 'congrat', list: [{ type: 'congrat', text: T('kaluga.fin.recordTzongre', 'Félicitation!\nVous avez amélioré le score maximum de {nom} !!', { nom: this.tzongreInfo.name }) + '\n', id: this.tzongre.id }] });
         }
         const maxResult = 8;
         let statList = [];
@@ -1243,7 +1248,7 @@ class Trial extends J.Game {
           statList.push({ value: d.$s / max, num: d.$s, color: this.mng.color.tzPastel[i] });
         }
         const obj2 = { list: [
-          { type: 'title', title: 'Meilleure Tzongre' },
+          { type: 'title', title: T('kaluga.fin.meilleureTzongre', 'Meilleure Tzongre') },
           { type: 'margin', value: 15 },
           { type: 'graph', gfx: 'partGraphBar', box: { x: 20, y: 6, w: 420, h: 264 }, maxResult: 5, margin: 10, marginInt: 6, list: statList, flNumber: true, flBackground: true, flTriangle: true },
         ] };
@@ -1265,7 +1270,7 @@ class Trial extends J.Game {
         this.updateTournament();
         this.tournament.eventId++;
         this.endPanelMiddle.push({ list: [
-          { type: 'title', title: ' Resultats ' },
+          { type: 'title', title: T('kaluga.fin.resultats', ' Resultats ') },
           { type: 'margin', value: 8 },
           { type: 'table', box: { x: 20, y: 6, w: 460, h: 264 }, stats: this.tournament.stats },
         ] });
@@ -1289,24 +1294,24 @@ class Trial extends J.Game {
     list.sort((a, b) => (a.sum > b.sum ? -1 : (a.sum < b.sum ? 1 : 0)));
     // Le total du tournoi, pour le panneau de l'invité (Game.finInvite) —
     // arrondi au dixième, comme chaque résultat (poserResultat).
-    this.scoreInvite = { score: (Math.round(score * 10) / 10) + ' pts', libelle: 'Ton total' };
+    this.scoreInvite = { score: (Math.round(score * 10) / 10) + ' pts', libelle: 'Ton total', libelleEn: 'Your total' };
     const flWin = list[0].id === this.tzongreInfo.id;
     const tz = this.mng.tzInfo;
-    let text = tz[list[0].id].name + ' gagne facilement ce ' + this.mode + ' !!!\n';
-    text += tz[list[1].id].name + " emporte la médaille d'argent et " + tz[list[2].id].name + ' prend la 3ème place !\n';
-    text += 'Notons la pietre performance de ' + tz[list[4].id].name + ' qui se place a la dernière place avec ' + list[4].sum + ' points!\n';
+    let text = T('kaluga.tournoi.vainqueur', '{nom} gagne facilement ce {mode} !!!', { nom: tz[list[0].id].name, mode: this.mode }) + '\n';
+    text += T('kaluga.tournoi.podium', "{deux} emporte la médaille d'argent et {trois} prend la 3ème place !", { deux: tz[list[1].id].name, trois: tz[list[2].id].name }) + '\n';
+    text += T('kaluga.tournoi.dernier', 'Notons la pietre performance de {nom} qui se place a la dernière place avec {points} points!', { nom: tz[list[4].id].name, points: list[4].sum }) + '\n';
     this.endPanelMiddle.push({ label: 'ladder', list: [{ type: 'ladder', text, list }] });
     if (this.mng.client.isWhite()) {
       if (flWin) {
         switch (this.mode) {
           case 'triathlon':
-            this.endPanelMiddle.push({ label: 'congrat', list: [{ type: 'congrat', text: 'Vous avez débloqué 4 nouvelles épreuves ainsi que le mode heptathlon !\n', id: 10 }] });
+            this.endPanelMiddle.push({ label: 'congrat', list: [{ type: 'congrat', text: T('kaluga.tournoi.heptathlonOuvert', 'Vous avez débloqué 4 nouvelles épreuves ainsi que le mode heptathlon !') + '\n', id: 10 }] });
             this.mng.card.$mode[1][3] = 1; this.mng.card.$mode[1][4] = 1; this.mng.card.$mode[1][5] = 1; this.mng.card.$mode[1][6] = 1; this.mng.card.$mode[1][8] = 1;
             this.addKagulga();
             this.mng.client.saveSlot(0);
             break;
           case 'heptathlon':
-            this.endPanelMiddle.push({ label: 'congrat', list: [{ type: 'congrat', text: 'Vous avez terminé le mode heptathlon, félicitation !!!\n', id: 10 }] });
+            this.endPanelMiddle.push({ label: 'congrat', list: [{ type: 'congrat', text: T('kaluga.tournoi.heptathlonFini', 'Vous avez terminé le mode heptathlon, félicitation !!!') + '\n', id: 10 }] });
             this.mng.card.$seq[1] = 1;
             this.mng.client.saveSlot(0);
             this.addTitem('$allstar');
@@ -1316,7 +1321,7 @@ class Trial extends J.Game {
       }
       const n = this.mode === 'triathlon' ? '$tria' : '$hept';
       if (score > this.mng.card.$trial[n].$s) {
-        this.endPanelMiddle.push({ label: 'congrat', list: [{ type: 'congrat', text: 'Record général battu !!\nAncien record: ' + this.mng.card.$trial[n].$s + ' pts\nNouveau record: ' + score + ' pts', id: 12 }] });
+        this.endPanelMiddle.push({ label: 'congrat', list: [{ type: 'congrat', text: T('kaluga.tournoi.record', 'Record général battu !!\nAncien record: {ancien} pts\nNouveau record: {score} pts', { ancien: this.mng.card.$trial[n].$s, score }), id: 12 }] });
         this.mng.card.$trial[n].$s = score;
         this.mng.card.$trial[n].$t = this.tzongreInfo.id;
         this.mng.client.saveSlot(0);
@@ -1452,7 +1457,7 @@ class CaterLaunch extends Trial {
               // Jamais posé, c'est qu'il ne l'a pas passée du tout — retombé
               // derrière, à moins de 0 cm. Le fichier disait « dépassé » aux deux.
               if (this.timer < -40) {
-                this.loose(this.flValidate === false ? 'Vous avez dépassé la ligne de lancé !' : 'Votre ver n’a pas franchi la ligne de lancer !');
+                this.loose(this.flValidate === false ? T('kaluga.lancer.ligneDepassee', 'Vous avez dépassé la ligne de lancé !') : T('kaluga.lancer.ligneNonFranchie', 'Votre ver n’a pas franchi la ligne de lancer !'));
                 this.step = 4;
               }
             } else {
@@ -1578,11 +1583,11 @@ class SquirrelLaunch extends Trial {
     if (x < -this.outMargin || x > this.map.width + this.outMargin) { this.step = 99; this.faultOut(); }
   }
   faultGround() {
-    this.endPanelStart.push({ label: 'basic', list: [{ type: 'msg', title: 'Faute!', msg: "Pour que le lancer soit validé, il faut rattraper l'écureuil avant qu'il ne touche le sol." }] });
+    this.endPanelStart.push({ label: 'basic', list: [{ type: 'msg', title: T('kaluga.lancer.faute', 'Faute!'), msg: T('kaluga.ecureuil.sol', "Pour que le lancer soit validé, il faut rattraper l'écureuil avant qu'il ne touche le sol.") }] });
     this.endGame();
   }
   faultOut() {
-    this.endPanelStart.push({ label: 'basic', list: [{ type: 'msg', title: 'Hors-limite!', msg: "Pour que le lancer soit validé, L'écureuil doit rester dans les limites de la zone de tir." }] });
+    this.endPanelStart.push({ label: 'basic', list: [{ type: 'msg', title: T('kaluga.ecureuil.horsLimite', 'Hors-limite!'), msg: T('kaluga.ecureuil.zone', "Pour que le lancer soit validé, L'écureuil doit rester dans les limites de la zone de tir.") }] });
     this.endGame();
   }
   attachMark() {
@@ -1708,15 +1713,15 @@ class AntLaunch extends Trial {
   onTzRelease() { if (this.step === 1) this.step++; this.map.initRuler(this.launchPoint); }
   onTzLink() { this.step = 1; }
   overTheLine() {
-    this.endPanelStart.push({ label: 'basic', list: [{ type: 'msg', title: 'Faute!', msg: "Vous devez lacher les fourmis avant que l'une d'entre elle ne franchisse la ligne !" }] });
+    this.endPanelStart.push({ label: 'basic', list: [{ type: 'msg', title: T('kaluga.lancer.faute', 'Faute!'), msg: T('kaluga.fourmis.ligne', "Vous devez lacher les fourmis avant que l'une d'entre elle ne franchisse la ligne !") }] });
   }
   getEndPanelObj(statList) {
     return { list: [
       { type: 'margin', value: 8 },
-      { type: 'littleScore', title: 'fourmi numero 1 :', score: this.scoreList[0] + 'cm' },
-      { type: 'littleScore', title: 'fourmi numero 2 :', score: this.scoreList[1] + 'cm' },
-      { type: 'littleScore', title: 'fourmi numero 3 :', score: this.scoreList[2] + 'cm' },
-      { type: 'littleScore', title: 'fourmi numero 4 :', score: this.scoreList[3] + 'cm' },
+      { type: 'littleScore', title: T('kaluga.fourmis.numero', 'fourmi numero {n} :', { n: 1 }), score: this.scoreList[0] + 'cm' },
+      { type: 'littleScore', title: T('kaluga.fourmis.numero', 'fourmi numero {n} :', { n: 2 }), score: this.scoreList[1] + 'cm' },
+      { type: 'littleScore', title: T('kaluga.fourmis.numero', 'fourmi numero {n} :', { n: 3 }), score: this.scoreList[2] + 'cm' },
+      { type: 'littleScore', title: T('kaluga.fourmis.numero', 'fourmi numero {n} :', { n: 4 }), score: this.scoreList[3] + 'cm' },
       { type: 'bigScore', frame: 1, score: this.score + 'cm' },
       { type: 'bigScore', frame: 2, score: this.card.$max + 'cm' },
       { type: 'margin', value: 10 },
@@ -1817,9 +1822,9 @@ class Plant extends Trial {
   getEndPanelObj(statList) {
     return { list: [
       { type: 'margin', value: 8 },
-      { type: 'littleScore', title: '1er coup :', score: this.scoreList[0] + 'cm' },
-      { type: 'littleScore', title: '2eme coup :', score: this.scoreList[1] + 'cm' },
-      { type: 'littleScore', title: '3eme coup :', score: this.scoreList[2] + 'cm' },
+      { type: 'littleScore', title: T('kaluga.plantapomme.coup1', '1er coup :'), score: this.scoreList[0] + 'cm' },
+      { type: 'littleScore', title: T('kaluga.plantapomme.coup2', '2eme coup :'), score: this.scoreList[1] + 'cm' },
+      { type: 'littleScore', title: T('kaluga.plantapomme.coup3', '3eme coup :'), score: this.scoreList[2] + 'cm' },
       { type: 'bigScore', frame: 1, score: this.score + 'cm' },
       { type: 'bigScore', frame: 2, score: this.card.$max + 'cm' },
       { type: 'margin', value: 10 },
@@ -1907,7 +1912,7 @@ class CaterPlant extends Trial {
       this.squirrel.setStatus(0);
       this.step = 5;
       this.waitTimer = 40;
-      this.endPanelStart.push({ label: 'basic', list: [{ type: 'msg', title: 'Hors-zone!', msg: 'La chenille doit etre plantée entre les deux piquets.' }] });
+      this.endPanelStart.push({ label: 'basic', list: [{ type: 'msg', title: T('kaluga.planter.horsZone', 'Hors-zone!'), msg: T('kaluga.planter.piquets', 'La chenille doit etre plantée entre les deux piquets.') }] });
     }
     this.deActiveLink();
   }
@@ -1985,7 +1990,7 @@ class DexFruit extends Trial {
         if (this.squirrel.status == null && this.fruit.x > this.launchPoint) {
           this.squirrel.setStatus(0);
           this.flValidate = false;
-          this.endPanelStart.push({ label: 'basic', list: [{ type: 'msg', title: 'Faute !', msg: 'Vous avez dépassé la ligne de lancé' }] });
+          this.endPanelStart.push({ label: 'basic', list: [{ type: 'msg', title: T('kaluga.lancer.faute2', 'Faute !'), msg: T('kaluga.dexteripomme.ligne', 'Vous avez dépassé la ligne de lancé') }] });
         }
         break;
       case 2:
@@ -2024,7 +2029,7 @@ class DexFruit extends Trial {
   miss() {
     this.step = 3;
     this.timer = 60;
-    this.endPanelStart.push({ label: 'basic', list: [{ type: 'msg', title: 'Perdu !', msg: " Vous n'avez pas réussi atteindre le panier" }] });
+    this.endPanelStart.push({ label: 'basic', list: [{ type: 'msg', title: T('kaluga.fin.perdu', 'Perdu !'), msg: T('kaluga.dexteripomme.rate', " Vous n'avez pas réussi atteindre le panier") }] });
   }
   onTzRelease() {
     this.setCameraFocus(this.tzongre.linkList[0]);
@@ -2229,9 +2234,9 @@ class BacASable extends Classic {
     const champ = this.createTextField('aide', this.dp_debugDraw + 1, 8, Cs.mch - 46, 480, 44);
     champ.multiline = true;
     champ.selectable = false;
-    champ.text = 'BAC À SABLE — rien de cette partie ne compte\n'
+    champ.text = T('kaluga.bac.aide', 'BAC À SABLE — rien de cette partie ne compte\n'
       + '1 à 8 : les papillons  ·  9 : une pomme  ·  0 : une pomme d’or\n'
-      + 'F fourmi  ·  V ver  ·  E écureuil  ·  G grenouille  ·  C corbeau';
+      + 'F fourmi  ·  V ver  ·  E écureuil  ·  G grenouille  ·  C corbeau');
     champ.setTextFormat({ font: 'Verdana', size: 10, color: 0xFFFFFF, bold: true });
   }
   entrerTzongre() {
@@ -2294,9 +2299,9 @@ class BacASable extends Classic {
   }
   scoreSaved() {
     let name = '', score = '';
-    name += '<b>Général:</b>\n'; score += '\n';
+    name += '<b>' + T('kaluga.fin.general', 'Général:') + '</b>\n'; score += '\n';
     name += this.stat.getList('name'); score += this.stat.getList('score');
-    name += '<b>Combo:</b>\n'; score += '\n';
+    name += '<b>' + T('kaluga.fin.combo', 'Combo:') + '</b>\n'; score += '\n';
     name += this.statCombo.getList('name'); score += this.statCombo.getList('score');
     this.endPanelMiddle.push({ list: [
       { type: 'bigScore', frame: 1, score: this.score },

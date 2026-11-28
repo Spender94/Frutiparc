@@ -78,6 +78,11 @@
   }
 </style>
 <script src="/js/sid-discret.js"></script>
+<!-- Les langues du parc (voir /js/i18n.js) : en anglais, le dictionnaire du
+     jeu (lang/en.js) arrive pendant l'analyse de la page ; en français, rien.
+     Avant invite.js, qui y lit la langue de son panneau. -->
+<script src="/js/i18n.js"></script>
+<script>FPI18n.charger(['commun', 'widgets', '/kaluga/lang/{lang}.js']);</script>
 <script src="/js/invite.js"></script>
 </head>
 <body>
@@ -94,13 +99,13 @@
     <div class="cote" id="cote-droit">
       <div class="bloc">
         <div class="btn" data-touche="bas">&#8595;</div>
-        <div class="btn" data-touche="fil">fil</div>
-        <div class="btn" id="b-pause" data-touche="echap">pause</div>
+        <div class="btn" data-touche="fil" data-i18n="kaluga.boutonFil">fil</div>
+        <div class="btn" id="b-pause" data-touche="echap" data-i18n="kaluga.boutonPause">pause</div>
       </div>
     </div>
   </div>
 </div>
-<div id="chargement">Chargement de Kaluga…</div>
+<div id="chargement" data-i18n="kaluga.chargement">Chargement de Kaluga…</div>
 
 <script src="/kaluga/moteur/formes.js"></script>
 <script src="/kaluga/moteur/flash.js"></script>
@@ -123,6 +128,8 @@
 (function () {
   'use strict';
   const K = window.KalugaMoteur;
+  // Le HTML marqué data-i18n (le chargement, la manette tactile).
+  if (window.FPI18n) FPI18n.appliquer(document);
   const params = new URLSearchParams(location.search);
   const canvas = document.getElementById('scene');
 
@@ -212,7 +219,7 @@
     adapter();
     canvas.focus();
   }).catch(function (e) {
-    document.getElementById('chargement').textContent = 'Kaluga n\'a pas pu démarrer : ' + (e && e.message ? e.message : e);
+    document.getElementById('chargement').textContent = K.T('kaluga.echecDemarrage', 'Kaluga n\'a pas pu démarrer : {erreur}', { erreur: e && e.message ? e.message : e });
     console.error(e);
   });
 })();
