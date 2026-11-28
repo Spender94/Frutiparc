@@ -842,6 +842,9 @@
       event.preventDefault();
       const body = Object.fromEntries(new FormData(loginForm).entries());
       body.device_token = getDeviceToken();
+      // La langue de la page, comme à l'inscription : le serveur écrit son
+      // message d'erreur dans la même.
+      body.lang = FPI18n.langue;
       setStatus(T('accueil.connexion', 'Connexion...'));
       try {
         const data = await postJson('/api/auth/login', body);
@@ -905,7 +908,7 @@
         if (!email) { forgotMsg.style.color = '#b31111'; forgotMsg.textContent = T('accueil.oubliIndiqueEmail', 'Indique ton adresse e-mail.'); return; }
         btn.disabled = true; const prev = btn.textContent; btn.textContent = T('accueil.envoi', 'Envoi…');
         try {
-          const data = await postJson('/api/auth/forgot', { email });
+          const data = await postJson('/api/auth/forgot', { email, lang: FPI18n.langue });
           forgotMsg.style.color = '#334a14';
           forgotMsg.textContent = data.message || T('accueil.oubliEnvoye', "Si un compte existe, un e-mail vient d'être envoyé.");
           document.getElementById('forgot-email').value = '';

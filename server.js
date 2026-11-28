@@ -3731,6 +3731,10 @@ function langueDe(username) {
   const u = username && users[String(username).toLowerCase()];
   return (u && FPI18n.valide(u.lang)) || 'fr';
 }
+// Le texte d'une réponse HTTP, dans la langue de qui la demande (les messages
+// `message`/`error` en toutes lettres des routes joueurs ; le CODE d'erreur, lui,
+// ne change jamais).
+function tReq(req, cle, fr, params) { return t(langueDeRequete(req), cle, fr, params); }
 function langueDeRequete(req) {
   const q = (req && req.query) || {};
   const b = (req && req.body) || {};
@@ -9962,7 +9966,7 @@ app.post('/api/auth/register', async (req, res) => {
   const ip = getClientIp(req) || 'unknown';
   if (!checkRegisterRateLimit(ip)) {
     console.warn(`[REGISTER] rate-limit blocked ip=${ip}`);
-    return res.status(429).json({ ok: false, error: 'rate_limited', message: 'Trop de tentatives, réessayez plus tard.' });
+    return res.status(429).json({ ok: false, error: 'rate_limited', message: tReq(req, 'api.auth.tropDeTentatives', 'Trop de tentatives, réessayez plus tard.') });
   }
 
   const rawName = String((req.body && req.body.username) || '').trim();
@@ -9970,16 +9974,16 @@ app.post('/api/auth/register', async (req, res) => {
   const password = String((req.body && req.body.password) || '');
 
   if (!isValidUsername(rawName)) {
-    return res.status(400).json({ ok: false, error: 'username_invalid', message: 'Pseudo : 3-20 caractères [a-zA-Z0-9_], pas d\'accents.' });
+    return res.status(400).json({ ok: false, error: 'username_invalid', message: tReq(req, 'api.auth.pseudoInvalide', 'Pseudo : 3-20 caractères [a-zA-Z0-9_], pas d\'accents.') });
   }
   if (!isValidPassword(password)) {
-    return res.status(400).json({ ok: false, error: 'password_invalid', message: 'Password: 6-80 chars.' });
+    return res.status(400).json({ ok: false, error: 'password_invalid', message: tReq(req, 'api.auth.codeSecretLongueur', 'Code secret : 6 à 80 caractères.') });
   }
   const rawEmail = String((req.body && req.body.email) || '').trim();
   let email = null;
   if (rawEmail) {
     if (!isValidEmail(rawEmail)) {
-      return res.status(400).json({ ok: false, error: 'email_invalid', message: 'E-mail invalide.' });
+      return res.status(400).json({ ok: false, error: 'email_invalid', message: tReq(req, 'api.auth.emailInvalide', 'E-mail invalide.') });
     }
     email = rawEmail.toLowerCase();
   }
@@ -10003,13 +10007,13 @@ app.post('/api/auth/register', async (req, res) => {
    * s'afficher — et elle n'est montrée à personne (cf. `bdPublic`).
    */
   if (users[username]) {
-    return res.status(409).json({ ok: false, error: 'user_exists', message: 'Username already taken.' });
+    return res.status(409).json({ ok: false, error: 'user_exists', message: tReq(req, 'api.auth.pseudoPris', 'Ce pseudo est déjà pris.') });
   }
   // A deleted account's pseudo stays reserved and can't be reused.
   if (process.env.DATABASE_URL) {
     try {
       if (await db.isUsernameReserved(username)) {
-        return res.status(409).json({ ok: false, error: 'user_exists', message: 'Ce pseudo a été supprimé et ne peut plus être réutilisé.' });
+        return res.status(409).json({ ok: false, error: 'user_exists', message: tReq(req, 'api.auth.pseudoSupprime', 'Ce pseudo a été supprimé et ne peut plus être réutilisé.') });
       }
     } catch (e) {
       console.error('[REGISTER] reserved-username check failed:', e.message);
@@ -10054,7 +10058,7 @@ app.post('/api/auth/register', async (req, res) => {
       referredBy: ref.referredBy, registerIp: ref.registerIp, deviceToken: ref.deviceToken, referralState: ref.referralState,
     });
     if (!dbUser) {
-      return res.status(409).json({ ok: false, error: 'user_exists', message: 'Username already taken.' });
+      return res.status(409).json({ ok: false, error: 'user_exists', message: tReq(req, 'api.auth.pseudoPris', 'Ce pseudo est déjà pris.') });
     }
     users[username] = createDefaultUser(passwordHash);
     users[username]._dbId = dbUser.id;
@@ -10098,7 +10102,7 @@ app.post('/api/auth/login', async (req, res) => {
     if (dbUser) {
       const { ok, upgrade } = await verifyPassword(dbUser.password, password);
       if (!ok) {
-        return res.status(401).json({ ok: false, error: 'invalid_credentials', message: 'Invalid username or password.' });
+        return res.status(401).json({ ok: false, error: 'invalid_credentials', message: tReq(req, 'api.auth.identifiantsIncorrects', 'Pseudo ou code secret incorrect.') });
       }
       if (upgrade) {
         dbUser.password = upgrade;
@@ -10116,7 +10120,7 @@ app.post('/api/auth/login', async (req, res) => {
       const user = users[username];
       const { ok, upgrade } = await verifyPassword(user && user.pass, password);
       if (!user || !ok) {
-        return res.status(401).json({ ok: false, error: 'invalid_credentials', message: 'Invalid username or password.' });
+        return res.status(401).json({ ok: false, error: 'invalid_credentials', message: tReq(req, 'api.auth.identifiantsIncorrects', 'Pseudo ou code secret incorrect.') });
       }
       if (upgrade) user.pass = upgrade;
       applyPendingChallengeNotifications(username, user);
@@ -10126,7 +10130,7 @@ app.post('/api/auth/login', async (req, res) => {
     const user = users[username];
     const { ok, upgrade } = await verifyPassword(user && user.pass, password);
     if (!user || !ok) {
-      return res.status(401).json({ ok: false, error: 'invalid_credentials', message: 'Invalid username or password.' });
+      return res.status(401).json({ ok: false, error: 'invalid_credentials', message: tReq(req, 'api.auth.identifiantsIncorrects', 'Pseudo ou code secret incorrect.') });
     }
     if (upgrade) user.pass = upgrade;
   }
@@ -10266,14 +10270,14 @@ async function sendResetEmail(toEmail, username, link) {
 app.post('/api/auth/forgot', async (req, res) => {
   const ip = getClientIp(req) || 'unknown';
   if (!checkRegisterRateLimit(ip)) {
-    return res.status(429).json({ ok: false, error: 'rate_limited', message: 'Trop de demandes, réessaie plus tard.' });
+    return res.status(429).json({ ok: false, error: 'rate_limited', message: tReq(req, 'api.auth.tropDeDemandes', 'Trop de demandes, réessaie plus tard.') });
   }
-  const generic = { ok: true, message: "Si un compte est associé à cette adresse, un e-mail de réinitialisation vient d'être envoyé." };
+  const generic = { ok: true, message: tReq(req, 'api.auth.oubliEnvoye', "Si un compte est associé à cette adresse, un e-mail de réinitialisation vient d'être envoyé.") };
   const email = String((req.body && req.body.email) || '').trim().toLowerCase();
   if (!isValidEmail(email)) {
     // Don't reveal validity specifics — but a clearly invalid address is a
     // client error worth flagging so the user fixes a typo.
-    return res.status(400).json({ ok: false, error: 'email_invalid', message: 'Adresse e-mail invalide.' });
+    return res.status(400).json({ ok: false, error: 'email_invalid', message: tReq(req, 'api.auth.adresseInvalide', 'Adresse e-mail invalide.') });
   }
   if (!process.env.DATABASE_URL) {
     console.warn('[RESET] no DATABASE_URL — reset unavailable');
@@ -10305,23 +10309,23 @@ app.get('/reset', (req, res) => {
 app.post('/api/auth/reset', async (req, res) => {
   const ip = getClientIp(req) || 'unknown';
   if (!checkRegisterRateLimit(ip)) {
-    return res.status(429).json({ ok: false, error: 'rate_limited', message: 'Trop de tentatives, réessaie plus tard.' });
+    return res.status(429).json({ ok: false, error: 'rate_limited', message: tReq(req, 'api.auth.tropDeTentativesTu', 'Trop de tentatives, réessaie plus tard.') });
   }
   const token = String((req.body && req.body.token) || '').trim();
   const password = String((req.body && req.body.password) || '');
   if (!token || !/^[0-9a-f]{64}$/i.test(token)) {
-    return res.status(400).json({ ok: false, error: 'bad_token', message: 'Lien invalide.' });
+    return res.status(400).json({ ok: false, error: 'bad_token', message: tReq(req, 'api.auth.lienInvalide', 'Lien invalide.') });
   }
   if (!isValidPassword(password)) {
-    return res.status(400).json({ ok: false, error: 'password_invalid', message: 'Code secret : 6 à 80 caractères.' });
+    return res.status(400).json({ ok: false, error: 'password_invalid', message: tReq(req, 'api.auth.codeSecretLongueur', 'Code secret : 6 à 80 caractères.') });
   }
   if (!process.env.DATABASE_URL) {
-    return res.status(503).json({ ok: false, error: 'no_db', message: 'Réinitialisation indisponible.' });
+    return res.status(503).json({ ok: false, error: 'no_db', message: tReq(req, 'api.auth.reinitIndisponible', 'Réinitialisation indisponible.') });
   }
   try {
     const row = await db.findValidPasswordReset(hashResetToken(token));
     if (!row) {
-      return res.status(400).json({ ok: false, error: 'token_invalid', message: 'Ce lien est invalide ou expiré. Refais une demande.' });
+      return res.status(400).json({ ok: false, error: 'token_invalid', message: tReq(req, 'api.auth.lienExpire', 'Ce lien est invalide ou expiré. Refais une demande.') });
     }
     const username = String(row.username).toLowerCase();
     const newHash = await hashPassword(password);
@@ -10338,10 +10342,10 @@ app.post('/api/auth/reset', async (req, res) => {
     }
     oublierSessionsDormantesDe(username);
     console.log(`[RESET] password reset completed for ${username}`);
-    return res.json({ ok: true, message: 'Ton code secret a été changé. Tu peux te connecter.' });
+    return res.json({ ok: true, message: tReq(req, 'api.auth.codeChange', 'Ton code secret a été changé. Tu peux te connecter.') });
   } catch (e) {
     console.error('[RESET] reset error:', e.message);
-    return res.status(500).json({ ok: false, error: 'server_error', message: 'Erreur serveur.' });
+    return res.status(500).json({ ok: false, error: 'server_error', message: tReq(req, 'api.erreurServeur', 'Erreur serveur.') });
   }
 });
 
@@ -12255,13 +12259,14 @@ function prunosticPrevenir(joueur, parieur, texte) {
 }
 
 app.post('/api/paris', async (req, res) => {
-  if (!process.env.DATABASE_URL) return res.status(400).json({ ok: false, code: 'fermes', message: 'Les paris ne sont pas disponibles.' });
+  const L = langueDeRequete(req);
+  if (!process.env.DATABASE_URL) return res.status(400).json({ ok: false, code: 'fermes', message: t(L, 'paris.indisponibles', 'Les paris ne sont pas disponibles.') });
   const b = req.body || {};
   const moi = resolveUsernameFromSid(String(b.sid || ''));
-  if (!moi) return res.status(401).json({ ok: false, code: 'auth', message: 'Connecte-toi pour parier.' });
+  if (!moi) return res.status(401).json({ ok: false, code: 'auth', message: t(L, 'paris.connecteToi', 'Connecte-toi pour parier.') });
   const user = users[moi];
-  if (!user) return res.status(503).json({ ok: false, code: 'auth', message: 'Compte indisponible, réessaie.' });
-  if (parisVerrous.has(moi)) return res.status(429).json({ ok: false, code: 'patience', message: 'Un pari est déjà en cours d’enregistrement.' });
+  if (!user) return res.status(503).json({ ok: false, code: 'auth', message: t(L, 'paris.compteIndisponible', 'Compte indisponible, réessaie.') });
+  if (parisVerrous.has(moi)) return res.status(429).json({ ok: false, code: 'patience', message: t(L, 'paris.patience', 'Un pari est déjà en cours d’enregistrement.') });
   parisVerrous.add(moi);
   try {
     const m = await db.getTournamentMatch(Number(b.match));
@@ -12270,19 +12275,19 @@ app.post('/api/paris', async (req, res) => {
     const choix = String(b.choix || '').toLowerCase();
     const mise = Number(b.mise);
     const refus = Paris.refus({
-      tournoi: t, match: m, parieur: moi, choix, mise, solde: Number(user.kikooz) || 0,
+      tournoi: t, match: m, parieur: moi, choix, mise, solde: Number(user.kikooz) || 0, lang: L,
       misePrecedente: precedent && precedent.statut === 'ouvert' ? precedent.mise : 0,
       choixPrecedent: precedent && precedent.statut === 'ouvert' ? precedent.choix : null,
     });
     if (refus) return res.status(400).json(Object.assign({ ok: false }, refus));
-    if (parisMatchCommence(t, m)) return res.status(400).json({ ok: false, code: 'joue', message: 'Les mises sur ce match sont fermées.' });
+    if (parisMatchCommence(t, m)) return res.status(400).json({ ok: false, code: 'joue', message: t(L, 'paris.misesFermees', 'Les mises sur ce match sont fermées.') });
     if (precedent && precedent.statut !== 'ouvert') {
-      return res.status(400).json({ ok: false, code: 'joue', message: 'Les paris sur ce match sont réglés.' });
+      return res.status(400).json({ ok: false, code: 'joue', message: t(L, 'paris.matchRegle', 'Les paris sur ce match sont réglés.') });
     }
     const lies = await db.memeAppareil(moi, [m.player1, m.player2]);
     if (lies.length) {
       return res.status(400).json({ ok: false, code: 'appareil',
-        message: 'Ton compte a été utilisé sur le même appareil qu’un des joueurs de ce match : tu ne peux pas parier dessus.' });
+        message: t(L, 'paris.memeAppareil', 'Ton compte a été utilisé sur le même appareil qu’un des joueurs de ce match : tu ne peux pas parier dessus.') });
     }
     const affiche = parisAffiche(m);
     // La cote du moment, figée sur la mise. Un pari mutuel posé avant les
@@ -12292,11 +12297,11 @@ app.post('/api/paris', async (req, res) => {
     const cote = cotes && cotes[choix] ? cotes[choix].cote : null;
     const retour = cote ? CoteTournoi.retourDe(mise, cote) : null;
     const pari = await db.poserPari({ tournamentId: t.id, matchId: m.id, username: moi, choix, mise, affiche, retour, cote });
-    if (!pari) return res.status(400).json({ ok: false, code: 'camp', message: 'Tu as déjà parié sur l’autre joueur de ce match.' });
+    if (!pari) return res.status(400).json({ ok: false, code: 'camp', message: t(L, 'paris.autreCamp', 'Tu as déjà parié sur l’autre joueur de ce match.') });
     // Le solde a pu bouger pendant l'écriture (un achat, un don) : on revérifie.
     if ((Number(user.kikooz) || 0) < mise) {
       await db.retirerMise(pari.id, mise, retour).catch(dbErr('retirerMise'));
-      return res.status(400).json({ ok: false, code: 'solde', message: 'Tu n’as pas assez de kikooz.' });
+      return res.status(400).json({ ok: false, code: 'solde', message: t(L, 'paris.solde', 'Tu n’as pas assez de kikooz.') });
     }
     user.kikooz = (Number(user.kikooz) || 0) - mise;
     if (user._dbId) db.updateUser(moi, { kikooz: user.kikooz }).catch(dbErr('updateUser pari'));
@@ -12316,7 +12321,7 @@ app.post('/api/paris', async (req, res) => {
       cote: pari.cote == null ? null : Number(pari.cote), retour: pari.retour });
   } catch (e) {
     console.error('[PARIS] mise :', e.message);
-    res.status(500).json({ ok: false, code: 'erreur', message: 'Le pari n’a pas pu être enregistré.' });
+    res.status(500).json({ ok: false, code: 'erreur', message: t(L, 'paris.nonEnregistre', 'Le pari n’a pas pu être enregistré.') });
   } finally {
     parisVerrous.delete(moi);
   }
@@ -12717,19 +12722,20 @@ async function defiDuJoueur(moi, jour, paris, hist) {
 // Un défi médaille : les refus, puis la mise (appelé par POST /api/paris/challenge).
 async function parierDefi(res, moi, user, b, type) {
   const non = (code, message, status) => res.status(status || 400).json({ ok: false, code, message });
+  const L = langueDe(moi);
   const R = parisChallengeReglages;
-  if (R.defiActif === false) return non('fermes', 'Le défi médaille est fermé pour le moment.');
+  if (R.defiActif === false) return non('fermes', t(L, 'paris.defiFerme', 'Le défi médaille est fermé pour le moment.'));
   const jour = parisChallengeDemain();
   const jeu = jeuxChallengeOuverts().find((j) => j.cle === String(b.jeu || ''));
-  if (!jeu) return non('jeu', 'Ce jeu n’est pas ouvert aux Prunostics.');
+  if (!jeu) return non('jeu', t(L, 'paris.jeuFermePrunostics', 'Ce jeu n’est pas ouvert aux Prunostics.'));
   // Un défi se relève pour soi : on ne parie pas la médaille d'un autre ici.
   if (b.choix != null && b.choix !== '' && normalizeUsername(b.choix) !== moi) {
-    return non('soi', 'Le défi médaille se joue sur toi-même. Pour miser sur un autre, prends les pots « médaillé » ou « en or ».');
+    return non('soi', t(L, 'paris.defiSoi', 'Le défi médaille se joue sur toi-même. Pour miser sur un autre, prends les pots « médaillé » ou « en or ».'));
   }
   const mise = Number(b.mise);
-  if (!Number.isInteger(mise) || mise < 1) return non('mise', 'La mise est un nombre entier de kikooz.');
+  if (!Number.isInteger(mise) || mise < 1) return non('mise', t(L, 'paris.miseEntiere', 'La mise est un nombre entier de kikooz.'));
   const cotes = CoteChallenge.cotesDefi((await cotesChallenge(jour)).get(jeu.cle), moi);
-  if (!cotes) return non('jeu', `${jeu.nom} n’a pas assez tourné ces 30 jours pour un défi médaille.`);
+  if (!cotes) return non('jeu', t(L, 'paris.defiPasAssez', '{jeu} n’a pas assez tourné ces 30 jours pour un défi médaille.', { jeu: jeu.nom }));
   const cote = cotes[TYPES_DEFI[type].couleur];
   const paris = await db.parisChallengeDuJour(jour);
   const plafond = Number(R.plafond) || 50;
@@ -12737,22 +12743,24 @@ async function parierDefi(res, moi, user, b, type) {
   const deja = paris.filter((p) => p.username === moi).reduce((s2, p) => s2 + (Number(p.mise) || 0), 0);
   const dejaDefi = paris.filter((p) => p.username === moi && estDefi(p.type)).reduce((s2, p) => s2 + (Number(p.mise) || 0), 0);
   if (dejaDefi + mise > plafondDefi) {
-    return non('plafond', `Le défi médaille est plafonné à ${plafondDefi} kikooz par jour : tu peux encore y miser ${Math.max(0, plafondDefi - dejaDefi)}.`);
+    return non('plafond', t(L, 'paris.defiPlafond', 'Le défi médaille est plafonné à {plafond} kikooz par jour : tu peux encore y miser {reste}.',
+      { plafond: plafondDefi, reste: Math.max(0, plafondDefi - dejaDefi) }));
   }
   if (deja + mise > plafond) {
-    return non('plafond', `Le plafond est de ${plafond} kikooz par jour : tu peux encore miser ${Math.max(0, plafond - deja)}.`);
+    return non('plafond', t(L, 'paris.plafondJour', 'Le plafond est de {plafond} kikooz par jour : tu peux encore miser {reste}.',
+      { plafond, reste: Math.max(0, plafond - deja) }));
   }
-  if ((Number(user.kikooz) || 0) < mise) return non('solde', 'Tu n’as pas assez de kikooz.');
+  if ((Number(user.kikooz) || 0) < mise) return non('solde', t(L, 'paris.solde', 'Tu n’as pas assez de kikooz.'));
   const retour = CoteChallenge.retourDe(mise, cote);
   const pari = await db.poserPariChallenge({ jour, jeu: jeu.cle, type, username: moi, choix: moi, mise, cote, retour });
-  if (!pari) return non('fermes', 'Ce pari est déjà réglé.');
+  if (!pari) return non('fermes', t(L, 'paris.dejaRegle', 'Ce pari est déjà réglé.'));
   // Deux mises simultanées ont pu passer un plafond, ou le solde bouger.
   const apres = (await db.parisChallengeDuJour(jour)).filter((p) => p.username === moi);
   const total = apres.reduce((s2, p) => s2 + (Number(p.mise) || 0), 0);
   const totalDefi = apres.filter((p) => estDefi(p.type)).reduce((s2, p) => s2 + (Number(p.mise) || 0), 0);
   if (total > plafond || totalDefi > plafondDefi || (Number(user.kikooz) || 0) < mise) {
     await db.retirerMiseChallenge(pari.id, mise, retour).catch(dbErr('retirerMiseChallenge'));
-    return non('plafond', 'Ta mise dépasse le plafond du jour ou ton solde.');
+    return non('plafond', t(L, 'paris.depassePlafond', 'Ta mise dépasse le plafond du jour ou ton solde.'));
   }
   user.kikooz = (Number(user.kikooz) || 0) - mise;
   if (user._dbId) db.updateUser(moi, { kikooz: user.kikooz }).catch(dbErr('updateUser pari'));
@@ -13969,15 +13977,15 @@ app.post('/api/quetes/echanger', async (req, res) => {
     const S = quetesSemaineCourante();
     const l = quetesIndiv.get(u);
     if (!quetesV2(S.lundi) || !quetesReglages.paliers.echange || !l) return res.status(400).json({ ok: false, error: 'pas_d_echange' });
-    if (l.echange) return res.status(409).json({ ok: false, error: 'deja_echange', message: 'Tu as déjà changé une quête cette semaine.' });
+    if (l.echange) return res.status(409).json({ ok: false, error: 'deja_echange', message: tReq(req, 'quetes.dejaEchange', 'Tu as déjà changé une quête cette semaine.') });
     const i = l.quetes.findIndex((q) => q.id === String(b.id));
     if (i < 0) return res.status(404).json({ ok: false, error: 'quete_inconnue' });
     const ancienne = l.quetes[i];
     // Une bricole de Gromelin ne s'échange pas : elle est en plus, et il l'a choisie.
-    if (ancienne.gromelin) return res.status(400).json({ ok: false, error: 'bricole', message: 'Une bricole de Gromelin ne s’échange pas.' });
-    if (ancienne.doigt) return res.status(400).json({ ok: false, error: 'doigt', message: 'Le défi au doigt ne s’échange pas.' });
+    if (ancienne.gromelin) return res.status(400).json({ ok: false, error: 'bricole', message: tReq(req, 'quetes.bricoleNonEchangeable', 'Une bricole de Gromelin ne s’échange pas.') });
+    if (ancienne.doigt) return res.status(400).json({ ok: false, error: 'doigt', message: tReq(req, 'quetes.doigtNonEchangeable', 'Le défi au doigt ne s’échange pas.') });
     const p = (quetesProgres.get(u) || new Map()).get(ancienne.id);
-    if (p && p.faitAt) return res.status(400).json({ ok: false, error: 'deja_faite', message: 'Cette quête est déjà faite.' });
+    if (p && p.faitAt) return res.status(400).json({ ok: false, error: 'deja_faite', message: tReq(req, 'quetes.dejaFaite', 'Cette quête est déjà faite.') });
     // La remplaçante : même niveau d'abord, jamais une mesure déjà dans la liste.
     const prises = new Set(l.quetes.map((q) => q.famille));
     // (une quête de la vie du parc se reconnaît à sa clé, une quête de score à sa mesure)
@@ -13992,7 +14000,7 @@ app.post('/api/quetes/echanger', async (req, res) => {
       const faciles = Quetes.tirer(Object.assign({}, quetesReglages, { composition: { facile: 10, moyenne: 0, difficile: 0 } }), 'echange:' + S.lundi + ':' + u)
         .filter((q) => !deja.has(q.id) && !deja.has(q.famille));
       const q = faciles.find((x) => !jeux.has(x.etiquette)) || faciles[0];
-      if (!q) return res.status(400).json({ ok: false, error: 'rien_a_proposer', message: 'Gromelin n’a rien d’autre à te proposer cette semaine.' });
+      if (!q) return res.status(400).json({ ok: false, error: 'rien_a_proposer', message: tReq(req, 'quetes.rienAProposer', 'Gromelin n’a rien d’autre à te proposer cette semaine.') });
       neuve = Object.assign({}, q, { id: 'ind-' + num, base: q.id, palier: 'bronze', gain: quetesReglages.paliers.gains.bronze });
     }
     const quetes = l.quetes.slice();
@@ -14000,7 +14008,7 @@ app.post('/api/quetes/echanger', async (req, res) => {
     const reserve = (l.reserve || []).filter((x) => x !== sp);
     const echange = { de: ancienne.id, deTitre: Quetes.titre(ancienne), par: neuve.id, at: Date.now() };
     if (process.env.DATABASE_URL && !(await db.quetesEchangerIndividuelle(S.lundi, u, quetes, reserve, echange))) {
-      return res.status(409).json({ ok: false, error: 'deja_echange', message: 'Tu as déjà changé une quête cette semaine.' });
+      return res.status(409).json({ ok: false, error: 'deja_echange', message: tReq(req, 'quetes.dejaEchange', 'Tu as déjà changé une quête cette semaine.') });
     }
     Object.assign(l, { quetes, reserve, echange });
     const mp = quetesProgres.get(u);
@@ -14032,12 +14040,12 @@ app.post('/api/quetes/contrat', async (req, res) => {
   try {
     const c = await quetesContratDe(u);
     if (!c || !c.propositions.length) return res.status(400).json({ ok: false, error: 'pas_de_contrat' });
-    if (c.choix != null) return res.status(409).json({ ok: false, error: 'deja_signe', message: 'Tu as déjà signé ton contrat cette semaine.' });
+    if (c.choix != null) return res.status(409).json({ ok: false, error: 'deja_signe', message: tReq(req, 'quetes.dejaSigne', 'Tu as déjà signé ton contrat cette semaine.') });
     const choix = Number(b.choix);
     if (!Number.isInteger(choix) || choix < 0 || choix >= c.propositions.length) return res.status(400).json({ ok: false, error: 'choix_invalide' });
     const S = quetesSemaineCourante();
     if (process.env.DATABASE_URL && !(await db.quetesSignerContrat(S.lundi, u, choix))) {
-      return res.status(409).json({ ok: false, error: 'deja_signe', message: 'Tu as déjà signé ton contrat cette semaine.' });
+      return res.status(409).json({ ok: false, error: 'deja_signe', message: tReq(req, 'quetes.dejaSigne', 'Tu as déjà signé ton contrat cette semaine.') });
     }
     quetesContratPoser(u, Object.assign(c, { choix, signeAt: Date.now() }));
     console.log(`[QUETES] ${u} signe son contrat : « ${Quetes.titre(c.def)} » (${c.def.niveau})`);
@@ -14834,7 +14842,7 @@ app.get('/api/paris/parieur', async (req, res) => {
   try {
     const u = normalizeUsername(req.query.u);
     const fiche = u ? (await db.fichesComptes([u]))[0] : null;
-    if (!fiche) return res.status(404).json({ ok: false, message: 'Ce joueur n’existe pas.' });
+    if (!fiche) return res.status(404).json({ ok: false, message: tReq(req, 'paris.joueurInconnu', 'Ce joueur n’existe pas.') });
     const depuis = Date.now() - 30 * 86400000;
     const rows = (await db.registreParis(u, 500))
       .filter((p) => p.statut !== 'ouvert' && p.regle_le && new Date(p.regle_le).getTime() >= depuis)
@@ -14849,18 +14857,19 @@ app.get('/api/paris/parieur', async (req, res) => {
 // historique sur le jeu, et ce qui est déjà misé sur lui.
 app.get('/api/paris/challenge/joueur', async (req, res) => {
   const non = (code, message, status) => res.status(status || 400).json({ ok: false, code, message });
-  if (!process.env.DATABASE_URL || !parisChallengeReglages.actif) return non('fermes', 'Les paris du Challenge ne sont pas ouverts.');
+  const L = langueDeRequete(req);
+  if (!process.env.DATABASE_URL || !parisChallengeReglages.actif) return non('fermes', t(L, 'paris.challengeFerme', 'Les paris du Challenge ne sont pas ouverts.'));
   try {
     const moi = resolveUsernameFromSid(String(req.query.sid || '')) || '';
     const demain = parisChallengeDemain();
     const jeu = (await jeuxDuJour(demain)).find((j) => j.cle === String(req.query.jeu || ''));
-    if (!jeu) return non('jeu', 'Ce jeu n’est pas ouvert aux paris demain.');
+    if (!jeu) return non('jeu', t(L, 'paris.jeuFermeDemain', 'Ce jeu n’est pas ouvert aux paris demain.'));
     const choix = normalizeUsername(req.query.choix);
     let fiche = null;
     if (choix && !NPC_USERNAMES.has(choix)) {
       try { fiche = (await db.fichesComptes([choix]))[0] || null; } catch (e) { fiche = null; }
     }
-    if (!fiche) return non('choix', 'Ce joueur n’existe pas.', 404);
+    if (!fiche) return non('choix', t(L, 'paris.joueurInconnu', 'Ce joueur n’existe pas.'), 404);
     const h = (await cotesChallenge(demain)).get(jeu.cle) || { joueurs: {} };
     const l = h.joueurs[choix] || { joues: 0, podiums: 0, ors: 0 };
     const mutuels = (await db.parisChallengeDuJour(demain)).filter((p) => p.jeu === jeu.cle && p.statut !== 'rembourse' && p.retour == null);
@@ -14883,53 +14892,55 @@ app.get('/api/paris/challenge/joueur', async (req, res) => {
 
 app.post('/api/paris/challenge', async (req, res) => {
   const non = (code, message, status) => res.status(status || 400).json({ ok: false, code, message });
-  if (!process.env.DATABASE_URL || !parisChallengeReglages.actif) return non('fermes', 'Les paris du Challenge ne sont pas ouverts.');
+  const L = langueDeRequete(req);
+  if (!process.env.DATABASE_URL || !parisChallengeReglages.actif) return non('fermes', t(L, 'paris.challengeFerme', 'Les paris du Challenge ne sont pas ouverts.'));
   const b = req.body || {};
   const moi = resolveUsernameFromSid(String(b.sid || ''));
-  if (!moi) return non('auth', 'Connecte-toi pour parier.', 401);
+  if (!moi) return non('auth', t(L, 'paris.connecteToi', 'Connecte-toi pour parier.'), 401);
   const user = users[moi];
-  if (!user) return non('auth', 'Compte indisponible, réessaie.', 503);
+  if (!user) return non('auth', t(L, 'paris.compteIndisponible', 'Compte indisponible, réessaie.'), 503);
   const type = String(b.type || '');
   if (estDefi(type)) {
-    if (parisVerrous.has(moi)) return non('patience', 'Un pari est déjà en cours d’enregistrement.', 429);
+    if (parisVerrous.has(moi)) return non('patience', t(L, 'paris.patience', 'Un pari est déjà en cours d’enregistrement.'), 429);
     parisVerrous.add(moi);
     try { return await parierDefi(res, moi, user, b, type); } catch (e) {
       console.error('[PARIS] défi médaille :', e.message);
-      return non('erreur', 'Le pari n’a pas pu être enregistré.', 500);
+      return non('erreur', t(L, 'paris.nonEnregistre', 'Le pari n’a pas pu être enregistré.'), 500);
     } finally { parisVerrous.delete(moi); }
   }
   const jour = parisChallengeDemain();
   const jeu = (await jeuxDuJour(jour).catch(() => [])).find((j) => j.cle === String(b.jeu || ''));
-  if (!jeu) return non('jeu', 'Ce jeu n’est pas ouvert aux paris demain.');
-  if (type !== 'podium' && type !== 'or') return non('type', 'Pari inconnu.');
+  if (!jeu) return non('jeu', t(L, 'paris.jeuFermeDemain', 'Ce jeu n’est pas ouvert aux paris demain.'));
+  if (type !== 'podium' && type !== 'or') return non('type', t(L, 'paris.pariInconnu', 'Pari inconnu.'));
   const mise = Number(b.mise);
-  if (!Number.isInteger(mise) || mise < 1) return non('mise', 'La mise est un nombre entier de kikooz.');
-  if (parisVerrous.has(moi)) return non('patience', 'Un pari est déjà en cours d’enregistrement.', 429);
+  if (!Number.isInteger(mise) || mise < 1) return non('mise', t(L, 'paris.miseEntiere', 'La mise est un nombre entier de kikooz.'));
+  if (parisVerrous.has(moi)) return non('patience', t(L, 'paris.patience', 'Un pari est déjà en cours d’enregistrement.'), 429);
   parisVerrous.add(moi);
   try {
     const choix = normalizeUsername(b.choix);
     let existe = !!users[choix];
     if (!existe && choix) { try { existe = !!(await db.findUserByUsername(choix)); } catch (e) { existe = false; } }
     // Les PNJ ne jouent pas au Challenge : un pari sur eux serait perdu d'avance.
-    if (!existe || NPC_USERNAMES.has(choix)) return non('choix', 'Ce joueur n’existe pas.');
+    if (!existe || NPC_USERNAMES.has(choix)) return non('choix', t(L, 'paris.joueurInconnu', 'Ce joueur n’existe pas.'));
     // Un pari à cote fixe (l'ancienne règle) sur le même joueur reste tel quel.
     const avant = (await db.parisChallengeDuJour(jour)).find((p) => p.username === moi && p.jeu === jeu.cle
       && p.type === type && p.choix === choix && p.statut === 'ouvert');
     if (avant && avant.retour != null) {
-      return non('fixe', 'Tu as déjà un pari à cote fixe sur ce joueur : il reste tel quel. Mise sur un autre, ou sur l’autre pot.');
+      return non('fixe', t(L, 'paris.coteFixe', 'Tu as déjà un pari à cote fixe sur ce joueur : il reste tel quel. Mise sur un autre, ou sur l’autre pot.'));
     }
     const plafond = Number(parisChallengeReglages.plafond) || 50;
     const deja = await db.miseChallengeDuJour(moi, jour);
     if (deja + mise > plafond) {
-      return non('plafond', `Le plafond est de ${plafond} kikooz par jour : tu peux encore miser ${Math.max(0, plafond - deja)}.`);
+      return non('plafond', t(L, 'paris.plafondJour', 'Le plafond est de {plafond} kikooz par jour : tu peux encore miser {reste}.',
+        { plafond, reste: Math.max(0, plafond - deja) }));
     }
-    if ((Number(user.kikooz) || 0) < mise) return non('solde', 'Tu n’as pas assez de kikooz.');
+    if ((Number(user.kikooz) || 0) < mise) return non('solde', t(L, 'paris.solde', 'Tu n’as pas assez de kikooz.'));
     const pari = await db.poserPariChallenge({ jour, jeu: jeu.cle, type, username: moi, choix, mise });
-    if (!pari) return non('fermes', 'Ce pari est déjà réglé.');
+    if (!pari) return non('fermes', t(L, 'paris.dejaRegle', 'Ce pari est déjà réglé.'));
     // Deux mises simultanées ont pu passer le plafond, ou le solde bouger.
     if ((await db.miseChallengeDuJour(moi, jour)) > plafond || (Number(user.kikooz) || 0) < mise) {
       await db.retirerMiseChallenge(pari.id, mise, 0).catch(dbErr('retirerMiseChallenge'));
-      return non('plafond', 'Ta mise dépasse le plafond du jour ou ton solde.');
+      return non('plafond', t(L, 'paris.depassePlafond', 'Ta mise dépasse le plafond du jour ou ton solde.'));
     }
     user.kikooz = (Number(user.kikooz) || 0) - mise;
     if (user._dbId) db.updateUser(moi, { kikooz: user.kikooz }).catch(dbErr('updateUser pari'));
@@ -14950,7 +14961,7 @@ app.post('/api/paris/challenge', async (req, res) => {
     res.json({ ok: true, mise: pari.mise, pot: pot.total, estime, solde: user.kikooz, dejaMise: deja + mise });
   } catch (e) {
     console.error('[PARIS] mise Challenge :', e.message);
-    non('erreur', 'Le pari n’a pas pu être enregistré.', 500);
+    non('erreur', t(L, 'paris.nonEnregistre', 'Le pari n’a pas pu être enregistré.'), 500);
   } finally {
     parisVerrous.delete(moi);
   }
@@ -16223,7 +16234,7 @@ app.get('/api/light/mes-donnees', async (req, res) => {
   if (!user) return res.status(503).json({ ok: false, error: 'user_not_loaded' });
   const dernier = exportsRecents.get(username) || 0;
   if (Date.now() - dernier < 60 * 1000) {
-    return res.status(429).json({ ok: false, error: 'rate_limited', message: 'Un export par minute, le temps de lire le précédent.' });
+    return res.status(429).json({ ok: false, error: 'rate_limited', message: tReq(req, 'api.compte.exportCadence', 'Un export par minute, le temps de lire le précédent.') });
   }
   exportsRecents.set(username, Date.now());
   try {
@@ -16240,8 +16251,8 @@ app.get('/api/light/mes-donnees', async (req, res) => {
     const jour = new Date().toISOString().slice(0, 10);
     const paquet = {
       site: 'Frutiparc', pseudo: getDisplayName(username), exporte_le: new Date().toISOString(),
-      note: 'Toutes les données que le serveur tient sur ce compte, table par table. '
-        + 'Le mot de passe n’en fait pas partie (il est haché, personne ne peut le lire).',
+      note: tReq(req, 'api.compte.exportNote', 'Toutes les données que le serveur tient sur ce compte, table par table. '
+        + 'Le mot de passe n’en fait pas partie (il est haché, personne ne peut le lire).'),
       ...donnees,
     };
     res.setHeader('Content-Disposition', `attachment; filename="frutiparc-${username}-${jour}.json"`);
@@ -16262,7 +16273,7 @@ app.post('/api/light/compte/suppression', async (req, res) => {
   // Le mot de passe, toujours : un téléphone laissé ouvert ne doit pas suffire.
   const password = String((req.body && req.body.password) || '');
   const { ok } = await verifyPassword(user.pass, password);
-  if (!ok) return res.status(401).json({ ok: false, error: 'invalid_password', message: 'Code secret incorrect.' });
+  if (!ok) return res.status(401).json({ ok: false, error: 'invalid_password', message: tReq(req, 'api.compte.codeIncorrect', 'Code secret incorrect.') });
   user.suppressionDemandee = new Date().toISOString();
   if (user._dbId && process.env.DATABASE_URL) {
     await db.demanderSuppression(user._dbId).catch(dbErr('demanderSuppression'));
@@ -23857,16 +23868,16 @@ app.get('/api/blindtest/embed', (req, res) => {
   // ainsi que l'origine du site : ni le chemin, ni le jeton du cadre.
   res.set('Referrer-Policy', 'strict-origin');
   if ((dest && dest !== 'iframe') || (site && site !== 'same-origin')) {
-    return res.status(403).type('text').send('L\'extrait du blindtest ne s\'écoute que dans le salon.');
+    return res.status(403).type('text').send(tReq(req, 'api.blindtest.salonSeulement', 'L\'extrait du blindtest ne s\'écoute que dans le salon.'));
   }
   const salon = blindtestParJeton.get(String(req.query.k || ''));
   const b = salon ? blindtestEnCours(salon) : null;
-  if (!b) return res.status(404).send('Extrait terminé.');
+  if (!b) return res.status(404).send(tReq(req, 'api.blindtest.termine', 'Extrait terminé.'));
 
   const ecoule = Math.max(0, (Date.now() - b.aMs) / 1000);
   const depart = Math.floor(b.debut + ecoule);
   const fin = Math.ceil(b.debut + b.duree);
-  if (depart >= fin) return res.status(404).send('Extrait terminé.');
+  if (depart >= fin) return res.status(404).send(tReq(req, 'api.blindtest.termine', 'Extrait terminé.'));
 
   const p = new URLSearchParams({
     start: String(depart), end: String(fin), autoplay: '1',
@@ -30565,6 +30576,14 @@ function getMuteInfoForUser(username) {
     + ` à ${pad(d.getHours())}h${pad(d.getMinutes())}`;
   return { muted: true, until: raw, untilDisplay: display };
 }
+// « 17/05/2026 à 14h30 » en français (l'`untilDisplay` d'origine, tel quel) ;
+// « May 17, 2026 at 14:30 » en anglais — les mêmes heures, celles du serveur.
+function finDeSanction(lang, mute) {
+  if (!mute || !mute.untilDisplay || lang === 'fr') return mute ? mute.untilDisplay : '';
+  const d = new Date(String(mute.until).replace('.', 'T') + 'Z');
+  if (Number.isNaN(d.getTime())) return mute.untilDisplay;
+  return t(lang, 'api.sanctionFin', '{jour} à {heure}', { jour: FPI18n.date(lang, d, 'long'), heure: FPI18n.date(lang, d, 'heure') });
+}
 
 // ─────────────────────────────────────────────
 // Account ban (global). Unlike totoche (mute, in-memory, chat-only), a ban is
@@ -30909,7 +30928,7 @@ app.get('/api/forum/search', async (req, res) => {
     const mots = [...new Set(sansAccents(q).replace(/[^a-z0-9@'’-]+/g, ' ').split(' ')
       .map((m) => m.replace(/^['’-]+|['’-]+$/g, '')).filter((m) => m.length >= 2))].slice(0, 8);
     const boardId = Number(req.query.board) || null;
-    if (!mots.length && !auteur) return res.status(400).json({ ok: false, error: 'requete_vide', message: 'Tape au moins un mot de deux lettres, ou un auteur.' });
+    if (!mots.length && !auteur) return res.status(400).json({ ok: false, error: 'requete_vide', message: tReq(req, 'api.forum.rechercheVide', 'Tape au moins un mot de deux lettres, ou un auteur.') });
     const page = Math.max(1, Math.min(500, Number(req.query.page) || 1));
     // Les forums du staff restent cachés à qui n'en est pas.
     let exclusBoards = [];
@@ -31177,7 +31196,8 @@ app.post('/api/forum/topic', async (req, res) => {
     return res.status(403).json({
       error: 'muted',
       mutedUntil: mute.until,
-      message: `Tu es totoché jusqu'au ${mute.untilDisplay}, tu ne peux pas poster sur le forum tant que la sanction dure.`,
+      message: tReq(req, 'api.forum.totochePoster', 'Tu es totoché jusqu\'au {quand}, tu ne peux pas poster sur le forum tant que la sanction dure.',
+        { quand: finDeSanction(langueDeRequete(req), mute) }),
     });
   }
   const ban = getBanInfoForUser(username);
@@ -31336,7 +31356,8 @@ app.post('/api/forum/upload-image',
     const mute = getMuteInfoForUser(username);
     if (mute.muted) {
       return res.status(403).json({ ok: false, error: 'muted',
-        message: `Tu es totoché jusqu'au ${mute.untilDisplay}, tu ne peux pas envoyer d'image.` });
+        message: tReq(req, 'api.forum.totocheImage', 'Tu es totoché jusqu\'au {quand}, tu ne peux pas envoyer d\'image.',
+          { quand: finDeSanction(langueDeRequete(req), mute) }) });
     }
     const ban = getBanInfoForUser(username);
     if (ban.banned) {
@@ -31347,12 +31368,12 @@ app.post('/api/forum/upload-image',
     }
     const body = req.body;
     if (!Buffer.isBuffer(body) || body.length < 32) {
-      return res.status(400).json({ ok: false, error: 'empty_body', message: 'Image vide ou illisible.' });
+      return res.status(400).json({ ok: false, error: 'empty_body', message: tReq(req, 'api.forum.imageVide', 'Image vide ou illisible.') });
     }
     const kind = sniffForumImage(body);
     if (!kind) {
       return res.status(415).json({ ok: false, error: 'unsupported_type',
-        message: 'Format non supporté. Accepté : PNG, JPEG, GIF, WEBP.' });
+        message: tReq(req, 'api.forum.imageFormat', 'Format non supporté. Accepté : PNG, JPEG, GIF, WEBP.') });
     }
     // Content-addressed name → automatic dedupe and no user-controlled path.
     const hash = crypto.createHash('sha256').update(body).digest('hex').slice(0, 32);
@@ -31379,7 +31400,7 @@ app.post('/api/forum/upload-image',
         res.json({ ok: true, url: '/forum-uploads/' + fname, bytes: body.length });
       } catch (e) {
         console.error('[FORUM-UPLOAD] store error:', e.message);
-        res.status(500).json({ ok: false, error: 'store_failed', message: "Échec de l'enregistrement de l'image." });
+        res.status(500).json({ ok: false, error: 'store_failed', message: tReq(req, 'api.forum.imageEchec', "Échec de l'enregistrement de l'image.") });
       }
     })();
   }
@@ -31525,7 +31546,8 @@ app.post('/api/forum/post', async (req, res) => {
     return res.status(403).json({
       error: 'muted',
       mutedUntil: mute.until,
-      message: `Tu es totoché jusqu'au ${mute.untilDisplay}, tu ne peux pas poster sur le forum tant que la sanction dure.`,
+      message: tReq(req, 'api.forum.totochePoster', 'Tu es totoché jusqu\'au {quand}, tu ne peux pas poster sur le forum tant que la sanction dure.',
+        { quand: finDeSanction(langueDeRequete(req), mute) }),
     });
   }
   const ban = getBanInfoForUser(username);
@@ -31578,7 +31600,7 @@ app.post('/api/forum/post', async (req, res) => {
     if (!isForumStaff(username) && String(dernierAuteur || '').toLowerCase() === String(username).toLowerCase()) {
       return res.status(403).json({
         error: 'double_post',
-        message: "Tu ne peux pas poster deux messages d'affilée sur le même sujet. Édite ton message précédent ou attends qu'un autre Frutiz réponde.",
+        message: tReq(req, 'api.forum.doublePost', "Tu ne peux pas poster deux messages d'affilée sur le même sujet. Édite ton message précédent ou attends qu'un autre Frutiz réponde."),
       });
     }
     // Hard cap: refuse any post after the topic has reached the limit.
@@ -31590,7 +31612,7 @@ app.post('/api/forum/post', async (req, res) => {
       // Defensive: make sure the topic is locked too, in case the lock
       // didn't stick on the previous boundary insert (legacy data).
       db.forumSetLocked(topicId, true).catch(dbErr('forumSetLocked cap'));
-      return res.status(403).json({ error: 'topic_full', message: 'Ce sujet a atteint la limite de 500 messages et est désormais verrouillé.' });
+      return res.status(403).json({ error: 'topic_full', message: tReq(req, 'api.forum.sujetPlein', 'Ce sujet a atteint la limite de 500 messages et est désormais verrouillé.') });
     }
     const post = await db.forumCreatePost(topicId, username, content, postBouille, postMood);
     trackXpAction(username, 'forumPost');
@@ -31735,7 +31757,7 @@ app.post('/api/forum/poll/:id/vote', async (req, res) => {
     const poll = await db.forumGetPoll(pollId);
     if (!poll) return res.status(404).json({ error: 'poll_not_found' });
     if (poll.is_closed) {
-      return res.status(403).json({ error: 'poll_closed', message: 'Ce sondage est clos, tu ne peux plus voter.' });
+      return res.status(403).json({ error: 'poll_closed', message: tReq(req, 'api.forum.sondageClos', 'Ce sondage est clos, tu ne peux plus voter.') });
     }
     const topic = await db.forumGetTopic(poll.topic_id);
     if (topic) {
@@ -31744,7 +31766,7 @@ app.post('/api/forum/poll/:id/vote', async (req, res) => {
     }
     const result = await db.forumVotePoll(pollId, optionId, username);
     if (!result.ok) {
-      return res.status(400).json({ error: result.reason || 'vote_failed', message: 'Réponse de sondage invalide.' });
+      return res.status(400).json({ error: result.reason || 'vote_failed', message: tReq(req, 'api.forum.sondageReponse', 'Réponse de sondage invalide.') });
     }
     const updated = await db.forumGetPollByTopic(poll.topic_id, username);
     res.json({ ok: true, poll: updated });
@@ -32908,7 +32930,7 @@ app.get('/api/light/mail/read', (req, res) => {
   if (!username) return res.status(401).json({ error: 'auth' });
   const user = users[username];
   const mail = findMail(user, String(req.query.uid || ''));
-  if (!mail) return res.status(404).json({ ok: false, error: 'Ce courrier n\'existe plus.' });
+  if (!mail) return res.status(404).json({ ok: false, error: tReq(req, 'api.mail.disparu', 'Ce courrier n\'existe plus.') });
   if (mail.folder === 'inbox' && !mail.read) {
     mail.read = true;
     if (user._dbId) db.updateMailRead(mail.uid, true).catch(dbErr('updateMailRead'));
@@ -32935,13 +32957,13 @@ app.post('/api/light/mail/send', async (req, res) => {
   const destBrut = String(corps.to || '').trim();
   const sujet = String(corps.subject || '').trim().slice(0, 120);
   const texte = String(corps.body || '').slice(0, 4000);
-  if (!destBrut) return res.json({ ok: false, error: 'Indique au moins un destinataire.' });
-  if (!texte.trim()) return res.json({ ok: false, error: 'Le message est vide.' });
+  if (!destBrut) return res.json({ ok: false, error: tReq(req, 'api.mail.sansDestinataire', 'Indique au moins un destinataire.') });
+  if (!texte.trim()) return res.json({ ok: false, error: tReq(req, 'api.mail.vide', 'Le message est vide.') });
 
   // On résout AVANT d'envoyer : un pseudo mal orthographié doit se voir tout de
   // suite, pas se deviner devant une boîte « Envoyés » qui n'a rien livré.
   const adresses = parseRecipients(destBrut).map(normalizeContactAddress);
-  if (!adresses.length) return res.json({ ok: false, error: 'Destinataire illisible.' });
+  if (!adresses.length) return res.json({ ok: false, error: tReq(req, 'api.mail.illisible', 'Destinataire illisible.') });
   const connus = [], inconnus = [];
   for (const a of adresses) {
     const cible = await addressToUsername(a);
@@ -32951,8 +32973,8 @@ app.post('/api/light/mail/send', async (req, res) => {
     return res.json({
       ok: false,
       error: inconnus.length === 1
-        ? `« ${inconnus[0]} » n'existe pas — vérifie l'orthographe du pseudo.`
-        : 'Aucun de ces destinataires n\'existe.',
+        ? tReq(req, 'api.mail.inconnu', '« {nom} » n\'existe pas — vérifie l\'orthographe du pseudo.', { nom: inconnus[0] })
+        : tReq(req, 'api.mail.inconnus', 'Aucun de ces destinataires n\'existe.'),
     });
   }
 
@@ -32985,7 +33007,7 @@ app.post('/api/light/mail/send', async (req, res) => {
     await deliverMailToRecipients(mail, username);
   } catch (e) {
     console.error('[Mail] /light delivery error:', e.message);
-    return res.json({ ok: false, error: 'L\'envoi a échoué, réessaie.' });
+    return res.json({ ok: false, error: tReq(req, 'api.mail.echec', 'L\'envoi a échoué, réessaie.') });
   }
   console.log(`[Mail] ${username} (light) → ${connus.join(', ')} : ${sujet}`);
   res.json({
@@ -33005,7 +33027,7 @@ app.post('/api/light/mail/delete', (req, res) => {
   if (!username) return res.status(401).json({ ok: false, error: 'auth' });
   const user = users[username];
   const mail = findMail(user, String(corps.uid || ''));
-  if (!mail) return res.status(404).json({ ok: false, error: 'Ce courrier n\'existe plus.' });
+  if (!mail) return res.status(404).json({ ok: false, error: tReq(req, 'api.mail.disparu', 'Ce courrier n\'existe plus.') });
   if (mail.folder === 'recyclebin') {
     user.mails = user.mails.filter((m) => m.uid !== mail.uid);
     if (user._dbId) db.deleteMails([mail.uid]).catch((e) => console.error('[DB] mail delete error:', e.message));
@@ -34508,9 +34530,9 @@ app.post('/api/light/shop/buy', (req, res) => {
   const user = users[username];
   const r = purchaseShopPack(user, username, (req.body && req.body.id) || req.query.id);
   if (!r.ok) {
-    const error = r.code === 3 ? 'Pas assez de kikooz.'
-      : r.code === 2 ? 'Tu possèdes déjà cet accessoire.'
-      : 'Article indisponible.';
+    const error = r.code === 3 ? tReq(req, 'boutique.pasAssez', 'Pas assez de kikooz.')
+      : r.code === 2 ? tReq(req, 'boutique.dejaPossede', 'Tu possèdes déjà cet accessoire.')
+      : tReq(req, 'boutique.indisponible', 'Article indisponible.');
     return res.json({ ok: false, code: r.code, error, kikooz: Number(user.kikooz) || 0 });
   }
   res.json({ ok: true, kikooz: r.kikooz, bouille: r.bouille, name: r.pack.name });
@@ -34522,11 +34544,11 @@ app.get('/api/light/shop/revente', async (req, res) => {
   if (!username) return res.status(401).json({ ok: false, error: 'auth' });
   const user = users[username];
   const pack = getShopPack(req.query.id);
-  if (!accessoireRevendable(user, pack)) return res.json({ ok: false, error: 'Cet article ne se revend pas.' });
+  if (!accessoireRevendable(user, pack)) return res.json({ ok: false, error: tReq(req, 'boutique.nonRevendable', 'Cet article ne se revend pas.') });
   try {
     const o = await offreDeRevente(user, username, pack);
     res.json({ ok: true, id: pack.id, name: pack.name, prix: o.prix, achete: o.achete });
-  } catch (e) { res.status(500).json({ ok: false, error: 'Boutique indisponible.' }); }
+  } catch (e) { res.status(500).json({ ok: false, error: tReq(req, 'boutique.fermee', 'Boutique indisponible.') }); }
 });
 
 // La revente elle-même : l'exemplaire s'en va, les kikooz arrivent.
@@ -34537,7 +34559,7 @@ app.post('/api/light/shop/vendre', async (req, res) => {
   const user = users[username];
   const pack = getShopPack((req.body && req.body.id) || req.query.id);
   const ligne = accessoireRevendable(user, pack);
-  if (!ligne) return res.json({ ok: false, error: 'Cet article ne se revend pas.', kikooz: Number(user.kikooz) || 0 });
+  if (!ligne) return res.json({ ok: false, error: tReq(req, 'boutique.nonRevendable', 'Cet article ne se revend pas.'), kikooz: Number(user.kikooz) || 0 });
   try {
     const offre = await offreDeRevente(user, username, pack);
     // L'exemplaire quitte l'inventaire — mémoire, puis base.
@@ -34564,7 +34586,7 @@ app.post('/api/light/shop/vendre', async (req, res) => {
     res.json({ ok: true, kikooz: user.kikooz, prix: offre.prix, achete: offre.achete, bouille, name: pack.name });
   } catch (e) {
     console.error('[revente]', e.message);
-    res.status(500).json({ ok: false, error: 'Revente impossible.' });
+    res.status(500).json({ ok: false, error: tReq(req, 'boutique.reventeImpossible', 'Revente impossible.') });
   }
 });
 

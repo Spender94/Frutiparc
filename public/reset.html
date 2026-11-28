@@ -97,7 +97,8 @@
     fetch("/api/auth/reset", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: token, password: p1 }),
+      // La langue de la page : le serveur répond dans la même.
+      body: JSON.stringify({ token: token, password: p1, lang: FPI18n.langue }),
     }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
       .then(function (res) {
         if (!res.ok || !res.d || !res.d.ok) {
