@@ -827,6 +827,18 @@ const GAME_ITEM_INFO = {
   '$wpNostromo':   { name: 'Fond Nostromo',    game: 'MiniWave', gif: 'Games/miniWave2/bitmap/bg/miniwave_nostromo.jpg' },
 };
 
+/*
+ * LES NOMS DES PICTOS DANS LA LANGUE DU LECTEUR. Le nom français (`name`) reste
+ * celui du catalogue : le bureau Flash, le forum ([picto=…]) et l'historique le
+ * lisent tel quel, et il départage l'ordre d'affichage. En anglais, un picto se
+ * nomme par son identifiant (`pictos.<id>`, i18n-serveur/en/pictos.js) ; une
+ * FAMILLE engendrée (« Monstre 12 », « Parchemin de Foudre », « Pain (petit) »)
+ * par un gabarit et ses paramètres, rangés ici à la fabrication. Les fruits de
+ * Frutisnake (« Fruit 12 ») et les pictos inédits de l'admin gardent leur nom.
+ * Voir nomDePicto.
+ */
+const PICTO_NOM_FAMILLE = {};   // id → texte traduisible { k, fr, p }
+
 // Les smileys du stand Miniwave, tels que le forum les connaît : le code tapé
 // (ou inséré par la rangée), le fichier servi depuis /fb/, et le titem qui les
 // débloque. Tout le monde VOIT un smiley posté ; seuls les acheteurs ont le
@@ -884,6 +896,7 @@ for (const e of MINIFEVER_EPREUVES) {
 for (let i = 0; i <= 50; i++) {
   const pad = String(i).padStart(2, '0');
   GAME_ITEM_INFO[`$bads${i}`] = { name: `Monstre ${i}`, game: 'MiniWave', gif: `Games/miniWave2/titem/gif/bad${pad}.gif` };
+  PICTO_NOM_FAMILLE[`$bads${i}`] = { k: 'pictos.famille.monstre', fr: 'Monstre {n}', p: { n: i } };
 }
 for (let i = 0; i <= 4; i++) {
   GAME_ITEM_INFO[`$mis${i}`] = { name: `Mission ${i}`, game: 'MiniWave', gif: `Games/miniWave2/titem/gif/mis${i}.gif` };
@@ -938,6 +951,9 @@ const PIXIZ_SPELL_NAMES = {
 for (const [spellId, spellName] of Object.entries(PIXIZ_SPELL_NAMES)) {
   PIXIZ_ITEM_NAMES[100 + Number(spellId)] = `Parchemin de ${spellName}`;
   PIXIZ_ITEM_NAMES[200 + Number(spellId)] = `Livre de ${spellName}`;
+  const sort = { k: 'pictos.pixizSort.' + spellId, fr: spellName };
+  PICTO_NOM_FAMILLE['$pixiz_item' + (100 + Number(spellId))] = { k: 'pictos.famille.parchemin', fr: 'Parchemin de {sort}', p: { sort } };
+  PICTO_NOM_FAMILLE['$pixiz_item' + (200 + Number(spellId))] = { k: 'pictos.famille.livre', fr: 'Livre de {sort}', p: { sort } };
 }
 // Build picto entries for each item that has a GIF on disk.
 // GIF filename = item_${id+1}.gif under bmp/titems/GIF/item/.
@@ -968,6 +984,10 @@ for (let i = 0; i < 57; i++) {
   const gif = `Games/miniTroll/bmp/titems/GIF/food/food_${i + 1}.gif`;
   if (fs.existsSync(path.join(__dirname, gif))) {
     GAME_ITEM_INFO[`$pixiz_food${id}`] = { name: `${baseName} (${variant})`.trim(), game: 'MiniPixiz', gif };
+    if (PIXIZ_FOOD_BASE_NAMES[Math.floor(i / 3)]) {
+      PICTO_NOM_FAMILLE[`$pixiz_food${id}`] = { k: 'pictos.famille.aliment', fr: '{aliment} ({taille})', p: {
+        aliment: { k: 'pictos.pixizAliment.' + Math.floor(i / 3), fr: baseName }, taille: { k: 'pictos.taille.' + variant, fr: variant } } };
+    }
   }
 }
 // Diamonds (5 colors) — earned by completing each Dungeon difficulty level
@@ -983,6 +1003,8 @@ for (let i = 1; i <= 5; i++) {
     game: 'MiniPixiz',
     gif: `Games/miniTroll/bmp/titems/GIF/diam/diam${i}.gif`,
   };
+  PICTO_NOM_FAMILLE[`$pixiz_diam${i}`] = { k: 'pictos.famille.diamant', fr: 'Diamant {matiere}',
+    p: { matiere: { k: 'pictos.pixizDiamant.' + i, fr: PIXIZ_DIAM_NAMES[i - 1] } } };
 }
 
 // JamaJama (Poulpi) — milestone pictos awarded based on number of saved
@@ -1261,7 +1283,21 @@ function registerCustomPicto(meta) {
   };
 }
 
-function getGameItemDisplayName(itemName) {
+/*
+ * Le nom d'un picto en TEXTE TRADUISIBLE (voir texteDe) : à passer en
+ * paramètre d'une phrase à clé — « Nouveau picto débloqué : {picto} » — ou à
+ * rendre tout de suite (getGameItemDisplayName). Un picto du catalogue a sa
+ * clé ; un fruit de Frutisnake ou un picto inédit, son nom tel quel.
+ */
+function nomDePicto(itemName) {
+  const info = GAME_ITEM_INFO[itemName];
+  if (info) return PICTO_NOM_FAMILLE[itemName] || { k: 'pictos.' + itemName, fr: info.name };
+  return getGameItemDisplayName(itemName);
+}
+
+// Le nom affiché d'un picto ; `lang` absent ou « fr » : le nom du catalogue.
+function getGameItemDisplayName(itemName, lang) {
+  if (lang && lang !== 'fr' && GAME_ITEM_INFO[itemName]) return texteDe(lang, nomDePicto(itemName));
   const info = GAME_ITEM_INFO[itemName];
   if (info) return info.name;
   const custom = CUSTOM_PICTOS[itemName];
@@ -1322,7 +1358,7 @@ function renderPictoEntryXml(itemName) {
  * @returns {Array<{id: string, nom: string, jeu: string}>}
  */
 const RANG_CATALOGUE_PICTO = new Map(Object.keys(GAME_ITEM_INFO).map((k, i) => [k, i]));
-function pictosRangesParJeu(gameItems) {
+function pictosRangesParJeu(gameItems, lang) {
   const vus = new Set();
   const liste = [];
   for (const id of Array.isArray(gameItems) ? gameItems : []) {
@@ -1331,11 +1367,14 @@ function pictosRangesParJeu(gameItems) {
     liste.push({ id, nom: getGameItemDisplayName(id), jeu: getGameItemGame(id) || 'Autre' });
   }
   const rang = (p) => (RANG_CATALOGUE_PICTO.has(p.id) ? RANG_CATALOGUE_PICTO.get(p.id) : Infinity);
-  return liste.sort((a, b) => (a.jeu === 'Autre') - (b.jeu === 'Autre')
+  liste.sort((a, b) => (a.jeu === 'Autre') - (b.jeu === 'Autre')
     || a.jeu.localeCompare(b.jeu, 'fr')
     || (rang(a) - rang(b) || 0)
     || a.nom.localeCompare(b.nom, 'fr', { numeric: true })
     || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  // Rangés en français, nommés dans la langue du lecteur.
+  if (lang && lang !== 'fr') for (const p of liste) p.nom = getGameItemDisplayName(p.id, lang);
+  return liste;
 }
 
 function dossiersPictos(user) {
@@ -7613,6 +7652,64 @@ const SHOP_PACKS_DEFAULT = [
   ...SHOP_FEUTRES_DEFAULT,
 ];
 const SHOP_PACKS = [...SHOP_PACKS_DEFAULT];
+
+/*
+ * L'ARTICLE DANS LA LANGUE DU LECTEUR. Le nom français reste l'IDENTIFIANT de
+ * l'article (inventaire, forum, historique des achats) ; on ne traduit que ce
+ * que la boutique et l'inventaire du light affichent. Dans l'ordre :
+ *   1. l'anglais saisi dans l'admin (`name_en`, `description_en`, `comment_en`,
+ *      colonnes de shop_packs) ;
+ *   2. pour un article livré avec le code, le dictionnaire (`boutique.<id>.nom`,
+ *      `.description`, `.commentaire`, i18n-serveur/en/boutique.js) — tant que
+ *      la base garde le français du code : un texte retouché dans l'admin
+ *      n'est plus celui que le dictionnaire traduit ;
+ *   3. sinon, le français.
+ */
+const SHOP_DEFAUT_PAR_ID = new Map(SHOP_PACKS_DEFAULT.map((p) => [p.id, p]));
+const CHAMP_ARTICLE = { name: 'nom', description: 'description', comment: 'commentaire' };
+function texteArticle(p, champ, lang) {
+  const fr = (p && p[champ]) || '';
+  if (!p || !lang || lang === 'fr') return fr;
+  if (p[champ + '_' + lang]) return String(p[champ + '_' + lang]);
+  const def = SHOP_DEFAUT_PAR_ID.get(p.id);
+  if (!def) return fr;
+  // (une ligne en base sans commentaire reprend sa description, cf. loadShopPacks)
+  const frDuCode = champ === 'comment' ? (def.comment || def.description || '') : (def[champ] || '');
+  if (fr !== frDuCode) return fr;
+  const cle = `boutique.${p.id}.${CHAMP_ARTICLE[champ]}`;
+  if (champ === 'comment' && !def.comment && !FPI18n.possede(lang, cle)) return t(lang, `boutique.${p.id}.description`, fr);
+  return t(lang, cle, fr);
+}
+// La fiche d'un ACCESSOIRE, en deux niveaux (resolveAccessoryLevels) : les
+// paragraphes communs se traduisent ; un texte propre à l'article, seulement
+// s'il a son anglais (`description_en`, le même JSON {l1, l2}).
+function niveauxAccessoire(p, lang) {
+  if (!lang || lang === 'fr') return resolveAccessoryLevels(p);
+  const n = resolveAccessoryLevels({ description: (p && p['description_' + lang]) || (p && p.description) });
+  return {
+    l1: n.l1 === DEFAULT_ACCESSORY_DESC_L1 ? t(lang, 'boutique.accessoire.l1', n.l1) : n.l1,
+    l2: n.l2 === DEFAULT_ACCESSORY_DESC_L2 ? t(lang, 'boutique.accessoire.l2', n.l2) : n.l2,
+  };
+}
+// Le nom d'un rayon : « Fonds d'écran » → `boutique.rayon.fondsdecran`. Le
+// nom français reste la clé du rayon (le regroupement, l'admin).
+function nomRayon(nom, lang) {
+  if (!lang || lang === 'fr') return nom;
+  const cle = String(nom || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+  return cle ? t(lang, 'boutique.rayon.' + cle, nom) : nom;
+}
+// Le nom d'un objet POSSÉDÉ (une entrée de customAccessories, qui garde une
+// copie du nom français à l'achat) : rendu depuis son article quand on le
+// retrouve — `shopId`, ou l'identifiant « shop_<id> » / « wp_<fond> ».
+function nomPossede(acc, lang) {
+  const copie = (acc && acc.n) || '';
+  if (!acc || !lang || lang === 'fr') return copie;
+  let pack = acc.shopId ? getShopPack(acc.shopId) : null;
+  const id = String(acc.id || '');
+  if (!pack && /^shop_\d+$/.test(id)) pack = getShopPack(id.slice(5));
+  if (!pack && id.startsWith('wp_')) pack = SHOP_PACKS.find((p) => p.wallpaperId === id.slice(3));
+  return pack ? texteArticle(pack, 'name', lang) : copie;
+}
 
 
 // Une bouille dont on remplace la paire d'iris. `eyeSc` occupe les caractères
@@ -18077,7 +18174,7 @@ app.get('/api/pictos', (req, res) => {
   if (!username || !users[username]) return res.json([]);
   // Rangés par jeu, dans un ordre stable (pictosRangesParJeu) : le sélecteur
   // de l'éditeur les pose tels quels, sous un intertitre par jeu.
-  const result = pictosRangesParJeu(users[username].gameItems).map((p) => ({
+  const result = pictosRangesParJeu(users[username].gameItems, langueDeRequete(req)).map((p) => ({
     id: p.id,
     name: p.nom,
     game: p.jeu,
@@ -20187,7 +20284,12 @@ app.get('/api/jamajama/pictos', (req, res) => {
   const username = resolveUsernameFromSid(sid);
   if (!username || !users[username]) return res.json({ ok: false, error: 'session' });
   const etat = jamaEtatPictos(jamaLireSlot(username));
-  res.json({ ok: true, pictos: jamaProgression(username, etat) });
+  const L = langueDeRequete(req);
+  const pictos = jamaProgression(username, etat);
+  // Le nom et la condition dans la langue du joueur (pictos.<id>,
+  // pictos.jamaQuoi.<n>) ; le français est celui de jamaPictos.js.
+  if (L !== 'fr') for (const p of pictos) { p.nom = getGameItemDisplayName(p.id, L); p.quoi = t(L, 'pictos.jamaQuoi.' + p.n, p.quoi); }
+  res.json({ ok: true, pictos });
 });
 
 // L'AIDE — help.xml, réécrite par Toad06 en 2024.
@@ -21546,6 +21648,10 @@ app.post('/api/admin/shop', adminScope('shop'), async (req, res) => {
     suffix9: String(b.suffix9 || '000000000'),
     comment: String(b.comment || b.description || ''),
   };
+  // L'anglais, facultatif (vide : le français pour tout le monde).
+  for (const champ of ['name_en', 'description_en', 'comment_en']) {
+    if (b[champ] !== undefined && String(b[champ]).trim()) pack[champ] = String(b[champ]);
+  }
   if (prunelle) pack.prunelle = prunelle;
   if (maquillage) pack.maquillage = maquillage;
   if (incarnation) pack.incarnation = incarnation;
@@ -21840,6 +21946,11 @@ app.patch('/api/admin/shop/:id', adminScope('shop'), async (req, res) => {
   if (b.category !== undefined) pack.category = String(b.category);
   if (b.price !== undefined) pack.price = Number(b.price);
   if (b.description !== undefined) { pack.description = String(b.description); pack.comment = String(b.description); }
+  // L'anglais : une chaîne vide l'efface (retour au français, ou au dictionnaire).
+  for (const champ of ['name_en', 'description_en', 'comment_en']) {
+    if (b[champ] === undefined) continue;
+    if (String(b[champ]).trim()) pack[champ] = String(b[champ]); else delete pack[champ];
+  }
   if (b.suffix9 !== undefined) pack.suffix9 = String(b.suffix9);
   // La paire d'iris d'une incarnation : une clé connue la pose, une chaîne vide
   // la retire (l'article redevient un accessoire ordinaire).
@@ -34301,6 +34412,7 @@ app.get('/api/light/shop', (req, res) => {
   if (!username) return res.status(401).json({ error: 'auth' });
   const user = users[username] || {};
   const visible = SHOP_PACKS.filter(estPackEnRayon);
+  const L = langueDeRequete(req);
 
   const article = (p) => {
     const feutre = /^feutre,(\d+)$/.exec(String(p.picto || ''));
@@ -34314,14 +34426,14 @@ app.get('/api/light/shop', (req, res) => {
     // deux niveaux (resolveAccessoryLevels → l1 en gras, l2 en texte courant),
     // avec les deux paragraphes communs quand rien n'est personnalisé. Le
     // mobile affichait à la place le `description` brut, deux fois.
-    const niv = accessoire ? resolveAccessoryLevels(p) : null;
+    const niv = accessoire ? niveauxAccessoire(p, L) : null;
     const a = {
       id: p.id,
-      name: p.name,
-      category: rubriqueBoutique(p),
+      name: texteArticle(p, 'name', L),
+      category: nomRayon(rubriqueBoutique(p), L),
       price: Number(p.price) || 0,
-      description: niv ? niv.l2 : (p.description || ''),
-      comment: niv ? niv.l1 : (p.comment || ''),
+      description: niv ? niv.l2 : texteArticle(p, 'description', L),
+      comment: niv ? niv.l1 : texteArticle(p, 'comment', L),
       owned: offert || userOwnsShopPack(user, p.id),
       offert,
       kind: wp ? 'fond' : feutre ? 'feutre' : p.picto ? 'picto'
@@ -34365,7 +34477,7 @@ app.get('/api/light/shop', (req, res) => {
 
   const parRubrique = new Map();
   for (const [name, packs] of rayonsBoutique(visible)) parRubrique.set(name, packs.map(article));
-  const categories = [...parRubrique.entries()].map(([name, items]) => ({ name, items }));
+  const categories = [...parRubrique.entries()].map(([name, items]) => ({ name: nomRayon(name, L), cle: name, items }));
   res.json({
     kikooz: Number(user.kikooz) || 0,
     bouille: bouilleOf(user, username),
@@ -34394,6 +34506,7 @@ app.get('/api/light/inventaire', (req, res) => {
   const user = users[username] || {};
   const perso = Array.isArray(user.customAccessories) ? user.customAccessories : [];
   const base = bouilleOf(user, username).substring(0, 15);
+  const L = langueDeRequete(req);
   // La bouille PRINCIPALE : celle qui reste dessous quand une incarnation est
   // enfilée. C'est sur elle qu'on dessine les aperçus, et c'est elle qu'on
   // rend au joueur qui retire son déguisement.
@@ -34406,13 +34519,14 @@ app.get('/api/light/inventaire', (req, res) => {
   for (const acc of DEFAULT_ACCESSORIES) {
     if (vus.has(acc.suffix)) continue;
     vus.add(acc.suffix);
-    accessoires.push({ id: acc.u, nom: acc.n, etat: base + acc.suffix });
+    accessoires.push({ id: acc.u, nom: L === 'fr' ? acc.n : t(L, 'boutique.base.' + acc.u, acc.n), etat: base + acc.suffix });
   }
   // Les INCARNATIONS ont leur propre rayon : une bouille qu'on enfile n'est pas
   // un accessoire qu'on pose. `incarnationsDe` les liste (la même source que le
   // forum et le bureau) ; ici on se contente de ne pas les remettre parmi les
   // accessoires.
   const incarnations = incarnationsDe(user, username);
+  if (L !== 'fr') for (const i of incarnations) i.nom = nomPossede({ id: i.id, shopId: i.shopId, n: i.nom }, L);
   for (const acc of perso) {
     if (getAccessoryWallpaper(acc)) continue;            // c'est un fond, pas un accessoire
     if (getAccessoryPrunelle(acc)) continue;             // c'est une incarnation
@@ -34421,7 +34535,7 @@ app.get('/api/light/inventaire', (req, res) => {
     const v = String(acc.v || '');
     if (v.length !== 24 || vus.has(v)) continue;
     vus.add(v);
-    accessoires.push({ id: acc.id, nom: acc.n || 'Accessoire', etat: v });
+    accessoires.push({ id: acc.id, nom: nomPossede(acc, L) || 'Accessoire', etat: v });
   }
 
   // Fonds d'écran : ceux que le joueur possède. L'entrée « aucun » n'est pas
@@ -34432,7 +34546,7 @@ app.get('/api/light/inventaire', (req, res) => {
     const wp = getAccessoryWallpaper(acc);
     if (!wp || !wp.url) continue;
     fonds.push({
-      id: acc.id, nom: acc.n || 'Fond',
+      id: acc.id, nom: nomPossede(acc, L) || 'Fond',
       url: '/' + String(wp.url).replace(/^\/+/, ''),
       // Les autres cadrages, quand ils existent : le portrait que le mobile
       // préfère, et les dessins de nuit qui prennent la place au crépuscule.
@@ -34441,7 +34555,7 @@ app.get('/api/light/inventaire', (req, res) => {
     });
   }
 
-  const pictos = pictosRangesParJeu(user.gameItems).map((p) => ({
+  const pictos = pictosRangesParJeu(user.gameItems, langueDeRequete(req)).map((p) => ({
     id: p.id, nom: p.nom, jeu: p.jeu,
     url: `/api/picto/${encodeURIComponent(p.id)}`,
   }));
@@ -34535,7 +34649,7 @@ app.post('/api/light/shop/buy', (req, res) => {
       : tReq(req, 'boutique.indisponible', 'Article indisponible.');
     return res.json({ ok: false, code: r.code, error, kikooz: Number(user.kikooz) || 0 });
   }
-  res.json({ ok: true, kikooz: r.kikooz, bouille: r.bouille, name: r.pack.name });
+  res.json({ ok: true, kikooz: r.kikooz, bouille: r.bouille, name: texteArticle(r.pack, 'name', langueDeRequete(req)) });
 });
 
 // L'offre de reprise d'un accessoire possédé : ce que la boutique en donne.
@@ -34547,7 +34661,7 @@ app.get('/api/light/shop/revente', async (req, res) => {
   if (!accessoireRevendable(user, pack)) return res.json({ ok: false, error: tReq(req, 'boutique.nonRevendable', 'Cet article ne se revend pas.') });
   try {
     const o = await offreDeRevente(user, username, pack);
-    res.json({ ok: true, id: pack.id, name: pack.name, prix: o.prix, achete: o.achete });
+    res.json({ ok: true, id: pack.id, name: texteArticle(pack, 'name', langueDeRequete(req)), prix: o.prix, achete: o.achete });
   } catch (e) { res.status(500).json({ ok: false, error: tReq(req, 'boutique.fermee', 'Boutique indisponible.') }); }
 });
 
@@ -34583,7 +34697,7 @@ app.post('/api/light/shop/vendre', async (req, res) => {
     }
     notifyKikoozUpdate(username, user.kikooz);
     console.log(`[revente] ${username} rend "${pack.name}" (#${pack.id}) pour ${offre.prix} kikooz${offre.achete ? '' : ' (offert)'} — kikooz now ${user.kikooz}`);
-    res.json({ ok: true, kikooz: user.kikooz, prix: offre.prix, achete: offre.achete, bouille, name: pack.name });
+    res.json({ ok: true, kikooz: user.kikooz, prix: offre.prix, achete: offre.achete, bouille, name: texteArticle(pack, 'name', langueDeRequete(req)) });
   } catch (e) {
     console.error('[revente]', e.message);
     res.status(500).json({ ok: false, error: tReq(req, 'boutique.reventeImpossible', 'Revente impossible.') });

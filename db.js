@@ -353,6 +353,12 @@ async function initSchema() {
       -- UNE BOUILLE ENTIÈRE (Egerie) : la chaîne d'état de 24 caractères
       -- qu'un article d'incarnation d'époque met à l'inventaire telle quelle.
       ALTER TABLE shop_packs ADD COLUMN IF NOT EXISTS incarnation TEXT DEFAULT '';
+      -- L'ANGLAIS D'UN ARTICLE, facultatif : ce que la boutique du light montre
+      -- à un joueur anglophone (vide : le français, ou le dictionnaire pour un
+      -- article livré avec le code). Le nom français reste l'identifiant.
+      ALTER TABLE shop_packs ADD COLUMN IF NOT EXISTS name_en TEXT DEFAULT '';
+      ALTER TABLE shop_packs ADD COLUMN IF NOT EXISTS description_en TEXT DEFAULT '';
+      ALTER TABLE shop_packs ADD COLUMN IF NOT EXISTS comment_en TEXT DEFAULT '';
 
       -- LES REVENTES. Un joueur rend un accessoire à la boutique contre la
       -- moitié de ce qu'il l'a payé — ou trente kikooz s'il l'a reçu. Une
@@ -3629,17 +3635,23 @@ async function loadShopPacks() {
     if (r.prunelle) p.prunelle = r.prunelle;
     if (r.maquillage) p.maquillage = r.maquillage;
     if (r.incarnation) p.incarnation = r.incarnation;
+    if (r.name_en) p.name_en = r.name_en;
+    if (r.description_en) p.description_en = r.description_en;
+    if (r.comment_en) p.comment_en = r.comment_en;
     return p;
   });
 }
 
 async function upsertShopPack(pack) {
   await pool.query(
-    `INSERT INTO shop_packs (id, name, category, price, description, suffix9, comment, wallpaper_id, picto, disabled, auteur, prunelle, maquillage, incarnation)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+    `INSERT INTO shop_packs (id, name, category, price, description, suffix9, comment, wallpaper_id, picto, disabled, auteur, prunelle, maquillage, incarnation,
+                             name_en, description_en, comment_en)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
      ON CONFLICT (id) DO UPDATE SET
-       name = $2, category = $3, price = $4, description = $5, suffix9 = $6, comment = $7, wallpaper_id = $8, picto = $9, disabled = $10, auteur = $11, prunelle = $12, maquillage = $13, incarnation = $14`,
-    [pack.id, pack.name, pack.category || 'Accessoires', pack.price || 0, pack.description || '', pack.suffix9, pack.comment || '', pack.wallpaperId || null, pack.picto || null, !!pack.disabled, String(pack.auteur || ''), String(pack.prunelle || ''), String(pack.maquillage || ''), String(pack.incarnation || '')]
+       name = $2, category = $3, price = $4, description = $5, suffix9 = $6, comment = $7, wallpaper_id = $8, picto = $9, disabled = $10, auteur = $11, prunelle = $12, maquillage = $13, incarnation = $14,
+       name_en = $15, description_en = $16, comment_en = $17`,
+    [pack.id, pack.name, pack.category || 'Accessoires', pack.price || 0, pack.description || '', pack.suffix9, pack.comment || '', pack.wallpaperId || null, pack.picto || null, !!pack.disabled, String(pack.auteur || ''), String(pack.prunelle || ''), String(pack.maquillage || ''), String(pack.incarnation || ''),
+      String(pack.name_en || ''), String(pack.description_en || ''), String(pack.comment_en || '')]
   );
 }
 
