@@ -389,7 +389,9 @@
   // et le tableau complet à la demande.
   var tournoi = null;
   function chargerTournoi() {
-    return fetch("/api/tournaments/duel", { cache: "no-store" })
+    // La langue de la page : le serveur nomme les tours (« Finale »…) dans la sienne.
+    var langue = (window.FPI18n && FPI18n.langue) || "fr";
+    return fetch("/api/tournaments/duel?lang=" + encodeURIComponent(langue), { cache: "no-store" })
       .then(function (r) { return r.json(); })
       .then(function (d) { tournoi = (d && d.tournoi) ? d : null; majTournoi(); })
       .catch(function () { /* pas de tournoi, pas de bandeau */ });

@@ -15911,7 +15911,7 @@ const TD = require('./tournoiDuel.js');
 const TC = require('./tournoiCoupe.js');
 
 // L'état complet d'un tournoi en duel, pour l'admin comme pour le jeu.
-async function tournoiDuelEtat(t) {
+async function tournoiDuelEtat(t, lang = 'fr') {
   const players = await db.getTournamentPlayers(t.id);
   const matches = await db.getTournamentMatches(t.id);
   const poules = [...new Set(players.map((p) => p.poule).filter(Boolean))].sort();
@@ -15926,7 +15926,7 @@ async function tournoiDuelEtat(t) {
     tournament: t, players, matches, tables,
     tours: tours.map((n) => ({
       round: n,
-      nom: TD.nomDuTour(n, matches.filter((m) => Number(m.round) === n).length),
+      nom: TD.nomDuTour(n, matches.filter((m) => Number(m.round) === n).length, lang),
       matchs: matches.filter((m) => Number(m.round) === n),
     })),
   };
@@ -16154,7 +16154,8 @@ app.get('/api/tournaments/duel', async (req, res) => {
       ? await db.getTournament(Number(req.query.id))
       : await tournoiDuelActif();
     if (!t || t.format !== 'duel') return res.json({ tournoi: null });
-    const e = await tournoiDuelEtat(t);
+    // Le nom des tours (« Finale »…) dans la langue de qui regarde.
+    const e = await tournoiDuelEtat(t, langueDeRequete(req));
     res.json({
       tournoi: {
         id: t.id, nom: t.name, statut: t.status, tour: Number(t.current_round) || 0,
